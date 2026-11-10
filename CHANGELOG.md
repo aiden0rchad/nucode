@@ -8,6 +8,8 @@
 - **Work Trash:** deleting a task moves it to Trash, where it can be restored for 30 days.
 - **Work composer:** a message waiting for the model shows in the task's transcript instead of staying in the message box, and returns to the box if you stop the launch.
 
+Releases before 0.8.0 were published under the project's earlier name. Their downloads are no longer available; the notes below are kept as history.
+
 ## 0.7.71 — November 2, 2026
 
 ### Faster Computer Use and steadier Work tasks
@@ -25,7 +27,7 @@
 
 ### Release status
 
-Published as a [macOS Apple Silicon release](https://github.com/aiden0rchad/nucode/releases/tag/v0.7.71), with a [DMG installer](https://github.com/aiden0rchad/nucode/releases/download/v0.7.71/nucode_0.7.71_aarch64.dmg), build manifest and SHA-256 checksums. Windows remains on [0.7.69](https://github.com/aiden0rchad/nucode/releases/tag/v0.7.69). This remains an early-development release; the macOS package is development-signed and not notarized.
+Published as a macOS Apple Silicon release, with a DMG installer, build manifest and SHA-256 checksums. Windows remains on 0.7.69. This remains an early-development release; the macOS package is development-signed and not notarized.
 
 ## 0.7.70 — November 1, 2026
 
@@ -41,7 +43,7 @@ Published as a [macOS Apple Silicon release](https://github.com/aiden0rchad/nuco
 
 ### Release status
 
-Published as a [macOS Apple Silicon release](https://github.com/aiden0rchad/nucode/releases/tag/v0.7.70), with a [DMG installer](https://github.com/aiden0rchad/nucode/releases/download/v0.7.70/nucode_0.7.70_aarch64.dmg), build manifest and SHA-256 checksums. Windows remains on [0.7.69](https://github.com/aiden0rchad/nucode/releases/tag/v0.7.69). This remains an early-development release; the macOS package is development-signed and not notarized.
+Published as a macOS Apple Silicon release, with a DMG installer, build manifest and SHA-256 checksums. Windows remains on 0.7.69. This remains an early-development release; the macOS package is development-signed and not notarized.
 
 ## 0.7.69 — November 1, 2026
 
@@ -59,11 +61,11 @@ Published as a [macOS Apple Silicon release](https://github.com/aiden0rchad/nuco
 
 | Platform | Package |
 | --- | --- |
-| macOS · Apple Silicon | [Download DMG](https://github.com/aiden0rchad/nucode/releases/download/v0.7.69/nucode_0.7.69_aarch64.dmg) |
-| Windows · Intel/AMD 64-bit | [Download installer](https://github.com/aiden0rchad/nucode/releases/download/v0.7.69/nucode_0.7.69_x64-setup.exe) |
-| Integrity | [SHA-256 checksums](https://github.com/aiden0rchad/nucode/releases/download/v0.7.69/SHA256SUMS) |
+| macOS · Apple Silicon | `nucode_0.7.69_aarch64.dmg` |
+| Windows · Intel/AMD 64-bit | `nucode_0.7.69_x64-setup.exe` |
+| Integrity | `SHA256SUMS` |
 
-Packages include Node, npm, uv and the app's helper executables. The macOS build manifest records exact bundled runtime versions and the DMG checksum. Source archives are available on the [release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.7.69).
+Packages include Node, npm, uv and the app's helper executables. The macOS build manifest records exact bundled runtime versions and the DMG checksum. Source archives are available on the release page.
 
 ### Before installing
 
