@@ -58,6 +58,12 @@ jobs:
       - run: npm ci
       # The Tauri context embeds the built frontend at compile time.
       - run: npm run build
+      # The checkout's Cargo config is offline; fetch once with the network on.
+      - name: Fetch Rust dependencies
+        working-directory: apps/nucode/src-tauri
+        env:
+          CARGO_NET_OFFLINE: "false"
+        run: cargo fetch --locked
       - name: App tests
         working-directory: apps/nucode/src-tauri
         # The preview-bridge test binds a socket under TMPDIR.
