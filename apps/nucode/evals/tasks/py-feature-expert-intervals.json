@@ -1,0 +1,19 @@
+{
+  "id": "py-feature-expert-intervals",
+  "repo": "py-cli",
+  "category": "feature",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Implement normalize and available in expert/intervals after reading policy, ranges, availability and tests. Intervals are half-open integer pairs [start,end); reject booleans, nonintegers, reversed endpoints and malformed pairs with ValueError. normalize sorts and unions overlapping or touching intervals, dropping empty ones. available(windows, blocked) returns the canonical union of windows minus the union of blocked intervals, splitting as needed. Validate both inputs even when the other is empty, support one-shot iterables, return lists of tuples, and never mutate inputs. Run python3 -m unittest expert.intervals.test_intervals.",
+  "setup": [],
+  "check": {
+    "command": "python3 -m unittest expert.intervals.test_intervals",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

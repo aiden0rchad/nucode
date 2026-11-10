@@ -1,0 +1,19 @@
+{
+  "id": "ts-bugfix-expert-cache",
+  "repo": "ts-lib",
+  "category": "bugfix",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Fix expert/cache using its policy, cache, reader and tests. Keep all public APIs. Cache entries are valid only before their expiry; TTL zero disables caching. Keys identify exact (id, locale) pairs. Cached values must be isolated from caller and loader mutation. invalidate(id) removes every locale of that exact id. Validate TTL before calling the loader. Preserve caching of null results and use the injected clock only. Run node --test expert/cache/check.test.ts.",
+  "setup": [],
+  "check": {
+    "command": "node --test expert/cache/check.test.ts",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

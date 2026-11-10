@@ -1,0 +1,39 @@
+--- a/expert/config/merge.py
++++ b/expert/config/merge.py
+@@ -1,2 +1,12 @@
++from copy import deepcopy
+ def merge(base, overlay):
+-    return {**base, **overlay}
++    result = deepcopy(base)
++    for key, value in overlay.items():
++        if value is None:
++            result.pop(key, None)
++        elif isinstance(value, dict):
++            previous = result.get(key)
++            result[key] = merge(previous if isinstance(previous, dict) else {}, value)
++        else:
++            result[key] = deepcopy(value)
++    return result
+--- a/expert/config/loader.py
++++ b/expert/config/loader.py
+@@ -3,5 +3,18 @@
+ from .schema import document
+ from .merge import merge
+ def load(path):
+-    includes, values = document(json.loads(Path(path).read_text(encoding='utf-8')))
+-    return merge({}, values)
++    active = set()
++    def visit(path):
++        path = Path(path).resolve()
++        if path in active:
++            raise ValueError('include cycle')
++        active.add(path)
++        try:
++            includes, values = document(json.loads(path.read_text(encoding='utf-8')))
++            result = {}
++            for include in includes:
++                result = merge(result, visit(path.parent / include))
++            return merge(result, values)
++        finally:
++            active.remove(path)
++    return visit(path)

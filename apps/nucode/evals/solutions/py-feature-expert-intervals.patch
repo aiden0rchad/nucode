@@ -1,0 +1,38 @@
+--- a/expert/intervals/ranges.py
++++ b/expert/intervals/ranges.py
+@@ -1,3 +1,11 @@
+ from .policy import interval
+ def normalize(ranges):
+-    return sorted(interval(value) for value in ranges)
++    result = []
++    for start, end in sorted(interval(value) for value in ranges):
++        if start == end:
++            continue
++        if result and start <= result[-1][1]:
++            result[-1] = (result[-1][0], max(end, result[-1][1]))
++        else:
++            result.append((start, end))
++    return result
+--- a/expert/intervals/availability.py
++++ b/expert/intervals/availability.py
+@@ -1,3 +1,19 @@
+ from .ranges import normalize
+ def available(windows, blocked):
+-    return normalize(windows)
++    windows, blocked = normalize(windows), normalize(blocked)
++    result = []
++    for start, end in windows:
++        cursor = start
++        for low, high in blocked:
++            if high <= cursor:
++                continue
++            if low >= end:
++                break
++            if low > cursor:
++                result.append((cursor, low))
++            cursor = max(cursor, high)
++            if cursor >= end:
++                break
++        if cursor < end:
++            result.append((cursor, end))
++    return result

@@ -1,0 +1,54 @@
+--- /dev/null
++++ b/expert/events/dispatch.ts
+@@ -0,0 +1,9 @@
++import {type Entries} from './model.ts';
++export function dispatch(entries:Entries,value:string) {
++  const errors:unknown[]=[];
++  for(const entry of [...entries]) {
++    if(entry.once) entries.delete(entry);
++    try {entry.callback(value);} catch(error) {errors.push(error);}
++  }
++  if(errors.length) throw new AggregateError(errors,'delivery failed');
++}
+--- a/expert/events/hub.ts
++++ b/expert/events/hub.ts
+@@ -1,16 +1,10 @@
+ import {type Entries} from './model.ts';
++import {dispatch} from './dispatch.ts';
+ export class Hub {
+   entries:Entries=new Set();
+   on(callback:(value:string)=>void,once=false) {
+     const entry={callback,once}; this.entries.add(entry);
+     return ()=>this.entries.delete(entry);
+   }
+-  emit(value:string) {
+-    const errors:unknown[]=[];
+-    for(const entry of [...this.entries]) {
+-      if(entry.once) this.entries.delete(entry);
+-      try {entry.callback(value);} catch(error) {errors.push(error);}
+-    }
+-    if(errors.length) throw new AggregateError(errors,'delivery failed');
+-  }
++  emit(value:string) {dispatch(this.entries,value);}
+ }
+--- a/expert/events/relay.ts
++++ b/expert/events/relay.ts
+@@ -1,16 +1,10 @@
+ import {type Entries} from './model.ts';
++import {dispatch} from './dispatch.ts';
+ export class Relay {
+   entries:Entries=new Set();
+   subscribe(callback:(value:string)=>void,once=false) {
+     const entry={callback,once}; this.entries.add(entry);
+     return ()=>this.entries.delete(entry);
+   }
+-  send(value:string) {
+-    const errors:unknown[]=[];
+-    for(const entry of [...this.entries]) {
+-      if(entry.once) this.entries.delete(entry);
+-      try {entry.callback(value);} catch(error) {errors.push(error);}
+-    }
+-    if(errors.length) throw new AggregateError(errors,'delivery failed');
+-  }
++  send(value:string) {dispatch(this.entries,value);}
+ }

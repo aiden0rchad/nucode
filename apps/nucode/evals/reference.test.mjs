@@ -24,6 +24,14 @@ for(const file of readdirSync(join(root,'tasks')).sort()) {
  test(task.id,()=>{
   validate(task,schema);
   assert.deepEqual(task,catalog.tasks.find(t=>t.id===task.id));
+  if(task.tags.includes('expert')) {
+   assert.deepEqual(task.tags,['expert']);
+   const patch=readFileSync(join(root,'solutions',task.id+'.patch'),'utf8');
+   const changed=[...patch.matchAll(/^\+\+\+ b\/(expert\/[^\n]+)/gm)].map(match=>match[1]);
+   assert.ok(new Set(changed).size>=2,'expert patches must change at least two files');
+   const prefix=dirname(changed[0])+'/';
+   assert.ok(Object.keys(catalog.repos[task.repo]).filter(path=>path.startsWith(prefix)).length>=4,'expert fixtures must span at least four files');
+  }
   const dir=mkdtempSync(join(tmpdir(),'nu-eval-'));
   try {
    cpSync(join(root,'repos',task.repo),dir,{recursive:true});
@@ -40,7 +48,7 @@ for(const file of readdirSync(join(root,'tasks')).sort()) {
 }
 test('suite distribution',()=>{
  const counts=Object.fromEntries(['question','bugfix','feature','refactor','browser','computerUse'].map(k=>[k,catalog.tasks.filter(t=>t.category===k).length]));
- assert.deepEqual(counts,{question:6,bugfix:10,feature:7,refactor:3,browser:1,computerUse:1});
+ assert.deepEqual(counts,{question:6,bugfix:13,feature:10,refactor:5,browser:1,computerUse:1});
  const smoke=catalog.tasks.filter(t=>t.tags.includes('smoke'));
  assert.equal(smoke.length,8);
  assert.equal(smoke.filter(t=>t.repo==='ts-lib'&&t.category==='bugfix').length,2);
@@ -50,5 +58,9 @@ test('suite distribution',()=>{
  assert.equal(catalog.tasks.filter(t=>t.tags.includes('hard')).length,4);
  assert.equal(smoke.filter(t=>t.tags.includes('hard')).length,2);
  assert.ok(smoke.some(t=>t.id==='ts-feature-discount'));
+ const expert=catalog.tasks.filter(t=>t.tags.includes('expert'));
+ assert.equal(expert.length,8);
+ for(const repo of ['ts-lib','py-cli']) assert.equal(expert.filter(t=>t.repo===repo).length,4);
+ for(const [category,count] of Object.entries({bugfix:3,feature:3,refactor:2})) assert.equal(expert.filter(t=>t.category===category).length,count);
 });
 

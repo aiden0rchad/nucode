@@ -1,0 +1,19 @@
+{
+  "id": "ts-refactor-expert-events",
+  "repo": "ts-lib",
+  "category": "refactor",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Refactor expert/events so Hub.emit and Relay.send delegate to an exported dispatch(entries, value) in dispatch.ts; retain all existing signatures and behavior. Read model, hub, relay and tests. Dispatch uses a snapshot in registration order; removals during delivery affect later dispatches, additions wait for a later dispatch, once entries are removed before invocation, and all callbacks run before an AggregateError containing original failures in order is thrown. Preserve recursive dispatch and independent subscriptions of the same callback. Keep the wrappers free of delivery loops. Run node --test expert/events/check.test.ts.",
+  "setup": [],
+  "check": {
+    "command": "node --test expert/events/check.test.ts",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

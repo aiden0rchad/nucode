@@ -57,6 +57,7 @@ Build the binaries in `apps/nucode/src-tauri`, then run:
 
 ```sh
 codex_monitor_daemonctl evals run --engines pi,omp --models 'lab/GLM 5.3' --tags smoke --codegraph both --repeats 1
+codex_monitor_daemonctl evals run --engines pi,omp --models 'lab/GLM 5.3' --tags expert --codegraph both --repeats 1
 codex_monitor_daemonctl evals run --engines pi --models lab/model --effort low --concurrency 2 --max-total-tokens 100000 --max-cost 2 --json
 codex_monitor_daemonctl evals gate --baseline latest-passing --tags smoke --max-pass-drop 0.1 --max-token-increase 0.25
 ```
@@ -140,9 +141,9 @@ disables that cap for the run. Deleting a run deletes its workdirs too.
 ## Task authoring and offline checks
 
 `apps/nucode/evals/task.schema.json` defines task records. The suite contains six
-questions, ten fixes, seven features, three refactors, one browser and one optional
-computer task (28 total). Fixtures use Node built-ins (including native TypeScript
-stripping for the hard TS tasks) and Python's standard library.
+questions, thirteen fixes, ten features, five refactors, one browser and one optional
+computer task (36 total). Fixtures use Node built-ins (including native TypeScript
+stripping for the hard and expert TS tasks) and Python's standard library.
 
 The eight smoke tasks are `ts-bugfix-range`, `ts-bugfix-reservations`,
 `ts-feature-chunk`, `py-bugfix-parse`, `py-feature-frequency`, `q-python`,
@@ -153,7 +154,17 @@ TypeScript parser refactor with stable public APIs. Every task's reference check
 requires base failure and patched success; distribution assertions enforce the
 smoke language/category mix and the four hard tasks.
 
-Edit `evals/generate.py` or `evals/hard_tasks.py` to add a task or fixture, then regenerate:
+The eight `expert` tasks are separate from smoke and hard: four TypeScript and
+four Python tasks, comprising three fixes, three features and two refactors.
+They cover cache expiry and isolation, cursor pagination, dependency waves,
+reentrant event dispatch, atomic CLI errors, layered configuration includes,
+half-open interval subtraction and lazy adjacent grouping. Each requires reading
+at least four files and changing at least two. Checks exercise boundary cases,
+ordering, ownership and existing API behavior so partial fixes fail. Each check
+runs offline in under ten seconds; distribution assertions enforce the expert mix.
+
+Edit `evals/generate.py`, `evals/hard_tasks.py` or `evals/expert_tasks.py` to add a
+task or fixture, then regenerate:
 
 ```sh
 python3 apps/nucode/evals/generate.py

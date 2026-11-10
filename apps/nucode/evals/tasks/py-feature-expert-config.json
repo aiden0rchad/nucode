@@ -1,0 +1,19 @@
+{
+  "id": "py-feature-expert-config",
+  "repo": "py-cli",
+  "category": "feature",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Implement expert/config layered configuration. Read schema, merge, loader and tests. merge(base, overlay) recursively merges objects, replaces lists/scalars, and deletes keys whose overlay value is null, including inside newly introduced objects; return independent data without mutating either argument. load(path) resolves includes relative to each including file, merges includes left to right then local values, and detects cycles on the active include chain with ValueError(\"include cycle\"). Repeated includes on separate branches are valid and applied each time. Validate every document with schema.document and preserve exported APIs. Run python3 -m unittest expert.config.test_config.",
+  "setup": [],
+  "check": {
+    "command": "python3 -m unittest expert.config.test_config",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

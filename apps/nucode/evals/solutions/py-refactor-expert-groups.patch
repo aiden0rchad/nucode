@@ -1,0 +1,36 @@
+--- a/expert/groups/groups.py
++++ b/expert/groups/groups.py
+@@ -1,2 +1,4 @@
++from itertools import groupby
+ def iter_totals(rows):
+-    raise NotImplementedError('shared grouping')
++    for key, group in groupby(rows, key=lambda row: row[0]):
++        yield key, sum(amount for _, amount in group)
+--- a/expert/groups/totals.py
++++ b/expert/groups/totals.py
+@@ -1,9 +1,4 @@
+ from .rows import read_rows
++from . import groups
+ def summarize(text):
+-    result = []
+-    for key, amount in read_rows(text):
+-        if result and result[-1]['key'] == key:
+-            result[-1]['total'] += amount
+-        else:
+-            result.append({'key': key, 'total': amount})
+-    return result
++    return [{'key': key, 'total': total} for key, total in groups.iter_totals(read_rows(text))]
+--- a/expert/groups/report.py
++++ b/expert/groups/report.py
+@@ -1,9 +1,4 @@
+ from .rows import read_rows
++from . import groups
+ def render(text):
+-    result = []
+-    for key, amount in read_rows(text):
+-        if result and result[-1][0] == key:
+-            result[-1] = (key, result[-1][1] + amount)
+-        else:
+-            result.append((key, amount))
+-    return ''.join(f'{key}={total}\n' for key, total in result)
++    return ''.join(f'{key}={total}\n' for key, total in groups.iter_totals(read_rows(text)))

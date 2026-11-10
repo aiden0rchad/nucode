@@ -1,0 +1,19 @@
+{
+  "id": "py-bugfix-expert-report",
+  "repo": "py-cli",
+  "category": "bugfix",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Fix expert/report after reading records.py, wire.py, cli.py and tests. Read JSON objects from stdin, skipping blank lines. Each record requires a nonempty string name and an integer amount (booleans are invalid); retain only these fields, without coercion. Invalid JSON or records must raise ValueError(\"invalid record at line N\") from read_records, using physical line numbers. The CLI must exit 2, write exactly \"error: invalid record at line N\\n\" to stderr and emit no stdout on any invalid record. Preserve successful stdout bytes, empty-input behavior and all public functions. Run python3 -m unittest expert.report.test_report.",
+  "setup": [],
+  "check": {
+    "command": "python3 -m unittest expert.report.test_report",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

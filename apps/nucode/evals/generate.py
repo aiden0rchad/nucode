@@ -63,6 +63,8 @@ for id,require,prompt in [('browser-inventory','browser','Use the browser'),('co
     add(id,'web-page',require,prompt+' to open {{url}} and report the rendered Inventory number.','true','.answer','','217\n',answer=['217'],requires=[require])
 from hard_tasks import add_hard_tasks
 add_hard_tasks(add,write,tasks)
+from expert_tasks import add_expert_tasks
+add_expert_tasks(add,write,tasks)
 catalog={'tasks':tasks,'repos':{}}
 for repo in ['ts-lib','py-cli','web-page']:
     catalog['repos'][repo]={str(p.relative_to(ROOT/'repos'/repo)):p.read_text() for p in sorted((ROOT/'repos'/repo).rglob('*')) if p.is_file() and '__pycache__' not in p.parts}

@@ -1,0 +1,32 @@
+--- a/expert/report/records.py
++++ b/expert/report/records.py
+@@ -3,5 +3,10 @@
+     for number, line in enumerate(lines, 1):
+         if not line.strip():
+             continue
+-        row = json.loads(line)
+-        yield {'name': str(row['name']), 'amount': int(row['amount'])}
++        try:
++            row = json.loads(line)
++            if not isinstance(row, dict) or not isinstance(row.get('name'), str) or not row['name'] or type(row.get('amount')) is not int:
++                raise ValueError('record')
++        except ValueError:
++            raise ValueError(f'invalid record at line {number}') from None
++        yield {'name': row['name'], 'amount': row['amount']}
+--- a/expert/report/cli.py
++++ b/expert/report/cli.py
+@@ -2,8 +2,12 @@
+ from .records import read_records
+ from .wire import render
+ def main():
+-    for row in read_records(sys.stdin):
+-        sys.stdout.write(render(row))
++    try:
++        output = ''.join(render(row) for row in read_records(sys.stdin))
++    except ValueError as error:
++        sys.stderr.write(f'error: {error}\n')
++        return 2
++    sys.stdout.write(output)
+     return 0
+ if __name__ == '__main__':
+     sys.exit(main())

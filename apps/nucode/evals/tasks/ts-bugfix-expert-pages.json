@@ -1,0 +1,19 @@
+{
+  "id": "ts-bugfix-expert-pages",
+  "repo": "ts-lib",
+  "category": "bugfix",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Repair expert/pages cursor pagination. Read the model, ordering, paging and test modules. Sort by descending score, then ascending id using JavaScript string comparison. A cursor is an exclusive (score,id) boundary, even if its row was deleted. next is the last returned row only when more rows remain, otherwise null. Accept positive integer limits and reject other limits with RangeError. Keep APIs and inputs unchanged, including frozen input arrays. Run node --test expert/pages/check.test.ts.",
+  "setup": [],
+  "check": {
+    "command": "node --test expert/pages/check.test.ts",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

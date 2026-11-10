@@ -1,0 +1,19 @@
+{
+  "id": "ts-feature-expert-plan",
+  "repo": "ts-lib",
+  "category": "feature",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Implement dependency waves in expert/plan. Read model, validate, plan and tests. Reject duplicate job ids, unknown dependencies and unresolved cycles with Error. Completed ids satisfy dependencies and remove matching jobs from the plan; completed external ids are allowed. Repeated dependency edges count once. Each wave contains all currently ready jobs in input order, and only earlier waves may satisfy a dependency. Validate even completed jobs for duplicates and unknown dependencies. Preserve inputs and existing exports. Run node --test expert/plan/check.test.ts.",
+  "setup": [],
+  "check": {
+    "command": "node --test expert/plan/check.test.ts",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

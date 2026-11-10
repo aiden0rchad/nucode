@@ -1,0 +1,19 @@
+{
+  "id": "py-refactor-expert-groups",
+  "repo": "py-cli",
+  "category": "refactor",
+  "tags": [
+    "expert"
+  ],
+  "prompt": "Refactor expert/groups to share a lazy iter_totals(rows) generator in groups.py. Read rows, totals, report and tests. Combine adjacent equal keys, preserving separated groups and zero totals; consume at most one row beyond the group being yielded and nothing before first next(). Support one-shot iterables and propagate source errors when reached. Keep summarize(text) and render(text), including exact output and physical-line errors, stable; both adapters must call groups.iter_totals at runtime instead of retaining grouping loops. Keep read_rows lazy. Run python3 -m unittest expert.groups.test_groups.",
+  "setup": [],
+  "check": {
+    "command": "python3 -m unittest expert.groups.test_groups",
+    "expectExit": 0
+  },
+  "extraChecks": [],
+  "answerContains": [],
+  "requires": [],
+  "timeoutSec": 180,
+  "maxTurns": 3
+}

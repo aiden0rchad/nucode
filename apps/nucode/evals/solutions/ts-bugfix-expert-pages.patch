@@ -1,0 +1,22 @@
+--- a/expert/pages/order.ts
++++ b/expert/pages/order.ts
+@@ -1,3 +1,3 @@
+ import {type Cursor,type Row} from './model.ts';
+-export const compare = (a:Cursor,b:Cursor) => b.score-a.score;
+-export const ordered = (rows:Row[]) => rows.sort(compare);
++export const compare = (a:Cursor,b:Cursor) => b.score-a.score||(a.id<b.id?-1:a.id>b.id?1:0);
++export const ordered = (rows:Row[]) => [...rows].sort(compare);
+--- a/expert/pages/page.ts
++++ b/expert/pages/page.ts
+@@ -1,8 +1,8 @@
+ import {type Row,type Cursor,validateLimit} from './model.ts';
+-import {ordered} from './order.ts';
++import {ordered,compare} from './order.ts';
+ export function page(rows:Row[],limit:number,after:Cursor|null=null):{items:Row[];next:Cursor|null} {
+   validateLimit(limit);
+-  const all=ordered(rows).filter(row=>!after||row.score<after.score);
++  const all=ordered(rows).filter(row=>!after||compare(row,after)>0);
+   const items=all.slice(0,limit), last=items.at(-1);
+-  return {items,next:last?{id:last.id,score:last.score}:null};
++  return {items,next:all.length>limit&&last?{id:last.id,score:last.score}:null};
+ }

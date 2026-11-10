@@ -1,0 +1,36 @@
+--- a/expert/plan/validate.ts
++++ b/expert/plan/validate.ts
+@@ -1,4 +1,9 @@
+-import {type Job} from './model.ts';
++import {type Job,dependencies} from './model.ts';
+ export function validate(jobs:Job[],done:Set<string>) {
+-  return new Set(jobs.map(job=>job.id));
++  const ids=new Set(jobs.map(job=>job.id));
++  if(ids.size!==jobs.length) throw new Error('duplicate id');
++  for(const job of jobs) for(const dep of dependencies(job)) {
++    if(!ids.has(dep)&&!done.has(dep)) throw new Error('unknown dependency');
++  }
++  return ids;
+ }
+--- a/expert/plan/plan.ts
++++ b/expert/plan/plan.ts
+@@ -1,6 +1,16 @@
+-import {type Job} from './model.ts';
++import {type Job,dependencies} from './model.ts';
+ import {validate} from './validate.ts';
+ export function plan(jobs:Job[],completed:string[]=[]):string[][] {
+-  validate(jobs,new Set(completed));
+-  return jobs.map(job=>[job.id]);
++  const done=new Set(completed);
++  validate(jobs,done);
++  let pending=jobs.filter(job=>!done.has(job.id));
++  const waves:string[][]=[];
++  while(pending.length) {
++    const ready=pending.filter(job=>[...dependencies(job)].every(dep=>done.has(dep))).map(job=>job.id);
++    if(!ready.length) throw new Error('cycle');
++    waves.push(ready);
++    for(const id of ready) done.add(id);
++    pending=pending.filter(job=>!done.has(job.id));
++  }
++  return waves;
+ }
