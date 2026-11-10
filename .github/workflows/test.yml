@@ -67,6 +67,11 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "false"
         run: cargo fetch --locked
+      # Four tests start the real pi and browser engines from their pinned packages.
+      - name: Install engine packages
+        run: |
+          npm ci --prefix engines/pi
+          npm ci --prefix engines/browser
       - name: App tests
         working-directory: apps/nucode/src-tauri
         # The preview-bridge test binds a socket under TMPDIR.

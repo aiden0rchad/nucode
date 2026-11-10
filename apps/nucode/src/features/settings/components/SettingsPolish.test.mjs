@@ -15,7 +15,8 @@ vi.mock("@pierre/diffs/react", async () => ({
   ...await vi.importActual("@pierre/diffs/react"),
   WorkerPoolContextProvider: ({ children }) => children,
 }));
-afterEach(() => { cleanup(); clearMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); localStorage.clear(); });
+// Late event unlistens must run before the Tauri mocks go away (same wait as preview.test.tsx).
+afterEach(async () => { cleanup(); await new Promise(resolve => setTimeout(resolve, 50)); clearMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); localStorage.clear(); });
 it("uses shared settings pages, groups and rows in every section, with independent scrolling and engine navigation", async () => {
   localStorage.clear();
   vi.stubGlobal("innerWidth", 1440);
