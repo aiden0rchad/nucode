@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AppSettings } from "@/types";
 import { chatRequest, exportMarkdownFile, getAppSettings, updateAppSettings, readChatAttachment } from "@services/tauri";
 import { subscribeWindowDragDrop } from "@services/dragDrop";
-import { Markdown } from "@/features/messages/components/Markdown";
+import { TranscriptMessage } from "@/features/messages/components/TranscriptMessage";
 import { formatModelRef, modelKey, modelRef } from "@/features/settings/registry";
 import { ModeSwitcher, useModeSettings } from "./ModeShell";
 import { chatGroups, chatMarkdown, chatTitle, inlineAttachment, readAttachment, type Attachment } from "./chat";
@@ -154,14 +154,7 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
       <div className="chat-scroll" role="log" aria-label="Conversation" aria-live="polite">
         <div className="chat-column">
           {!chat.messages.length && <div className="chat-empty"><DigitalRain /><span className="chat-eyebrow">A little room to think</span><h1>What’s on your mind?</h1><p>Ask a question, explore an idea, or bring something to read.</p></div>}
-          {chat.messages.map(message => <article className={`message chat-message ${message.role}`} key={message.id}>
-            <div className="chat-message-body">
-            <h2>{message.role === "user" ? "You" : "Assistant"}</h2>
-            {message.images?.map((url, index) => <img key={index} src={url} alt={`Attachment ${index + 1}`} />)}
-            <Markdown codeBlockStyle="message" className="markdown" value={message.text} showFilePath={false} />
-            </div>
-            <div className="message-hover-actions"><IconButton type="button" className="ghost" aria-label="Copy message" title="Copy message" onClick={() => { void navigator.clipboard.writeText(message.text).catch(() => chat.setError("Could not copy message.")); }}><Copy aria-hidden /></IconButton>{message.id === lastUser?.id && <IconButton className="ghost" aria-label="Edit and resend" title="Edit and resend" disabled={disabled} onClick={() => { setDraft(message.text); setAttachments(message.images?.map((url, i) => ({ name: `Image ${i + 1}`, url })) ?? []); setEditing(message.id); composerInput.current?.focus(); }}><Pencil aria-hidden /></IconButton>}{message.role === "assistant" && message.id === chat.messages[chat.messages.length - 1]?.id && lastUser && <IconButton className="ghost" aria-label="Regenerate last answer" title="Regenerate last answer" disabled={disabled} onClick={() => { void run(() => chat.send(lastUser.text, lastUser.images ?? [], model || null, lastUser.id, web, reasoning.level)); }}><RotateCcw aria-hidden /></IconButton>}</div>
-          </article>)}
+          {chat.messages.map(message => <TranscriptMessage key={message.id} role={message.role} text={message.text} images={message.images} actions={<><IconButton type="button" className="ghost" aria-label="Copy message" title="Copy message" onClick={() => { void navigator.clipboard.writeText(message.text).catch(() => chat.setError("Could not copy message.")); }}><Copy aria-hidden /></IconButton>{message.id === lastUser?.id && <IconButton className="ghost" aria-label="Edit and resend" title="Edit and resend" disabled={disabled} onClick={() => { setDraft(message.text); setAttachments(message.images?.map((url, i) => ({ name: `Image ${i + 1}`, url })) ?? []); setEditing(message.id); composerInput.current?.focus(); }}><Pencil aria-hidden /></IconButton>}{message.role === "assistant" && message.id === chat.messages[chat.messages.length - 1]?.id && lastUser && <IconButton className="ghost" aria-label="Regenerate last answer" title="Regenerate last answer" disabled={disabled} onClick={() => { void run(() => chat.send(lastUser.text, lastUser.images ?? [], model || null, lastUser.id, web, reasoning.level)); }}><RotateCcw aria-hidden /></IconButton>}</>} />)}
 
           {chat.running && <div className="chat-typing" aria-hidden><span /><span /><span /></div>}
           <div ref={end} />

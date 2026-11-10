@@ -551,6 +551,25 @@ describe("Work mode", () => {
     expect(screen.queryByText(/Attached files \(inside this space\)/)).toBeNull();
     expect(screen.getByText("Keep this follow-up")).toBeTruthy();
   });
+  it("renders transcript images inside the shared body with Copy outside it", async () => {
+    state.tasks = [task("Report", "done")];
+    readHistory([{ id: "turn", items: [
+      { id: "follow-up", type: "userMessage", content: [{ type: "text", text: "Review this image" }, { type: "image", url: "data:image/png;base64,AAA" }] },
+      { id: "answer", type: "agentMessage", text: "Image reviewed" },
+    ] }]);
+    render(<WorkView settings={settings} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Report" }));
+    const image = await screen.findByRole("img", { name: "Attachment 1" });
+    expect(image.getAttribute("src")).toBe("data:image/png;base64,AAA");
+    expect(image.closest(".chat-message-body")?.textContent).toBe("YouReview this image");
+    for (const text of ["Review this image", "Image reviewed"]) {
+      const article = screen.getByText(text).closest("article")!;
+      expect(article.querySelector(".chat-message-body .markdown")).toBeTruthy();
+      const copy = within(article).getByRole("button", { name: "Copy message" });
+      expect(copy.closest(".chat-message-body")).toBeNull();
+      expect(copy.parentElement?.className).toBe("message-hover-actions");
+    }
+  });
   it("opens output links from the transcript and surfaces rejected paths", async () => {
     state.tasks = [{ ...task("Report", "done"), outputs: ["outputs/report.md"] }];
     const request = vi.mocked(workRequest).getMockImplementation()!;
