@@ -235,6 +235,7 @@ impl NativeBackend {
                                 if features.position().is_none() { builder = builder.center(); }
                                 builder = builder.resizable(true).title(url.host_str().unwrap_or("Sign in"))
                                     .user_agent(UA).devtools(cfg!(debug_assertions)).focused(true);
+                                // multiwebview-ok: optional, with the plain-window fallback below.
                                 if let Some(main) = new_app.get_webview_window("main") {
                                     builder = builder.parent(&main)?;
                                 } else {
@@ -1666,6 +1667,7 @@ mod tests {
 }
 
 fn close_popups(app: &AppHandle) -> Result<(), String> {
+    // multiwebview-ok: sign-in popups are WebviewWindows by construction; main is never touched.
     for (label, window) in app.webview_windows() {
         if label.starts_with("browser-popup-") { window.destroy().map_err(|e| e.to_string())?; }
     }

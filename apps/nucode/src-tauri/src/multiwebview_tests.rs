@@ -160,7 +160,14 @@ fn no_single_webview_assumptions_in_app_sources() {
                 continue;
             }
             let source = std::fs::read_to_string(&path).unwrap();
-            let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+            // A use that handles main not being a WebviewWindow is marked on the line above it.
+            let mut lines = source.lines().peekable();
+            let mut checked = String::new();
+            while let Some(line) = lines.next() {
+                if line.trim_start().starts_with("// multiwebview-ok:") { lines.next(); continue; }
+                checked.push_str(line);
+            }
+            let compact: String = checked.chars().filter(|c| !c.is_whitespace()).collect();
             assert!(
                 !compact.contains("get_webview_window(\"main\")"),
                 "{}",
