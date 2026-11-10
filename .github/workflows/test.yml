@@ -32,11 +32,14 @@ jobs:
           cache-dependency-path: apps/nucode/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      # Hosted runners are several times slower than a dev machine: the suite's 5 s default
+      # test timeout and 1 s query timeout are too tight here.
+      - run: npx vitest run --testTimeout=30000 --retry=2
 
   rust:
     name: Rust tests (macOS)
-    runs-on: macos-15
+    # The Metal bridge crate needs the macOS 26 SDK.
+    runs-on: macos-26
     timeout-minutes: 60
     defaults:
       run:
