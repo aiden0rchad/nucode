@@ -199,6 +199,16 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
   const foldedEmpty = preferences.order.filter(folds);
   const headerValue = (section: Section) => section === "Context" ? (usage && usage.percent !== null ? `${usage.percent}%` : undefined) : counts[section];
   return <div ref={railRef} className="code-session-rail" role="region" aria-label="Session details" tabIndex={0}>
+    {usage && usage.capacity !== null && usage.percent !== null && <header className="code-session-rail-header">
+      <span>Context</span>
+      <div className="code-session-context-usage ds-tooltip-trigger" data-warning={usage.used / usage.capacity >= 0.8}
+        role="meter" aria-label="Session context usage" aria-valuemin={0} aria-valuemax={usage.capacity} aria-valuenow={Math.min(usage.used, usage.capacity)}
+        aria-valuetext={`Context: ${usage.used} of ${usage.capacity} tokens`} title={`Context: ${usage.used} of ${usage.capacity} tokens`}
+        data-tooltip={`Context: ${usage.used} of ${usage.capacity} tokens`} data-tooltip-placement="bottom" tabIndex={0}>
+        <span>{usage.percent}%</span>
+        <span className="code-session-context-meter" aria-hidden><span style={{ width: `${usage.percent}%` }} /></span>
+      </div>
+    </header>}
     {error && <p role="alert">{error}</p>}
     {preferences.order.map((section, index) => {
       if (folds(section)) return null;

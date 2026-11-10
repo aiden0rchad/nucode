@@ -73,6 +73,10 @@ export function LaunchScriptButton({
   });
   const { containerRef: popoverRef } = editorMenu;
   const hasLaunchScript = Boolean(launchScript?.trim());
+  const firstLine = launchScript?.split(/\r?\n/, 1)[0].trim() ?? "";
+  const runLabel = hasLaunchScript
+    ? `Run launch script: ${firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine}`
+    : "Set launch script";
 
   return (
     <div className="launch-script-menu" ref={popoverRef}>
@@ -86,9 +90,9 @@ export function LaunchScriptButton({
             onOpenEditor();
           }}
           data-tauri-drag-region="false"
-          aria-label={hasLaunchScript ? "Run launch script" : "Set launch script"}
-          title={hasLaunchScript ? "Run launch script" : "Set launch script"}
-          data-tooltip={hasLaunchScript ? "Run launch script" : "Set launch script"}
+          aria-label={runLabel}
+          title={runLabel}
+          data-tooltip={runLabel}
           data-tooltip-placement="bottom"
         >
           <Play size={14} aria-hidden />

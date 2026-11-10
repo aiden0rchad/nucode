@@ -74,6 +74,17 @@ const baseProps = {
 };
 
 describe("Sidebar", () => {
+  it("uses a distinct Logs glyph and opens the debug log", () => {
+    const onOpenDebug = vi.fn();
+    const view = render(<Sidebar {...baseProps} showDebugButton onOpenDebug={onOpenDebug} />);
+    const button = screen.getByRole("button", { name: "Open debug log" });
+    expect(button.querySelector("svg.lucide-logs")).toBeTruthy();
+    expect(button.querySelector("svg.lucide-scroll-text, svg.lucide-bug")).toBeNull();
+    fireEvent.click(button);
+    expect(onOpenDebug).toHaveBeenCalledOnce();
+    view.rerender(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole("button", { name: "Open debug log" })).toBeNull();
+  });
   it("cards projects including Ungrouped, keeps labels outside, and selects the active card", () => {
     const workspaces = [
       { id: "atlas", name: "Atlas", path: "/atlas", connected: true, settings: { sidebarCollapsed: false } },
