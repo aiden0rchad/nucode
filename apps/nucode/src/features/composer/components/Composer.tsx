@@ -1,0 +1,702 @@
+import { useEngines } from "@settings/engines";
+import { useFeatures } from "@settings/features";
+import { FolderTree, Bug, Hammer, Folder, Cpu, MessagesSquare } from "lucide-react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+} from "react";
+import type {
+
+
+  ComposerSendIntent,
+  ComposerEditorSettings,
+  CustomPromptOption,
+  DictationTranscript,
+  FollowUpMessageBehavior,
+  QueuedMessage,
+  ServiceTier,
+  ThreadTokenUsage,
+} from "../../../types";
+import type {
+  ReviewPromptState,
+  ReviewPromptStep,
+} from "../../threads/hooks/useReviewPrompt";
+import {
+  getFenceTriggerLine,
+  getLineIndent,
+  isCodeLikeSingleLine,
+  isCursorInsideFence,
+  normalizePastedText,
+} from "../../../utils/composerText";
+import { useComposerAutocompleteState } from "../hooks/useComposerAutocompleteState";
+import { useComposerDraftEffects } from "../hooks/useComposerDraftEffects";
+import { useComposerKeyDown } from "../hooks/useComposerKeyDown";
+import { useComposerSuggestionStyle } from "../hooks/useComposerSuggestionStyle";
+import { usePromptHistory } from "../hooks/usePromptHistory";
+import { ComposerInput } from "./ComposerInput";
+import { basicCommands, expandTaskCommand } from "../commands";
+import { ComposerAccessControl } from "./ComposerShell";
+import { ComposerMetaBar, ComposerEngineControl } from "./ComposerMetaBar";
+import { ComposerQueue } from "./ComposerQueue";
+import { isMacPlatform } from "../../../utils/platformPaths";
+import type { CodexArgsOption } from "../../threads/utils/codexArgsProfiles";
+
+type ComposerProps = {
+  isEmpty?: boolean;
+  context?: { worktree: boolean; branch?: string; sideChat?: boolean };
+  onSend: (
+    text: string,
+    images: string[],
+    submitIntent?: ComposerSendIntent,
+  ) => void;
+  onStop: () => void;
+  canStop: boolean;
+  onSideChat?: () => void;
+  sideChatDisabledReason?: string | null;
+  disabled?: boolean;
+
+  isProcessing: boolean;
+  steerAvailable: boolean;
+  followUpMessageBehavior: FollowUpMessageBehavior;
+  composerFollowUpHintEnabled: boolean;
+  collaborationModes: { id: string; label: string }[];
+  selectedCollaborationModeId: string | null;
+  onSelectCollaborationMode: (id: string | null) => void;
+  engine?: import("@/types").EngineKind;
+  onSelectEngine?: (engine: import("@/types").EngineKind) => void;
+  models: (Pick<import("@/types").ModelOption, "id" | "displayName" | "model" | "providerId" | "providerName" | "engines" | "reasoning" | "acpReasoning">)[];
+  selectedModelId: string | null;
+  defaultModelId?: string | null;
+  onSelectModel: (id: string) => void;
+  modelPickerRequest?: number;
+  reasoningOptions: string[];
+  selectedEffort: string | null;
+  onSelectEffort: (effort: string) => void;
+  selectedServiceTier: ServiceTier | null;
+  reasoningSupported: boolean;
+  codexArgsOptions?: CodexArgsOption[];
+  selectedCodexArgsOverride?: string | null;
+  onSelectCodexArgsOverride?: (value: string | null) => void;
+  accessMode: "read-only" | "current" | "full-access";
+  onSelectAccessMode: (mode: "read-only" | "current" | "full-access") => void;
+  skills: { name: string; description?: string }[];
+
+  prompts: CustomPromptOption[];
+  files: string[];
+  contextUsage?: ThreadTokenUsage | null;
+  queuedMessages?: QueuedMessage[];
+  queuePausedReason?: string | null;
+  onEditQueued?: (item: QueuedMessage) => void;
+  onDeleteQueued?: (id: string) => void;
+  sendLabel?: string;
+  draftText?: string;
+  onDraftChange?: (text: string) => void;
+  historyKey?: string | null;
+  attachedImages?: string[];
+  onPickImages?: () => void;
+  onAttachImages?: (paths: string[]) => void;
+  onRemoveImage?: (path: string) => void;
+  prefillDraft?: QueuedMessage | null;
+  onPrefillHandled?: (id: string) => void;
+  insertText?: QueuedMessage | null;
+  onInsertHandled?: (id: string) => void;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  editorSettings?: ComposerEditorSettings;
+  editorExpanded?: boolean;
+  onToggleEditorExpanded?: () => void;
+  dictationEnabled?: boolean;
+  dictationState?: "idle" | "listening" | "processing";
+  dictationLevel?: number;
+  onToggleDictation?: () => void;
+  onCancelDictation?: () => void;
+  onOpenDictationSettings?: () => void;
+  dictationTranscript?: DictationTranscript | null;
+  onDictationTranscriptHandled?: (id: string) => void;
+  dictationError?: string | null;
+  onDismissDictationError?: () => void;
+  dictationHint?: string | null;
+  onDismissDictationHint?: () => void;
+  reviewPrompt?: ReviewPromptState;
+  onReviewPromptClose?: () => void;
+  onReviewPromptShowPreset?: () => void;
+  onReviewPromptChoosePreset?: (
+    preset: Exclude<ReviewPromptStep, "preset"> | "uncommitted",
+  ) => void;
+  highlightedPresetIndex?: number;
+  onReviewPromptHighlightPreset?: (index: number) => void;
+  highlightedBranchIndex?: number;
+  onReviewPromptHighlightBranch?: (index: number) => void;
+  highlightedCommitIndex?: number;
+  onReviewPromptHighlightCommit?: (index: number) => void;
+  onReviewPromptKeyDown?: (event: {
+    key: string;
+    shiftKey?: boolean;
+    preventDefault: () => void;
+  }) => boolean;
+  onReviewPromptSelectBranch?: (value: string) => void;
+  onReviewPromptSelectBranchAtIndex?: (index: number) => void;
+  onReviewPromptConfirmBranch?: () => Promise<void>;
+  onReviewPromptSelectCommit?: (sha: string, title: string) => void;
+  onReviewPromptSelectCommitAtIndex?: (index: number) => void;
+  onReviewPromptConfirmCommit?: () => Promise<void>;
+  onReviewPromptUpdateCustomInstructions?: (value: string) => void;
+  onReviewPromptConfirmCustom?: () => Promise<void>;
+  onFileAutocompleteActiveChange?: (active: boolean) => void;
+  contextActions?: {
+    id: string;
+    label: string;
+    title?: string;
+    disabled?: boolean;
+    onSelect: () => void | Promise<void>;
+  }[];
+};
+
+const DEFAULT_EDITOR_SETTINGS: ComposerEditorSettings = {
+  preset: "default",
+  expandFenceOnSpace: false,
+  expandFenceOnEnter: false,
+  fenceLanguageTags: false,
+  fenceWrapSelection: false,
+  autoWrapPasteMultiline: false,
+  autoWrapPasteCodeLike: false,
+  continueListOnShiftEnter: false,
+};
+
+export const Composer = memo(function Composer({
+  isEmpty = false, context,
+  onSend,
+  onStop,
+  canStop,
+  onSideChat,
+  sideChatDisabledReason,
+  disabled = false,
+
+  isProcessing,
+  steerAvailable,
+  followUpMessageBehavior,
+  composerFollowUpHintEnabled,
+  collaborationModes,
+  selectedCollaborationModeId,
+  onSelectCollaborationMode,
+  engine = "codex", onSelectEngine,
+  models,
+  selectedModelId, defaultModelId,
+  onSelectModel,
+  modelPickerRequest,
+  selectedEffort,
+  onSelectEffort,
+  selectedServiceTier,
+  codexArgsOptions = [],
+  selectedCodexArgsOverride = null,
+  onSelectCodexArgsOverride,
+  accessMode,
+  onSelectAccessMode,
+  skills,
+
+  prompts,
+  files,
+  queuedMessages = [],
+  queuePausedReason = null,
+  onEditQueued,
+  onDeleteQueued,
+  sendLabel = "Send",
+  draftText = "",
+  onDraftChange,
+  historyKey = null,
+  attachedImages = [],
+  onPickImages,
+  onAttachImages,
+  onRemoveImage,
+  prefillDraft = null,
+  onPrefillHandled,
+  insertText = null,
+  onInsertHandled,
+  textareaRef: externalTextareaRef,
+  editorSettings: editorSettingsProp,
+  editorExpanded = false,
+  onToggleEditorExpanded,
+  dictationEnabled = false,
+  dictationState = "idle",
+  dictationLevel = 0,
+  onToggleDictation,
+  onCancelDictation,
+  onOpenDictationSettings,
+  dictationTranscript = null,
+  onDictationTranscriptHandled,
+  dictationError = null,
+  onDismissDictationError,
+  dictationHint = null,
+  onDismissDictationHint,
+  reviewPrompt,
+  onReviewPromptClose,
+  onReviewPromptShowPreset,
+  onReviewPromptChoosePreset,
+  highlightedPresetIndex,
+  onReviewPromptHighlightPreset,
+  highlightedBranchIndex,
+  onReviewPromptHighlightBranch,
+  highlightedCommitIndex,
+  onReviewPromptHighlightCommit,
+  onReviewPromptKeyDown,
+  onReviewPromptSelectBranch,
+  onReviewPromptSelectBranchAtIndex,
+  onReviewPromptConfirmBranch,
+  onReviewPromptSelectCommit,
+  onReviewPromptSelectCommitAtIndex,
+  onReviewPromptConfirmCommit,
+  onReviewPromptUpdateCustomInstructions,
+  onReviewPromptConfirmCustom,
+  onFileAutocompleteActiveChange,
+  contextActions = [],
+}: ComposerProps) {
+  const features = useFeatures();
+  const engineDefinition = useEngines().find(e => e.id === engine);
+  const engineDisabled = engineDefinition?.enabled === false;
+  disabled ||= engineDisabled;
+  dictationEnabled &&= features.dictation;
+  const [text, setText] = useState(draftText);
+  const [selectionStart, setSelectionStart] = useState<number | null>(null);
+  const internalRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = externalTextareaRef ?? internalRef;
+  const editorSettings = editorSettingsProp ?? DEFAULT_EDITOR_SETTINGS;
+  const isDictationBusy = dictationState !== "idle";
+  const canSend = text.trim().length > 0 || attachedImages.length > 0;
+  const sideChatCommand = /^\/sidechat(?:\s|$)/i.test(text.trim());
+  const commandError = sideChatCommand
+    ? sideChatDisabledReason || (!onSideChat ? "Start a conversation before opening a side chat."
+      : !/^\/sidechat\s*$/i.test(text.trim()) ? "Use /sidechat on its own, then ask your question in the side chat." : null)
+    : null;
+  const isMac = isMacPlatform();
+  const followUpShortcutLabel = isMac ? "Shift+Cmd+Enter" : "Shift+Ctrl+Enter";
+  const effectiveFollowUpBehavior: FollowUpMessageBehavior =
+    followUpMessageBehavior === "steer" && steerAvailable ? "steer" : "queue";
+  const oppositeFollowUpIntent: ComposerSendIntent =
+    effectiveFollowUpBehavior === "queue" ? "steer" : "queue";
+  const oppositeFallsBackToQueue =
+    oppositeFollowUpIntent === "steer" && !steerAvailable;
+  const defaultSubmitIntent: ComposerSendIntent = isProcessing
+    ? effectiveFollowUpBehavior
+    : "default";
+  const oppositeSubmitIntent: ComposerSendIntent = isProcessing
+    ? oppositeFollowUpIntent
+    : "default";
+  const effectiveSendLabel = isProcessing
+    ? effectiveFollowUpBehavior === "steer"
+      ? "Steer"
+      : "Queue"
+    : sendLabel;
+  const {
+    expandFenceOnSpace,
+    expandFenceOnEnter,
+    fenceLanguageTags,
+    fenceWrapSelection,
+    autoWrapPasteMultiline,
+    autoWrapPasteCodeLike,
+    continueListOnShiftEnter,
+  } = editorSettings;
+
+  const setComposerText = useCallback(
+    (next: string) => {
+      setText(next);
+      onDraftChange?.(next);
+    },
+    [onDraftChange],
+  );
+  const syncDraftText = useCallback((next: string) => {
+    setText((prev) => (prev === next ? prev : next));
+  }, []);
+
+
+  const {
+    isAutocompleteOpen,
+    autocompleteMatches,
+    autocompleteAnchorIndex,
+    highlightIndex,
+    setHighlightIndex,
+    applyAutocomplete,
+    handleInputKeyDown,
+    handleTextChange,
+    handleSelectionChange,
+    fileTriggerActive,
+  } = useComposerAutocompleteState({
+    text,
+    selectionStart,
+    disabled,
+    commands: basicCommands.filter(command => command.id === "sidechat" ? Boolean(onSideChat) && !sideChatDisabledReason : command.id !== "compact" || (!isEmpty && (engine === "codex" || engineDefinition?.protocol === "pi-rpc"))),
+
+    skills,
+
+    prompts,
+    files,
+    textareaRef,
+    setText: setComposerText,
+    setSelectionStart,
+
+  });
+  useEffect(() => {
+    onFileAutocompleteActiveChange?.(fileTriggerActive);
+  }, [fileTriggerActive, onFileAutocompleteActiveChange]);
+  const reviewPromptOpen = Boolean(reviewPrompt);
+  const suggestionsOpen = reviewPromptOpen || isAutocompleteOpen;
+  const suggestions = reviewPromptOpen ? [] : autocompleteMatches;
+  const suggestionsStyle = useComposerSuggestionStyle({
+    isAutocompleteOpen,
+    autocompleteAnchorIndex,
+    selectionStart,
+    text,
+    textareaRef,
+  });
+
+  const {
+    handleHistoryKeyDown,
+    handleHistoryTextChange,
+    recordHistory,
+    resetHistoryNavigation,
+  } = usePromptHistory({
+    historyKey,
+    text,
+    hasAttachments: attachedImages.length > 0,
+    disabled,
+    isAutocompleteOpen: suggestionsOpen,
+    textareaRef,
+    setText: setComposerText,
+    setSelectionStart,
+  });
+
+  const handleTextChangeWithHistory = useCallback(
+    (next: string, cursor: number | null) => {
+      handleHistoryTextChange(next);
+      handleTextChange(next, cursor);
+    },
+    [handleHistoryTextChange, handleTextChange],
+  );
+
+  const handleSend = useCallback((submitIntent: ComposerSendIntent = "default") => {
+    if (disabled || commandError) {
+      return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed && attachedImages.length === 0) {
+      return;
+    }
+    if (/^\/sidechat\s*$/i.test(trimmed)) {
+      if (onSideChat && !sideChatDisabledReason) {
+        onSideChat();
+        setComposerText("");
+      }
+      return;
+    }
+    const task = expandTaskCommand(trimmed);
+    if (task?.needsInput) {
+      setComposerText(task.text);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(6, 6);
+        setSelectionStart(6);
+      });
+      return;
+    }
+    if (trimmed) {
+      recordHistory(trimmed);
+    }
+    onSend(task?.text ?? trimmed, attachedImages, submitIntent);
+    resetHistoryNavigation();
+    setComposerText("");
+  }, [
+
+    attachedImages,
+    commandError,
+    disabled,
+    onSideChat,
+    sideChatDisabledReason,
+    onSend,
+    recordHistory,
+    resetHistoryNavigation,
+    setComposerText,
+    text,
+    textareaRef,
+  ]);
+
+  useComposerDraftEffects({
+    draftText,
+    historyKey,
+    prefillDraft,
+    onPrefillHandled,
+    insertText,
+    onInsertHandled,
+    dictationTranscript,
+    onDictationTranscriptHandled,
+    textareaRef,
+    selectionStart,
+    syncDraftText,
+    text,
+    setComposerText,
+
+
+    resetHistoryNavigation,
+    handleSelectionChange,
+  });
+
+  const applyTextInsertion = useCallback(
+    (nextText: string, nextCursor: number) => {
+      setComposerText(nextText);
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) {
+          return;
+        }
+        textarea.focus();
+        textarea.setSelectionRange(nextCursor, nextCursor);
+        handleSelectionChange(nextCursor);
+      });
+    },
+    [handleSelectionChange, setComposerText, textareaRef],
+  );
+
+  const handleTextPaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      if (disabled) {
+        return;
+      }
+      if (!autoWrapPasteMultiline && !autoWrapPasteCodeLike) {
+        return;
+      }
+      const pasted = event.clipboardData?.getData("text/plain") ?? "";
+      if (!pasted) {
+        return;
+      }
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      const start = textarea.selectionStart ?? text.length;
+      const end = textarea.selectionEnd ?? start;
+      if (isCursorInsideFence(text, start)) {
+        return;
+      }
+      const normalized = normalizePastedText(pasted);
+      if (!normalized) {
+        return;
+      }
+      const isMultiline = normalized.includes("\n");
+      if (isMultiline && !autoWrapPasteMultiline) {
+        return;
+      }
+      if (
+        !isMultiline &&
+        !(autoWrapPasteCodeLike && isCodeLikeSingleLine(normalized))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const indent = getLineIndent(text, start);
+      const content = indent
+        ? normalized
+            .split("\n")
+            .map((line) => `${indent}${line}`)
+            .join("\n")
+        : normalized;
+      const before = text.slice(0, start);
+      const after = text.slice(end);
+      const block = `${indent}\`\`\`\n${content}\n${indent}\`\`\``;
+      const nextText = `${before}${block}${after}`;
+      const nextCursor = before.length + block.length;
+      applyTextInsertion(nextText, nextCursor);
+    },
+    [
+      applyTextInsertion,
+      autoWrapPasteCodeLike,
+      autoWrapPasteMultiline,
+      disabled,
+      text,
+      textareaRef,
+    ],
+  );
+
+  const tryExpandFence = useCallback(
+    (start: number, end: number) => {
+      if (start !== end && !fenceWrapSelection) {
+        return false;
+      }
+      const fence = getFenceTriggerLine(text, start, fenceLanguageTags);
+      if (!fence) {
+        return false;
+      }
+      const before = text.slice(0, fence.lineStart);
+      const after = text.slice(fence.lineEnd);
+      const openFence = `${fence.indent}\`\`\`${fence.tag}`;
+      const closeFence = `${fence.indent}\`\`\``;
+      if (fenceWrapSelection && start !== end) {
+        const selection = normalizePastedText(text.slice(start, end));
+        const content = fence.indent
+          ? selection
+              .split("\n")
+              .map((line) => `${fence.indent}${line}`)
+              .join("\n")
+          : selection;
+        const block = `${openFence}\n${content}\n${closeFence}`;
+        const nextText = `${before}${block}${after}`;
+        const nextCursor = before.length + block.length;
+        applyTextInsertion(nextText, nextCursor);
+        return true;
+      }
+      const block = `${openFence}\n${fence.indent}\n${closeFence}`;
+      const nextText = `${before}${block}${after}`;
+      const nextCursor =
+        before.length + openFence.length + 1 + fence.indent.length;
+      applyTextInsertion(nextText, nextCursor);
+      return true;
+    },
+    [applyTextInsertion, fenceLanguageTags, fenceWrapSelection, text],
+  );
+  const handleKeyDown = useComposerKeyDown({
+    applyTextInsertion,
+    canSend,
+    continueListOnShiftEnter,
+    defaultSubmitIntent,
+    expandFenceOnEnter,
+    expandFenceOnSpace,
+    handleHistoryKeyDown,
+    handleInputKeyDown,
+    handleSend,
+    isDictationBusy,
+    isMac,
+    onReviewPromptKeyDown,
+    oppositeSubmitIntent,
+    reviewPromptOpen,
+    suggestionsOpen,
+    text,
+    textareaRef,
+    tryExpandFence,
+  });
+
+
+  return (
+    <footer className={`composer${disabled ? " is-disabled" : ""}`}>
+      {engineDisabled && <p role="status">Enable {engineDefinition.name} to continue</p>}
+      <ComposerQueue
+        queuedMessages={queuedMessages}
+        pausedReason={queuePausedReason}
+        onEditQueued={onEditQueued}
+        onDeleteQueued={onDeleteQueued}
+      />
+      {isProcessing && composerFollowUpHintEnabled && (
+        <div className="composer-followup-hint" role="status" aria-live="polite">
+          <div className="composer-followup-title">Follow-up behavior</div>
+          <div className="composer-followup-copy">
+            {oppositeFallsBackToQueue ? (
+              <>
+                Default: Queue (Steer unavailable). Both Enter and {followUpShortcutLabel} will
+                queue this message.
+              </>
+            ) : (
+              <>
+                Default: {effectiveFollowUpBehavior === "steer" ? "Steer" : "Queue"}. Press{" "}
+                {followUpShortcutLabel} to{" "}
+                {oppositeFollowUpIntent === "steer" ? "steer" : "queue"} this message.
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {contextActions.length > 0 ? (
+        <div className="composer-context-actions" role="toolbar" aria-label="Review tools">
+          {contextActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className="ghost composer-context-action"
+              title={action.title}
+              disabled={disabled || Boolean(action.disabled)}
+              onClick={() => {
+                void action.onSelect();
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {commandError && <div className="composer-command-notice" role="status">{commandError}</div>}
+      <ComposerInput
+        // Where and how the thread runs (location, engine) lives in the composer toolbar, beside access.
+        toolbar={<><ComposerAccessControl value={accessMode === "current" ? "ask" : accessMode} disabled={disabled} onChange={mode => onSelectAccessMode(mode === "ask" ? "current" : mode)} />{context && <span className="composer-context-row"><span title={features.worktrees && context.worktree ? "Runs in a separate worktree" : "Runs in this project folder on this computer"}><Folder aria-hidden />{features.worktrees && context.worktree ? "Worktree" : "Local"}</span><span title="Engine running this thread"><Cpu aria-hidden /><ComposerEngineControl engine={engine} models={models} selectedModelId={selectedModelId} onSelectModel={onSelectModel} onSelectEngine={onSelectEngine} disabled={disabled} /></span>{context.sideChat && <span><MessagesSquare aria-hidden />Side chat</span>}</span>}</>}
+        controls={<ComposerMetaBar
+        modelPickerRequest={modelPickerRequest}
+        disabled={disabled}
+        engine={engine}
+        onSelectEngine={onSelectEngine}
+        models={models}
+        selectedModelId={selectedModelId} defaultModelId={defaultModelId}
+        onSelectModel={onSelectModel}
+        selectedEffort={selectedEffort}
+        onSelectEffort={onSelectEffort}
+      />}
+        addMenu={<><button type="button" onClick={() => applyTextInsertion(`${text}@`, text.length + 1)}>Mention a file</button>{collaborationModes.some(mode => mode.id === "plan") && <button type="button" onClick={() => onSelectCollaborationMode(selectedCollaborationModeId === "plan" ? "default" : "plan")}>Plan mode</button>}{collaborationModes.some(mode => !["default", "plan"].includes(mode.id)) && <label>Mode<select aria-label="Collaboration mode" value={selectedCollaborationModeId ?? ""} onChange={event => onSelectCollaborationMode(event.target.value || null)}>{collaborationModes.map(mode => <option key={mode.id} value={mode.id}>{mode.label}</option>)}</select></label>}{codexArgsOptions.length > 1 && <label>Codex args profile<select aria-label="Codex args profile" value={selectedCodexArgsOverride ?? ""} onChange={event => onSelectCodexArgsOverride?.(event.target.value || null)}>{codexArgsOptions.map(option => <option key={option.value || "default"} value={option.value}>{option.label}</option>)}</select></label>}</>}
+        engine={engine}
+        text={text}
+        disabled={disabled}
+        sendLabel={effectiveSendLabel}
+        canStop={canStop}
+        canSend={canSend && !commandError}
+        isProcessing={isProcessing}
+        onStop={onStop}
+        onSend={() => handleSend(defaultSubmitIntent)}
+        dictationEnabled={dictationEnabled}
+        dictationState={dictationState}
+        dictationLevel={dictationLevel}
+        onToggleDictation={onToggleDictation}
+        onCancelDictation={onCancelDictation}
+        onOpenDictationSettings={onOpenDictationSettings}
+        dictationError={dictationError}
+        onDismissDictationError={onDismissDictationError}
+        dictationHint={dictationHint}
+        onDismissDictationHint={onDismissDictationHint}
+        attachments={attachedImages}
+        onAddAttachment={onPickImages}
+        onAttachImages={onAttachImages}
+        onRemoveAttachment={onRemoveImage}
+        onTextChange={handleTextChangeWithHistory}
+        onSelectionChange={handleSelectionChange}
+        onTextPaste={handleTextPaste}
+        isExpanded={editorExpanded}
+        onToggleExpand={onToggleEditorExpanded}
+        onKeyDown={handleKeyDown}
+        textareaRef={textareaRef}
+        suggestionsOpen={suggestionsOpen}
+        suggestions={suggestions}
+        highlightIndex={highlightIndex}
+        onHighlightIndex={setHighlightIndex}
+        onSelectSuggestion={applyAutocomplete}
+        suggestionsStyle={suggestionsStyle}
+        reviewPrompt={reviewPrompt}
+        onReviewPromptClose={onReviewPromptClose}
+        onReviewPromptShowPreset={onReviewPromptShowPreset}
+        onReviewPromptChoosePreset={onReviewPromptChoosePreset}
+        highlightedPresetIndex={highlightedPresetIndex}
+        onReviewPromptHighlightPreset={onReviewPromptHighlightPreset}
+        highlightedBranchIndex={highlightedBranchIndex}
+        onReviewPromptHighlightBranch={onReviewPromptHighlightBranch}
+        highlightedCommitIndex={highlightedCommitIndex}
+        onReviewPromptHighlightCommit={onReviewPromptHighlightCommit}
+        onReviewPromptSelectBranch={onReviewPromptSelectBranch}
+        onReviewPromptSelectBranchAtIndex={onReviewPromptSelectBranchAtIndex}
+        onReviewPromptConfirmBranch={onReviewPromptConfirmBranch}
+        onReviewPromptSelectCommit={onReviewPromptSelectCommit}
+        onReviewPromptSelectCommitAtIndex={onReviewPromptSelectCommitAtIndex}
+        onReviewPromptConfirmCommit={onReviewPromptConfirmCommit}
+        onReviewPromptUpdateCustomInstructions={onReviewPromptUpdateCustomInstructions}
+        onReviewPromptConfirmCustom={onReviewPromptConfirmCustom}
+      />
+
+      {selectedServiceTier === "fast" && <span className="composer-tier-note" aria-label="Fast mode enabled">Fast</span>}
+      {isEmpty && <div className="starter-pills">{[{ prompt: "Explore this project", Icon: FolderTree }, { prompt: "Fix a bug", Icon: Bug }, { prompt: "Build a feature", Icon: Hammer }].map(({ prompt, Icon }) => <button key={prompt} type="button" onClick={() => { setComposerText(prompt); textareaRef.current?.focus(); }}><Icon aria-hidden />{prompt}</button>)}</div>}
+    </footer>
+  );
+});
+
+Composer.displayName = "Composer";

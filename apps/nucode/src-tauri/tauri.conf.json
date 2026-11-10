@@ -1,0 +1,97 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "nucode",
+  "version": "0.8.0",
+  "identifier": "dev.nucode.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "node scripts/bundle-node.mjs && npm run build",
+    "frontendDist": "../dist",
+    "beforeBundleCommand": "node scripts/bundle-helpers.mjs"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "nucode",
+        "width": 1200,
+        "height": 700,
+        "minWidth": 360,
+        "minHeight": 600,
+        "dragDropEnabled": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 19,
+          "y": 24
+        },
+        "transparent": true,
+        "devtools": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**/*"
+        ]
+      }
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "iOS": {
+      "frameworks": [
+        "libz.tbd",
+        "libiconv.tbd"
+      ]
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "./Entitlements.plist",
+      "infoPlist": "./Info.plist"
+    },
+    "resources": {
+      "../engines/claude-acp/package-lock.json": "engines/claude-acp/package-lock.json",
+      "../engines/claude-acp/package.json": "engines/claude-acp/package.json",
+      "../engines/pi/no-accounts.mjs": "engines/pi/no-accounts.mjs",
+      "../engines/pi/package-lock.json": "engines/pi/package-lock.json",
+      "../engines/pi/package.json": "engines/pi/package.json",
+      "../engines/browser/package-lock.json": "engines/browser/package-lock.json",
+      "../engines/browser/package.json": "engines/browser/package.json",
+      "../engines/work/pyproject.toml": "engines/work/pyproject.toml",
+      "../engines/work/uv.lock": "engines/work/uv.lock",
+      "target/engine-resources/work/skills/": "engines/work/skills/",
+      "../engines/computer/pyproject.toml": "engines/computer/pyproject.toml",
+      "../engines/computer/uv.lock": "engines/computer/uv.lock",
+      "target/engine-resources/computer/nucode_cua/": "engines/computer/nucode_cua/",
+      "target/engine-resources/pi/extensions/": "engines/pi/extensions/",
+      "../engines/pi/.gitignore": "engines/pi/.gitignore",
+      "../engines/browser/.gitignore": "engines/browser/.gitignore",
+      "../engines/computer/README.md": "engines/computer/README.md",
+      "../engines/computer/.gitignore": "engines/computer/.gitignore",
+      "../engines/omp/package.json": "engines/omp/package.json",
+      "../engines/omp/package-lock.json": "engines/omp/package-lock.json",
+      "../engines/omp/.gitignore": "engines/omp/.gitignore",
+      "../engines/omp/no-accounts.mjs": "engines/omp/no-accounts.mjs",
+      "target/engine-resources/node/": "node/",
+      "target/engine-resources/uv/": "uv/"
+    },
+    "externalBin": [
+      "binaries/codex_monitor_daemon",
+      "binaries/codex_monitor_daemonctl",
+      "binaries/nucode-diag-mcp"
+    ]
+  },
+  "plugins": {}
+}

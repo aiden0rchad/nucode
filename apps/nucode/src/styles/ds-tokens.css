@@ -1,0 +1,70 @@
+:root {
+  --icon-button-24: 24px;
+  --icon-button-28: 28px;
+  --icon-button-32: 32px;
+  --ds-surface-overlay: var(--surface-context-core);
+  --ds-surface-card: var(--surface-card-strong);
+  --ds-surface-muted: var(--surface-card-muted);
+  --ds-surface-panel: var(--surface-right-panel);
+
+  --ds-border-subtle: var(--border-subtle);
+  --ds-border-strong: var(--border-stronger);
+  --ds-border-accent-soft: var(--border-accent-soft);
+
+  --ds-text-strong: var(--text-strong);
+  --ds-text-subtle: var(--text-subtle);
+  --ds-text-faint: var(--text-faint);
+
+  --ds-modal-backdrop: color-mix(in srgb, rgb(6, 8, 12) 55%, var(--surface-app));
+  --ds-modal-card-bg: var(--ds-surface-card);
+  --ds-modal-card-border: var(--ds-border-strong);
+  --ds-modal-focus-ring: color-mix(in srgb, var(--border-accent) 70%, transparent);
+
+  --ds-toast-bg: var(--ds-surface-overlay);
+  --ds-toast-border: var(--ds-border-subtle);
+  --ds-toast-shadow: 0 16px 32px rgba(0, 0, 0, 0.25);
+  --ds-toast-title: var(--ds-text-subtle);
+  --ds-toast-body: var(--text);
+
+  --ds-panel-gap: 8px;
+  --ds-panel-header-min-height: 26px;
+  --ds-panel-header-text: var(--ds-text-subtle);
+
+  --ds-popover-bg: var(--surface-popover);
+  --ds-popover-border: var(--border-muted);
+  --ds-popover-shadow: 0 4px 12px #0000001a;
+  --ds-popover-item-text: var(--text-muted);
+  --ds-popover-item-text-active: var(--text-stronger);
+
+  --ds-diff-lib-bg-light: color-mix(in srgb, rgb(255, 255, 255) 35%, var(--surface-app));
+  --ds-diff-lib-bg-dark: color-mix(in srgb, rgb(10, 12, 16) 35%, var(--surface-app));
+  --ds-diff-lib-bg-system-light: color-mix(in srgb, rgb(255, 255, 255) 35%, var(--surface-app));
+  --ds-diff-lib-bg-system-dark: color-mix(in srgb, rgb(10, 12, 16) 35%, var(--surface-app));
+
+  /* One layer scale, from local decoration through global overlays. */
+  --z-behind: -1;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-panel: 20;
+  --z-sheet: 30;
+  --z-popover: 40;
+  --z-modal-scrim: 50;
+  --z-modal: 51;
+  --z-modal-nested: 52;
+  --z-toast: 60;
+  --z-tooltip: 70;
+
+  /* ── Motion ── */
+  --ds-dur-fast: 120ms;
+  --ds-dur-normal: 150ms;
+  --ds-dur-slow: 150ms;
+  --ds-dur-entrance: 150ms;
+
+  --ds-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ds-ease-out-soft: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ds-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --ds-spinner-dur: 0.7s;
+  --ds-active-scale: 0.97;
+  --ds-active-scale-sm: 0.92;
+}

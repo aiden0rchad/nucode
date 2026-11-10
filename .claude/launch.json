@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nucode-ui-main",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "apps/nucode",
+        "run",
+        "preview:ui"
+      ],
+      "port": 1421
+    }
+  ]
+}

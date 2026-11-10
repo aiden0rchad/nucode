@@ -1,0 +1,1007 @@
+import { describe, expect, it } from "vitest";
+import type { ConversationItem } from "../types";
+import { buildThreadSummaryFromThread } from "@threads/utils/threadSummary";
+import { buildResumeHydrationPlan } from "@threads/utils/threadActionHelpers";
+import {
+  buildConversationItem,
+  buildConversationItemFromThreadItem,
+  buildItemsFromThread,
+  getThreadCreatedTimestamp,
+  getThreadTimestamp,
+  mergeThreadItems,
+  normalizeItem,
+  prepareThreadItems,
+  previewThreadName,
+  upsertItem,
+} from "./threadItems";
+
+describe("threadItems", () => {
+  it("keeps automatic titles consistent between listing and reopening without replacing manual names", () => {
+    const thread = { id: "test", preview: "Progress and recovery check. Keep GPT 6.1 Sol and use full access.", turns: [] };
+    const plan = (getCustomName: () => string | undefined) => buildResumeHydrationPlan({ thread, threadId: "test", workspaceId: "space", localItems: [], localStatus: undefined, localActiveTurnId: null, replaceLocal: false, getCustomName });
+    expect(plan(() => undefined).threadName).toBe("Progress and recovery check");
+    expect(buildThreadSummaryFromThread({ thread, workspaceId: "space", fallbackIndex: 0 })?.name).toBe("Progress and recovery check");
+    expect(plan(() => "My custom title").threadName).toBeNull();
+    expect(buildThreadSummaryFromThread({ thread, workspaceId: "space", fallbackIndex: 0, getCustomName: () => "My custom title" })?.name).toBe("My custom title");
+  });
+  it("makes a concise fallback from the first sentence or heading", () => {
+    expect(previewThreadName("Progress and recovery check. Keep GPT 6.1 Sol and use full access.", "New chat")).toBe("Progress and recovery check");
+    expect(previewThreadName("\n## Action dashboard\nRead the notes and create the page.", "New chat")).toBe("Action dashboard");
+    expect(previewThreadName("Fix v1.2 parsing in config.json. Then run tests.", "New chat")).toBe("Fix v1.2 parsing in config.json");
+    expect(previewThreadName("x".repeat(200), "New chat")).toHaveLength(81);
+    expect(previewThreadName(" \n ", "New chat")).toBe("New chat");
+  });
+  it("restores failed turns with their original error and request, but not interrupted turns", () => {
+    const thread = { turns: [
+      { id: "failed-turn", status: "failed", error: { message: "429 requests are paused" }, items: [{ type: "userMessage", id: "user", content: [{ type: "text", text: "Check this" }, { type: "image", url: "data:image/png;base64,AAA" }] }] },
+      { id: "stopped-turn", status: "interrupted", error: null, items: [] },
+      { id: "compaction", status: "failed", error: "Compaction failed", items: [] },
+    ] };
+    const items = buildItemsFromThread(thread);
+    expect(items).toHaveLength(3);
+    expect(items[1]).toMatchObject({ id: "failed-turn-error", isError: true, text: "Turn failed: 429 requests are paused", retryMessage: { text: "Check this", images: ["data:image/png;base64,AAA"] } });
+    expect(items[2]).toMatchObject({ id: "compaction-error", isError: true, retryMessage: null });
+  });
+  it("truncates long message text in normalizeItem", () => {
+    const text = "a".repeat(21000);
+    const item: ConversationItem = {
+      id: "msg-1",
+      kind: "message",
+      role: "assistant",
+      text,
+    };
+    const normalized = normalizeItem(item);
+    expect(normalized.kind).toBe("message");
+    if (normalized.kind === "message") {
+      expect(normalized.text).not.toBe(text);
+      expect(normalized.text.endsWith("...")).toBe(true);
+      expect(normalized.text.length).toBeLessThan(text.length);
+    }
+  });
+
+  it("truncates extremely large tool output for fileChange and commandExecution", () => {
+    const output = "x".repeat(250000);
+    const item: ConversationItem = {
+      id: "tool-1",
+      kind: "tool",
+      toolType: "fileChange",
+      title: "File changes",
+      detail: "",
+      output,
+    };
+    const normalized = normalizeItem(item);
+    expect(normalized.kind).toBe("tool");
+    if (normalized.kind === "tool") {
+      expect(normalized.output).not.toBe(output);
+      expect(normalized.output?.endsWith("...")).toBe(true);
+      expect((normalized.output ?? "").length).toBeLessThan(output.length);
+    }
+  });
+
+  it("truncates older tool output in prepareThreadItems", () => {
+    const output = "y".repeat(21000);
+    const items: ConversationItem[] = Array.from({ length: 41 }, (_, index) => ({
+      id: `tool-${index}`,
+      kind: "tool",
+      toolType: "commandExecution",
+      title: "Tool",
+      detail: "",
+      output,
+    }));
+    const prepared = prepareThreadItems(items);
+    const firstOutput = prepared[0].kind === "tool" ? prepared[0].output : undefined;
+    const secondOutput = prepared[1].kind === "tool" ? prepared[1].output : undefined;
+    expect(firstOutput).not.toBe(output);
+    expect(firstOutput?.endsWith("...")).toBe(true);
+    expect(secondOutput).toBe(output);
+  });
+
+  it("respects custom max items per thread in prepareThreadItems", () => {
+    const items: ConversationItem[] = Array.from({ length: 5 }, (_, index) => ({
+      id: `msg-${index}`,
+      kind: "message",
+      role: "assistant",
+      text: `message ${index}`,
+    }));
+    const prepared = prepareThreadItems(items, { maxItemsPerThread: 3 });
+    expect(prepared).toHaveLength(3);
+    expect(prepared[0]?.id).toBe("msg-2");
+    expect(prepared[2]?.id).toBe("msg-4");
+  });
+
+  it("supports unlimited max items per thread in prepareThreadItems", () => {
+    const items: ConversationItem[] = Array.from({ length: 5 }, (_, index) => ({
+      id: `msg-${index}`,
+      kind: "message",
+      role: "assistant",
+      text: `message ${index}`,
+    }));
+    const prepared = prepareThreadItems(items, { maxItemsPerThread: null });
+    expect(prepared).toHaveLength(5);
+  });
+
+  it("drops assistant review summaries that duplicate completed review items", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "review-1",
+        kind: "review",
+        state: "completed",
+        text: "Review summary",
+      },
+      {
+        id: "msg-1",
+        kind: "message",
+        role: "assistant",
+        text: "Review summary",
+      },
+    ];
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("review");
+  });
+
+  it("summarizes explored reads and hides raw commands", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/foo.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "cmd-2",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: sed -n '1,10p' src/bar.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "msg-1",
+        kind: "message",
+        role: "assistant",
+        text: "Done reading",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(2);
+      expect(prepared[0].entries[0].kind).toBe("read");
+      expect(prepared[0].entries[0].label).toContain("foo.ts");
+      expect(prepared[0].entries[1].kind).toBe("read");
+      expect(prepared[0].entries[1].label).toContain("bar.ts");
+    }
+    expect(prepared.filter((item) => item.kind === "tool")).toHaveLength(0);
+  });
+
+  it("treats inProgress command status as exploring", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg RouterDestination src",
+        detail: "",
+        status: "inProgress",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].status).toBe("exploring");
+      expect(prepared[0].entries[0]?.kind).toBe("search");
+    }
+  });
+
+  it("deduplicates explore entries when consecutive summaries merge", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/customPrompts.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "cmd-2",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/customPrompts.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].label).toContain("customPrompts.ts");
+    }
+  });
+
+  it("preserves distinct read paths that share the same basename", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/foo/index.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "cmd-2",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat tests/foo/index.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(2);
+      const details = prepared[0].entries.map((entry) => entry.detail ?? entry.label);
+      expect(details).toContain("src/foo/index.ts");
+      expect(details).toContain("tests/foo/index.ts");
+    }
+  });
+
+  it("preserves multi-path read commands instead of collapsing to the last path", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/a.ts src/b.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(2);
+      const details = prepared[0].entries.map((entry) => entry.detail ?? entry.label);
+      expect(details).toContain("src/a.ts");
+      expect(details).toContain("src/b.ts");
+    }
+  });
+
+  it("ignores glob patterns when summarizing rg --files commands", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg --files -g '*.ts' src",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("list");
+      expect(prepared[0].entries[0].label).toBe("src");
+    }
+  });
+
+  it("skips rg glob flag values and keeps the actual search path", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg myQuery -g '*.ts' src",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("search");
+      expect(prepared[0].entries[0].label).toBe("myQuery in src");
+    }
+  });
+
+  it("unwraps unquoted /bin/zsh -lc rg commands", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: 'Command: /bin/zsh -lc rg -n "RouterDestination" src',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("search");
+      expect(prepared[0].entries[0].label).toBe("RouterDestination in src");
+    }
+  });
+
+  it("treats nl -ba as a read command", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: nl -ba src/foo.ts",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("read");
+      expect(prepared[0].entries[0].detail ?? prepared[0].entries[0].label).toBe(
+        "src/foo.ts",
+      );
+    }
+  });
+
+  it("summarizes piped nl commands using the left-hand read", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: nl -ba src/foo.ts | sed -n '1,10p'",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("read");
+      expect(prepared[0].entries[0].detail ?? prepared[0].entries[0].label).toBe(
+        "src/foo.ts",
+      );
+    }
+  });
+
+  it("does not trim pipes that appear inside quoted arguments", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: 'Command: rg "foo | bar" src',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("search");
+      expect(prepared[0].entries[0].label).toBe("foo | bar in src");
+    }
+  });
+
+  it("keeps raw commands when they are not recognized", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: git status",
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("tool");
+  });
+
+  it("keeps raw commands when they fail", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: cat src/foo.ts",
+        detail: "",
+        status: "failed",
+        output: "No such file",
+      },
+    ];
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("tool");
+  });
+
+  it("drops the request header Codex Desktop wraps around an imported prompt", () => {
+    const user = (text: string) => buildConversationItem({ type: "userMessage", id: "u", content: [{ type: "text", text }] });
+    expect(user("## My request:\npush main")).toMatchObject({ kind: "message", role: "user", text: "push main" });
+    expect(user("## My request for Codex:\n\nmerge it")).toMatchObject({ text: "merge it" });
+    expect(user("Notes\n## My request: keep")).toMatchObject({ text: "Notes\n## My request: keep" });
+  });
+
+  it("builds file change items with summary details", () => {
+    const item = buildConversationItem({
+      type: "fileChange",
+      id: "change-1",
+      status: "done",
+      changes: [
+        {
+          path: "foo.txt",
+          kind: "add",
+          diff: "diff --git a/foo.txt b/foo.txt",
+        },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.title).toBe("File changes");
+      expect(item.detail).toBe("A foo.txt");
+      expect(item.output).toContain("diff --git a/foo.txt b/foo.txt");
+      expect(item.changes?.[0]?.path).toBe("foo.txt");
+    }
+  });
+
+  it("repairs historical OMP virtual tool writes without claiming file edits", () => {
+    for (const name of ["subagent", "mcp__nucode_browser_browser_click", "custom_mutation"]) {
+      const item = buildConversationItem({ type: "fileChange", id: name, status: "failed", changes: [{ path: `xd://${name}`, kind: "add", diff: "+request" }] });
+      expect(item).toMatchObject({ id: name, kind: "tool", toolType: "dynamicToolCall", title: `Tool: ${name}`, status: "failed", output: "+request" });
+      expect(item && "changes" in item ? item.changes : null).toBeUndefined();
+      const prepared = prepareThreadItems([{ id: name, kind: "tool", toolType: "fileChange", title: "File changes", detail: `A xd://${name}`, status: "failed", output: "original output", changes: [{ path: `xd://${name}`, kind: "add" }] }]);
+      expect(prepared[0]).toMatchObject({ id: name, toolType: "dynamicToolCall", title: `Tool: ${name}`, status: "failed", output: "original output" });
+    }
+  });
+
+  it("retains real filesystem writes and mixed file changes", () => {
+    for (const paths of [["src/subagent"], ["src/subagent", "xd://subagent"]]) {
+      const item = buildConversationItem({ type: "fileChange", id: "real", status: "completed", changes: paths.map(path => ({ path, kind: "update", diff: "actual diff" })) });
+      expect(item).toMatchObject({ toolType: "fileChange", title: "File changes" });
+    }
+  });
+
+  it("defaults web search items to completed status", () => {
+    const item = buildConversationItem({
+      type: "webSearch",
+      id: "web-1",
+      query: "codex monitor",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("webSearch");
+      expect(item.status).toBe("completed");
+      expect(item.detail).toBe("codex monitor");
+    }
+  });
+
+  it("merges thread items preferring non-empty remote tool output", () => {
+    const remote: ConversationItem = {
+      id: "tool-2",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "ok",
+      output: "short",
+    };
+    const local: ConversationItem = {
+      id: "tool-2",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      output: "much longer output",
+    };
+    const merged = mergeThreadItems([remote], [local]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].kind).toBe("tool");
+    if (merged[0].kind === "tool") {
+      expect(merged[0].output).toBe("short");
+      expect(merged[0].status).toBe("ok");
+    }
+  });
+
+  it("keeps local tool output when remote output is empty", () => {
+    const remote: ConversationItem = {
+      id: "tool-3",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "completed",
+      output: " ",
+    };
+    const local: ConversationItem = {
+      id: "tool-3",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      output: "streamed output",
+    };
+    const merged = mergeThreadItems([remote], [local]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].kind).toBe("tool");
+    if (merged[0].kind === "tool") {
+      expect(merged[0].output).toBe("streamed output");
+      expect(merged[0].status).toBe("completed");
+    }
+  });
+
+  it("keeps local tool status when remote status is empty", () => {
+    const remote: ConversationItem = {
+      id: "tool-remote-status",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "",
+      output: "",
+    };
+    const local: ConversationItem = {
+      id: "tool-remote-status",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "completed",
+      output: "",
+    };
+    const merged = mergeThreadItems([remote], [local]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].kind).toBe("tool");
+    if (merged[0].kind === "tool") {
+      expect(merged[0].status).toBe("completed");
+    }
+  });
+
+  it("preserves streamed plan output when completion item has empty output", () => {
+    const existing: ConversationItem = {
+      id: "plan-1",
+      kind: "tool",
+      toolType: "plan",
+      title: "Plan",
+      detail: "Generating plan...",
+      status: "in_progress",
+      output: "## Plan\n- Step 1\n- Step 2",
+    };
+    const completed: ConversationItem = {
+      id: "plan-1",
+      kind: "tool",
+      toolType: "plan",
+      title: "Plan",
+      detail: "",
+      status: "completed",
+      output: "",
+    };
+
+    const next = upsertItem([existing], completed);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("tool");
+    if (next[0].kind === "tool") {
+      expect(next[0].output).toBe(existing.output);
+      expect(next[0].status).toBe("completed");
+    }
+  });
+
+  it("uses incoming tool output even when shorter than existing output", () => {
+    const existing: ConversationItem = {
+      id: "tool-4",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "in_progress",
+      output: "verbose streamed output that will be replaced",
+    };
+    const incoming: ConversationItem = {
+      id: "tool-4",
+      kind: "tool",
+      toolType: "webSearch",
+      title: "Web search",
+      detail: "query",
+      status: "completed",
+      output: "final",
+    };
+
+    const next = upsertItem([existing], incoming);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("tool");
+    if (next[0].kind === "tool") {
+      expect(next[0].output).toBe("final");
+      expect(next[0].status).toBe("completed");
+    }
+  });
+
+  it("preserves streamed reasoning content when completion item is empty", () => {
+    const existing: ConversationItem = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      summary: "Thinking",
+      content: "More detail",
+    };
+    const completed: ConversationItem = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      summary: "",
+      content: "",
+    };
+
+    const next = upsertItem([existing], completed);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("reasoning");
+    if (next[0].kind === "reasoning") {
+      expect(next[0].summary).toBe("Thinking");
+      expect(next[0].content).toBe("More detail");
+    }
+  });
+
+  it("preserves existing userInput answers when incoming payload has equal question count and no answers", () => {
+    const existing: ConversationItem = {
+      id: "user-input-1",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Confirm",
+          question: "Proceed?",
+          answers: ["Yes"],
+        },
+      ],
+    };
+    const incoming: ConversationItem = {
+      id: "user-input-1",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Confirm",
+          question: "Proceed?",
+          answers: [],
+        },
+      ],
+    };
+
+    const next = upsertItem([existing], incoming);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("userInput");
+    if (next[0].kind === "userInput") {
+      expect(next[0].questions[0]?.answers).toEqual(["Yes"]);
+    }
+  });
+
+  it("preserves existing answers for questions that are empty in a partial userInput upsert", () => {
+    const existing: ConversationItem = {
+      id: "user-input-2",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Question 1",
+          question: "Choose release mode",
+          answers: ["Safe"],
+        },
+        {
+          id: "q2",
+          header: "Question 2",
+          question: "Choose deployment time",
+          answers: ["Tonight"],
+        },
+      ],
+    };
+    const incoming: ConversationItem = {
+      id: "user-input-2",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Question 1",
+          question: "Choose release mode",
+          answers: ["Fast"],
+        },
+        {
+          id: "q2",
+          header: "Question 2",
+          question: "Choose deployment time",
+          answers: [],
+        },
+      ],
+    };
+
+    const next = upsertItem([existing], incoming);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("userInput");
+    if (next[0].kind === "userInput") {
+      expect(next[0].questions).toHaveLength(2);
+      expect(next[0].questions[0]?.answers).toEqual(["Fast"]);
+      expect(next[0].questions[1]?.answers).toEqual(["Tonight"]);
+    }
+  });
+
+  it("preserves answered questions missing from a partial userInput upsert", () => {
+    const existing: ConversationItem = {
+      id: "user-input-3",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Question 1",
+          question: "Primary answer",
+          answers: ["A"],
+        },
+        {
+          id: "q2",
+          header: "Question 2",
+          question: "Secondary answer",
+          answers: ["B"],
+        },
+      ],
+    };
+    const incoming: ConversationItem = {
+      id: "user-input-3",
+      kind: "userInput",
+      status: "answered",
+      questions: [
+        {
+          id: "q1",
+          header: "Question 1",
+          question: "Primary answer",
+          answers: ["A2"],
+        },
+      ],
+    };
+
+    const next = upsertItem([existing], incoming);
+    expect(next).toHaveLength(1);
+    expect(next[0].kind).toBe("userInput");
+    if (next[0].kind === "userInput") {
+      expect(next[0].questions).toHaveLength(2);
+      expect(next[0].questions[0]?.id).toBe("q1");
+      expect(next[0].questions[0]?.answers).toEqual(["A2"]);
+      expect(next[0].questions[1]?.id).toBe("q2");
+      expect(next[0].questions[1]?.answers).toEqual(["B"]);
+    }
+  });
+
+  it("builds user message text from mixed inputs", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-1",
+      content: [
+        { type: "text", text: "Please" },
+        { type: "skill", name: "Review" },
+        { type: "image", url: "https://example.com/image.png" },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toBe("Please $Review");
+      expect(item.images).toEqual(["https://example.com/image.png"]);
+    }
+  });
+
+  it("keeps image-only user messages without placeholder text", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-2",
+      content: [{ type: "image", url: "https://example.com/only.png" }],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toBe("");
+      expect(item.images).toEqual(["https://example.com/only.png"]);
+    }
+  });
+
+  it("formats collab tool calls with receivers and agent states", () => {
+    const item = buildConversationItem({
+      type: "collabToolCall",
+      id: "collab-1",
+      tool: "handoff",
+      status: "ok",
+      senderThreadId: "thread-a",
+      receiverThreadIds: ["thread-b"],
+      newThreadId: "thread-c",
+      prompt: "Coordinate work",
+      agentStatus: { "agent-1": { status: "running" } },
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.title).toBe("Collab: handoff");
+      expect(item.detail).toContain("From thread-a");
+      expect(item.detail).toContain("thread-b");
+      expect(item.detail).toContain("thread-c");
+      expect(item.output).toBe("Coordinate work\n\nagent-1: running");
+    }
+  });
+
+  it("captures rich collab metadata from receiver_agents and agent_statuses", () => {
+    const item = buildConversationItem({
+      type: "collabToolCall",
+      id: "collab-rich-1",
+      tool: "wait",
+      status: "completed",
+      sender_thread_id: "thread-parent",
+      receiver_agents: [
+        {
+          thread_id: "thread-child-1",
+          agent_nickname: "Robie",
+          agent_role: "explorer",
+        },
+      ],
+      agent_statuses: [
+        {
+          thread_id: "thread-child-1",
+          status: "completed",
+          agent_nickname: "Robie",
+          agent_role: "explorer",
+        },
+      ],
+      prompt: "Wait for workers",
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.collabSender).toEqual({ threadId: "thread-parent" });
+      expect(item.collabReceiver).toEqual({
+        threadId: "thread-child-1",
+        nickname: "Robie",
+        role: "explorer",
+      });
+      expect(item.collabReceivers).toEqual([
+        {
+          threadId: "thread-child-1",
+          nickname: "Robie",
+          role: "explorer",
+        },
+      ]);
+      expect(item.collabStatuses).toEqual([
+        {
+          threadId: "thread-child-1",
+          nickname: "Robie",
+          role: "explorer",
+          status: "completed",
+        },
+      ]);
+      expect(item.detail).toContain("Robie [explorer]");
+      expect(item.output).toContain("Robie [explorer]: completed");
+    }
+  });
+
+  it("builds context compaction items", () => {
+    const item = buildConversationItem({
+      type: "contextCompaction",
+      id: "compact-1",
+      status: "inProgress",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("contextCompaction");
+      expect(item.title).toBe("Context compaction");
+      expect(item.status).toBe("inProgress");
+    }
+  });
+
+  it("renders tiny-session compaction as an informational notice", () => {
+    const item = buildConversationItem({ type: "contextCompaction", id: "small", notice: "Nothing to compact yet" });
+    expect(item).toMatchObject({ title: "Nothing to compact yet", status: "completed", detail: "" });
+  });
+
+  it("builds context compaction items from thread history", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "contextCompaction",
+      id: "compact-2",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("contextCompaction");
+      expect(item.title).toBe("Context compaction");
+      expect(item.status).toBe("completed");
+    }
+  });
+
+  it("parses ISO timestamps for thread updates", () => {
+    const timestamp = getThreadTimestamp({ updated_at: "2025-01-01T00:00:00Z" });
+    expect(timestamp).toBe(Date.parse("2025-01-01T00:00:00Z"));
+  });
+
+  it("returns 0 for invalid thread timestamps", () => {
+    const timestamp = getThreadTimestamp({ updated_at: "not-a-date" });
+    expect(timestamp).toBe(0);
+  });
+
+  it("parses created timestamps", () => {
+    const timestamp = getThreadCreatedTimestamp({ created_at: "2025-01-01T00:00:00Z" });
+    expect(timestamp).toBe(Date.parse("2025-01-01T00:00:00Z"));
+  });
+
+});
+
+
+it("replaces one matching optimistic user message while retaining real repeated prompts", () => {
+  const real: ConversationItem = { id: "user-old", kind: "message", role: "user", text: "Again", images: ["data:image/png;base64,a"] };
+  const pending = { ...real, id: "optimistic-user-1" };
+  const assistant: ConversationItem = { id: "reply", kind: "message", role: "assistant", text: "Reply" };
+  const echo = { ...real, id: "user-new" };
+  const items = upsertItem([real, pending, assistant], echo);
+  expect(items.map(item => item.id)).toEqual(["user-old", "user-new", "reply"]);
+  expect(upsertItem(items, echo)).toEqual(items);
+  expect(upsertItem([pending], { ...echo, images: ["data:image/png;base64,b"] })).toHaveLength(2);
+});
+
+
+it("reconciles pending user items in snapshots without matching an old identical prompt", () => {
+  const old: ConversationItem = { id: "old", kind: "message", role: "user", text: "Again" };
+  const pending = { ...old, id: "optimistic-user-2" };
+  const echo = { ...old, id: "new" };
+  expect(mergeThreadItems([old], [old, pending]).map(item => item.id)).toEqual(["old", "optimistic-user-2"]);
+  expect(mergeThreadItems([old, echo], [old, pending]).map(item => item.id)).toEqual(["old", "new"]);
+  expect(upsertItem([pending], { ...echo, text: " Again " })).toHaveLength(1);
+});
+
+it("consumes each snapshot echo once when identical prompts are pending", () => {
+  const pending: ConversationItem = { id: "optimistic-user-first", kind: "message", role: "user", text: "Again" };
+  const second = { ...pending, id: "optimistic-user-second" };
+  const echo = { ...pending, id: "canonical-first" };
+  expect(mergeThreadItems([echo], [pending, second]).map(item => item.id)).toEqual(["canonical-first", "optimistic-user-second"]);
+  expect(mergeThreadItems([echo, { ...echo, id: "canonical-second" }], [pending, second]).map(item => item.id)).toEqual(["canonical-first", "canonical-second"]);
+});

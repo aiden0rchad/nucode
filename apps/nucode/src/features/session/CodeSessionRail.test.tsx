@@ -1,0 +1,119 @@
+/** @vitest-environment jsdom */
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setupPointerEvents } from "@/test/pointerEvents";
+import { CodeSessionRail, type CodeSessionRailProps } from "./CodeSessionRail";
+const panel = vi.hoisted(() => ({ openTool: vi.fn(), openPage: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/features/panels/SidePanel", () => ({ useSidePanel: () => panel }));
+vi.mock("@/features/design-system/components/modal/ModalShell", () => ({ ModalShell: ({ children }: { children: React.ReactNode }) => <div role="dialog" aria-label="New environment">{children}</div> }));
+setupPointerEvents();
+
+const task = { id: "task", workspaceId: "w", threadId: "t", command: "npm run dev", label: "Dev server", cwd: "/workspace", pid: 1, status: "running" as const, startedAt: Date.now() - 30000, endedAt: null, exitCode: null, output: "", outputTruncated: false, urls: ["http://localhost:3000"] };
+function props(): CodeSessionRailProps {
+  const workspace = { id: "w", name: "Project", path: "/workspace", connected: true, settings: { sidebarCollapsed: false } };
+  return { workspace, workspaces: [workspace], branch: "main", branches: [{ name: "main", lastCommit: 0 }], canCheckoutBranch: true, onCheckoutBranch: vi.fn(), onSelectWorkspace: vi.fn(), profiles: [], engine: "pi", modelId: "model", onSaveEnvironment: vi.fn().mockResolvedValue(undefined), onSelectEnvironment: vi.fn(), onDeleteEnvironment: vi.fn().mockResolvedValue(undefined), remote: { mode: "local", host: "localhost:4732" }, usage: null, protocol: "pi-rpc", skills: [], skillsAvailable: false, memoryFiles: ["AGENTS.md"], connectors: [{ id: "browser", name: "Browser", enabled: true }], connectorError: null, connectorsLoading: false, outputs: ["reports/result.md"], onOpenFile: vi.fn().mockReturnValue(true), git: { enabled: true, files: 2, additions: 10, deletions: 3, error: null }, tasks: { tasks: [task], servers: [{ id: "server", taskId: "task", url: "http://localhost:3000", title: "Dev server", status: "running", startedAt: task.startedAt }], error: "", busy: false, canStart: true, start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined), restart: vi.fn(), clearFinished: vi.fn(), refresh: vi.fn() }, tasksEnabled: true, browserEnabled: true, onOpenSettings: vi.fn(), onEditLaunchScripts: vi.fn() };
+}
+beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+afterEach(cleanup);
+describe("Code session rail", () => {
+  it("persists card collapse and keyboard reorder", () => {
+    const data = props(); const view = render(<CodeSessionRail {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }));
+    const handle = screen.getByRole("button", { name: "Reorder Context" });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(handle);
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    view.unmount();
+    render(<CodeSessionRail {...data} />);
+    expect(document.querySelector(".code-session-card-toggle")?.textContent).toBe("Context");
+    expect(screen.getByRole("button", { name: "Environment" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: "Connectors (1)" })).toBeTruthy();
+  });
+  it("opens actual file/changes/browser panes and keeps stop separate", () => {
+    const data = props(); render(<CodeSessionRail {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "result.md" }));
+    expect(data.onOpenFile).toHaveBeenCalledWith("reports/result.md");
+    expect(panel.openTool).toHaveBeenLastCalledWith("files");
+    fireEvent.click(screen.getByRole("button", { name: "Commit…" }));
+    expect(panel.openTool).toHaveBeenLastCalledWith("git");
+    fireEvent.click(screen.getByRole("button", { name: "Open server Dev server" }));
+    expect(panel.openPage).toHaveBeenCalledWith("http://localhost:3000");
+    expect(data.tasks.stop).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Stop server Dev server" }));
+    expect(data.tasks.stop).toHaveBeenCalledWith("task");
+  });
+  it.each(["before", "after"] as const)("reorders cards %s the target only from the grip and keeps keyboard controls", position => {
+    render(<CodeSessionRail {...props()} />);
+    const source = screen.getByRole("region", { name: "Changes (2)" });
+    const target = screen.getByRole("region", { name: "Environment" });
+    const grip = screen.getByRole("button", { name: "Reorder Changes" });
+    const clientY = position === "before" ? 125 : 175;
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ left: 0, right: 200, width: 200, top: 100, bottom: 200, height: 100 } as DOMRect);
+    vi.mocked(document.elementFromPoint).mockReturnValue(target.querySelector("span"));
+    for (const element of [source, screen.getByRole("button", { name: "Changes (2)" })]) {
+      fireEvent.pointerDown(element, { button: 0, pointerId: 1, clientX: 20, clientY: 10 });
+      fireEvent.pointerMove(window, { pointerId: 1, clientX: 20, clientY });
+      fireEvent.pointerUp(window, { pointerId: 1, clientX: 20, clientY });
+      expect(source.hasAttribute("data-dragging")).toBe(false);
+      expect(JSON.parse(localStorage.getItem("nucode.code.sessionRail")!).order[0]).toBe("Environment");
+    }
+    fireEvent.pointerDown(grip.querySelector("svg")!, { button: 0, pointerId: 1, clientX: 20, clientY: 10 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 20, clientY });
+    expect(source.getAttribute("data-dragging")).toBe("true");
+    expect(grip.hasAttribute("draggable")).toBe(false);
+    expect(target.getAttribute("data-drop-edge")).toBe(position);
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 20, clientY });
+    fireEvent.click(target.querySelector("button")!);
+    expect(screen.getByRole("button", { name: "Environment" }).getAttribute("aria-expanded")).toBe("true");
+    expect(Array.from(document.querySelectorAll(".code-session-card-toggle")).slice(0, 2).map(el => el.textContent))
+      .toEqual(position === "before" ? ["Changes", "Environment"] : ["Environment", "Changes"]);
+    const order = () => JSON.parse(localStorage.getItem("nucode.code.sessionRail")!).order;
+    expect(order().slice(0, 2)).toEqual(position === "before" ? ["Changes", "Environment"] : ["Environment", "Changes"]);
+    fireEvent.keyDown(grip, { key: position === "before" ? "ArrowDown" : "ArrowUp" });
+    expect(order().slice(0, 2)).toEqual(position === "before" ? ["Environment", "Changes"] : ["Changes", "Environment"]);
+  });
+  it("opens connector configuration from a connector disclosure", () => {
+    const data = props(); render(<CodeSessionRail {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure Browser" }));
+    expect(data.onOpenSettings).toHaveBeenCalledWith("connectors");
+  });
+  it("keeps unavailable usage honest and cleanup available when Terminal is off", () => {
+    render(<CodeSessionRail {...props()} tasksEnabled={false} />);
+    expect(screen.getByText("Usage not reported yet")).toBeTruthy();
+    expect(screen.getByText("Skill inventory not reported")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop server Dev server" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start a background task" })).toBeNull();
+    expect(screen.getByText("Enable Terminal to start tasks.")).toBeTruthy();
+  });
+  it("saves a named folder profile and leaves the form open on failure", async () => {
+    const data = props(); vi.mocked(data.onSaveEnvironment).mockRejectedValueOnce(new Error("Disk full"));
+    render(<CodeSessionRail {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Save as profile" }));
+    expect(screen.getByLabelText("Name")).toBe(document.activeElement);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My setup" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Disk full"));
+    expect(data.onSaveEnvironment).toHaveBeenCalledWith("My setup", ["w"]);
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+  it("shows failed process actions instead of unhandled rejections", async () => {
+    const data = props(); vi.mocked(data.tasks.stop).mockRejectedValueOnce(new Error("Already exited"));
+    render(<CodeSessionRail {...data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop server Dev server" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Already exited"));
+  });
+});
+
+it("keeps empty sections compact, opens new output, and remembers explicit disclosure choices", () => {
+  const data = props();
+  const view = render(<CodeSessionRail {...data} outputs={[]} />);
+  expect(screen.queryByRole("button", { name: /^Outputs/ })).toBeNull();
+  expect(document.querySelector(".code-session-empty-summary")?.textContent).toContain("outputs");
+  view.rerender(<CodeSessionRail {...data} />);
+  expect(screen.getByRole("button", { name: "result.md" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Outputs (1)" }));
+  view.unmount(); render(<CodeSessionRail {...data} />);
+  expect(screen.queryByRole("button", { name: "result.md" })).toBeNull();
+});

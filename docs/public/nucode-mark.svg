@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-labelledby="title">
+  <title id="title">nucode mark</title>
+  <defs><linearGradient id="bg" x1="12" y1="8" x2="116" y2="125" gradientUnits="userSpaceOnUse"><stop stop-color="#b4a8ff"/><stop offset="1" stop-color="#7361ca"/></linearGradient></defs>
+  <rect x="4" y="4" width="120" height="120" rx="34" fill="url(#bg)"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="33.5" stroke="#fff" stroke-opacity=".25"/>
+  <path d="M30 40c4-5 8-6 10-2v38M40 58c1-13 8-21 18-21s17 8 17 21v30c0 11 5 17 14 17 4 0 7-1 10-4" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="98" cy="80" r="7" fill="#9aead7"/>
+</svg>

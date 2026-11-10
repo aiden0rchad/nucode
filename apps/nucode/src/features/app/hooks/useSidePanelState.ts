@@ -1,0 +1,279 @@
+import { useTauriEvent } from "./useTauriEvent";
+import { subscribeMenuViewAction, type MenuViewAction } from "@services/events";
+import { useFeatures } from "@settings/features";
+import { registerNativeOverlay } from "@/features/design-system/nativeOverlays";
+import { useSidebarState } from "@/features/layout/hooks/useSidebarState";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { browserRequest, subscribeBrowser } from "@services/tauri";
+import { matchesShortcut } from "@utils/shortcuts";
+import { isMacPlatform } from "@utils/platformPaths";
+import { useBrowserController } from "./useBrowserController";
+import { useResizablePanels } from "@/features/layout/hooks/useResizablePanels";
+import { defaultBrowserSettings, normalizeBrowserUrl, type BrowserState } from "@/features/browser/browser";
+import { dockPanes, initialDock, panelReducer, readPanel, workspaceLayout, type PanelTab, type PanelState } from "@/features/panels/panelState";
+import type { WorkspaceShellProps } from "@/features/panels/SidePanel";
+import type { PageStatuses } from "@/features/panels/PanelTabList";
+
+export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowserSettings.searchUrl, onNavigate, reservedShortcuts = [], dock = false, sessionRail }: Pick<WorkspaceShellProps, "scope" | "tools" | "searchUrl" | "onNavigate" | "reservedShortcuts" | "dock" | "sessionRail">) {
+  const features = useFeatures();
+  const load = (scope: string) => {
+    const state = readPanel(scope, tools.some(t => t.id === "task"));
+    const selectedBrowser = state.tabs.find(tab => tab.kind === "browser" && tab.id === (state.browserActive ?? state.active)) ?? state.tabs.find(tab => tab.kind === "browser");
+    return dock ? { ...state, ...(selectedBrowser ? { browserActive: selectedBrowser.id } : {}), open: state.dock ? state.open : state.open || Boolean(sessionRail), dock: state.dock ?? initialDock(state, Boolean(sessionRail)) } : state;
+  };
+  const [saved, setSaved] = useState<{ scope: string; state: PanelState; draftScope?: string }>(() => ({ scope, state: load(scope) }));
+  if (saved.scope !== scope) {
+    let carry = false;
+    try { carry = /^code:[^:]+:$/.test(saved.scope) && scope.startsWith(saved.scope) && scope.length > saved.scope.length && localStorage.getItem(`nucode.panel.${scope}`) === null; } catch { /* Storage may be unavailable. */ }
+    setSaved(carry ? { scope, state: saved.state, draftScope: saved.scope } : { scope, state: load(scope) });
+  } else if (dock && !saved.state.dock) setSaved({ scope, state: load(scope) });
+  const tabs = saved.state.tabs.filter(tab => tab.kind === "browser" ? features.browser : tools.some(t => t.id === tab.kind));
+  const state = { ...saved.state, tabs, active: tabs.some(t => t.id === saved.state.active) ? saved.state.active : null };
+  const currentScope = useRef(scope); currentScope.current = scope;
+  const preservePanelFocus = useRef(false);
+  // Tool calls pulse agent; five idle seconds delimit a turn. Handling it once
+  // also preserves any subsequent user dismissal or panel selection.
+  const agentTurn = useRef<{ handled: boolean; reset?: ReturnType<typeof setTimeout> }>({ handled: false });
+  const update = useCallback((fn: (state: PanelState) => PanelState) => {
+    preservePanelFocus.current = false;
+    setSaved(previous => ({ ...previous, state: fn(previous.state) }));
+  }, []);
+  const browser = useBrowserController(false);
+  const [expanded, setExpanded] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const resize = useResizablePanels(windowWidth);
+  const { sidebarWidth, sidebarCollapsed, setSidebarCollapsed } = useSidebarState();
+  const layout = workspaceLayout(windowWidth, sidebarWidth, sidebarCollapsed, resize.rightPanelWidth, !dock && state.open && !expanded);
+  const narrow = layout.sidebarOverlay;
+  const collapseRef = useRef(setSidebarCollapsed); collapseRef.current = setSidebarCollapsed;
+  useEffect(() => { if (narrow) collapseRef.current(true); }, [narrow]);
+  useEffect(() => {
+    const resizeWindow = () => setWindowWidth(resize.appRef.current?.getBoundingClientRect().width || window.innerWidth);
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(resizeWindow);
+    if (resize.appRef.current) observer?.observe(resize.appRef.current);
+    resizeWindow();
+    window.addEventListener("resize", resizeWindow);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resizeWindow); };
+  }, [resize.appRef]);
+  const overlay = !dock && !expanded && layout.panelOverlay;
+  const panelRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!state.open || !(dock || expanded) || !narrow || sidebarCollapsed) return;
+    const sidebar = mainRef.current?.querySelector<HTMLElement>(":scope > :is(.app.layout-desktop, .chat-layout) > .sidebar, :scope > .app.layout-tablet > .tablet-projects .sidebar");
+    if (sidebar) return registerNativeOverlay(sidebar);
+  }, [dock, expanded, state.open, narrow, sidebarCollapsed, scope, windowWidth]);
+  useEffect(() => {
+    if (!overlay || !state.open) return;
+    const preserveFocus = preservePanelFocus.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const main = mainRef.current;
+    if (!preserveFocus) {
+      main?.setAttribute("inert", "");
+      panelRef.current?.focus();
+    }
+    const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key === "Escape") { event.preventDefault(); update(s => ({ ...s, open: false })); }
+      if (event.key === "Tab" && panelRef.current?.contains(document.activeElement)) {
+        const items = [...panelRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter(el => !el.closest('[hidden]') && el.getClientRects().length);
+        const first = items[0], last = items[items.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => { main?.removeAttribute("inert"); window.removeEventListener("keydown", key); if (!preserveFocus && previousFocus?.isConnected) previousFocus.focus(); };
+  }, [overlay, state.open, update]);
+  useEffect(() => {
+    if (!expanded || !state.open || preservePanelFocus.current) return;
+    const covered = [...(mainRef.current?.querySelectorAll<HTMLElement>(":scope > :is(.app, .chat-layout) > :is(.main, .chat-main, .tablet-main), :scope > .app > .compact-shell") ?? [])];
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const restoreFocus = previousFocus && covered.some(element => element.contains(previousFocus));
+    const wasInert = covered.map(element => element.hasAttribute("inert"));
+    covered.forEach(element => element.setAttribute("inert", ""));
+    if (restoreFocus) panelRef.current?.focus();
+    return () => {
+      covered.forEach((element, index) => { if (!wasInert[index]) element.removeAttribute("inert"); });
+      if (restoreFocus && previousFocus.isConnected && panelRef.current?.contains(document.activeElement)) previousFocus.focus();
+    };
+  }, [expanded, state.open, scope, windowWidth]);
+  const [address, setAddress] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const opening = useRef(false);
+  // A failed page open is shown until that browser recovers (for example through the page's Retry).
+  const pageOpenFailed = useRef(false);
+  const requestedSelection = useRef<string | undefined>(undefined);
+  const [recent, setRecent] = useState<{ url: string; title: string; favicon?: string }[]>(() => {
+    try { const items = JSON.parse(localStorage.getItem("nucode.browser.recent") ?? "[]"); return Array.isArray(items) ? items.filter(t => t && typeof t.url === "string" && /^https?:/.test(t.url) && typeof t.title === "string").slice(0, 4) : []; } catch { return []; }
+  });
+  const latest = useRef<BrowserState>({ tabs: [], active: "" });
+  const [pageStatuses, setPageStatuses] = useState<PageStatuses>({});
+  const restoring = useRef(new Set<string>());
+  const receivedBrowserState = useRef(false);
+  const pending = useRef<{ id: string; scope: string; previous: Set<string>; tab: PanelTab } | null>(null);
+  // A failed open may still have created a native page whose state arrives later; bind it, never append it.
+  const orphan = useRef<typeof pending.current>(null);
+  const toolRef = useRef(tools); toolRef.current = tools;
+  const history = useRef([scope]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const historyPosition = useRef(0);
+  useEffect(() => {
+    if (history.current[historyPosition.current] !== scope) { history.current = [...history.current.slice(0, historyPosition.current + 1), scope]; historyPosition.current = history.current.length - 1; setHistoryIndex(historyPosition.current); }
+  }, [scope]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(`nucode.panel.${saved.scope}`, JSON.stringify(saved.state));
+      if (saved.draftScope) {
+        localStorage.setItem(`nucode.panel.${saved.draftScope}`, JSON.stringify({ tabs: [], active: null, open: false }));
+        setSaved(previous => previous === saved ? { scope: previous.scope, state: previous.state } : previous);
+      }
+    } catch (e) { setError(`Could not save panel tabs: ${e}`); }
+  }, [saved]);
+  useEffect(() => {
+    if (scope.startsWith("code:")) window.dispatchEvent(new CustomEvent("nucode:panel-visibility", { detail: state.open }));
+  }, [scope, state.open]);
+  useEffect(() => {
+    if (!features.browser) return;
+    let disposed = false; let stop: (() => void) | undefined;
+    void subscribeBrowser(value => {
+      if (disposed) return;
+      const newPages = value.tabs.filter(page => !latest.current.tabs.some(old => old.id === page.id));
+      const hadSnapshot = receivedBrowserState.current;
+      receivedBrowserState.current = true;
+      const previousActive = latest.current.active;
+      latest.current = value;
+      if (value.agent) {
+        clearTimeout(agentTurn.current.reset);
+        agentTurn.current.reset = undefined;
+      } else if (agentTurn.current.reset === undefined) {
+        agentTurn.current.reset = setTimeout(() => { agentTurn.current = { handled: false }; }, 5000);
+      }
+      const activePage = value.tabs.find(page => page.id === value.active);
+      const reveal = value.backend === "native" && value.agent && !agentTurn.current.handled && currentScope.current.startsWith("code:") && activePage;
+      if (reveal) {
+        agentTurn.current.handled = true;
+        preservePanelFocus.current = true;
+      }
+      const statuses = Object.fromEntries(value.tabs.map(page => [page.id, { loading: page.loading, ...(page.error ? { error: page.error } : {}) }]));
+      setPageStatuses(previous => JSON.stringify(previous) === JSON.stringify(statuses) ? previous : statuses);
+      const request = pending.current ?? orphan.current;
+      const created = request && value.tabs.find(t => t.id === value.active && !request.previous.has(t.id));
+      if (created && request.tab.url && request.tab.url !== "about:blank") restoring.current.add(created.id);
+      for (const page of value.tabs) if (page.url !== "about:blank") restoring.current.delete(page.id);
+      if (created && request && request.scope !== currentScope.current) {
+        try {
+          const restored = panelReducer(readPanel(request.scope), { type: "open", tab: { ...request.tab, target: created.id, url: request.tab.url || created.url, title: created.title || "New page" } });
+          localStorage.setItem(`nucode.panel.${request.scope}`, JSON.stringify(restored));
+        } catch (e) { setError(`Could not save browser tab: ${e}`); }
+      }
+      setSaved(previous => {
+        const tabs = previous.state.tabs.map(tab => {
+          if (tab.kind !== "browser") return tab;
+          const page = value.tabs.find(t => t.id === tab.target) ?? (created && request?.scope === previous.scope && request.id === tab.id ? created : undefined);
+          return page ? { ...tab, target: page.id, ...(restoring.current.has(page.id) ? {} : { url: page.url, title: page.title || "New page" }) } : tab;
+        });
+        if (!request && hadSnapshot) {
+          for (const page of newPages) if (!tabs.some(tab => tab.target === page.id)) tabs.push({ id: page.id, kind: "browser", title: page.title || "New page", url: page.url, target: page.id });
+        }
+        if (reveal) {
+          const tab = tabs.find(tab => tab.kind === "browser" && tab.target === activePage.id) ?? { id: activePage.id, kind: "browser", title: activePage.title || "New page", url: activePage.url, target: activePage.id };
+          return { ...previous, state: panelReducer({ ...previous.state, tabs }, { type: "open", tab }) };
+        }
+        const followActive = created ? previous.state.browserActive === request?.id : !request && hadSnapshot && previousActive !== value.active;
+        const browserActive = dock && followActive && tabs.some(tab => tab.kind === "browser" && tab.target === value.active) ? tabs.find(tab => tab.kind === "browser" && tab.target === value.active)?.id : previous.state.browserActive;
+        return JSON.stringify(tabs) === JSON.stringify(previous.state.tabs) && browserActive === previous.state.browserActive ? previous : { ...previous, state: { ...previous.state, tabs, ...(browserActive ? { browserActive } : {}) } };
+      });
+      if (created) { pending.current = null; orphan.current = null; }
+      const page = value.tabs.find(t => t.id === value.active);
+      if (pageOpenFailed.current && page && !page.error && !value.error) { pageOpenFailed.current = false; setError(""); }
+      if (page && /^https?:/.test(page.url)) setRecent(previous => {
+        if (previous[0]?.url === page.url && previous[0]?.title === page.title && previous[0]?.favicon === (page.favicon?.startsWith("data:image/") ? page.favicon : undefined)) return previous;
+        const next = [{ url: page.url, title: page.title || page.url, favicon: page.favicon?.startsWith("data:image/") ? page.favicon : undefined }, ...previous.filter(t => t.url !== page.url)].slice(0, 4);
+        try { localStorage.setItem("nucode.browser.recent", JSON.stringify(next)); } catch { /* Suggestions are optional when storage is full. */ }
+        return next;
+      });
+    }).then(unsubscribe => { if (disposed) unsubscribe(); else stop = unsubscribe; }).catch(e => { if (!disposed) setError(String(e)); });
+    return () => { disposed = true; stop?.(); clearTimeout(agentTurn.current.reset); agentTurn.current.reset = undefined; };
+  }, [features.browser, dock]);
+  const openTool = useCallback((id: string, preserveActive = false) => {
+    const tool = toolRef.current.find(t => t.id === id);
+    if (tool) update(s => {
+      const next = panelReducer(s, { type: "open", tab: { id, kind: id, title: tool.label, ...(tool.target ? { target: tool.target } : {}) } });
+      return preserveActive && s.tabs.some(t => t.id === id) ? { ...next, active: s.active, open: s.open } : next;
+    });
+  }, [update]);
+  const closeTool = useCallback((id: string) => update(s => panelReducer(s, { type: "close", id })), [update]);
+  const active = state.tabs.find(t => t.id === state.active);
+  const activeId = active?.id, activeKind = active?.kind, activeTarget = active?.target;
+  const activeToolVisible = !dock || Boolean(activeKind && state.dock && dockPanes(state.dock.tree).includes(activeKind));
+  useEffect(() => { if (state.open && activeToolVisible && activeKind && activeKind !== "browser") toolRef.current.find(t => t.id === activeKind)?.onOpen?.({ id: activeId!, kind: activeKind, title: "", target: activeTarget }); }, [scope, state.open, activeToolVisible, activeId, activeKind, activeTarget]);
+  const openPage = useCallback(async (input = "about:blank", existing?: PanelTab) => {
+    if (!features.browser) return;
+    if (opening.current || pending.current) return;
+    opening.current = true;
+    pageOpenFailed.current = false;
+    orphan.current = null;
+    setBusy(true); setError("");
+    try {
+      const url = normalizeBrowserUrl(input, searchUrl);
+      await browserRequest({ action: "attach" });
+      if (currentScope.current !== scope) return;
+      if (existing?.target && latest.current.tabs.some(t => t.id === existing.target)) { await browserRequest({ action: "activate", id: existing.target }); return; }
+      const tab = existing ?? { id: crypto.randomUUID(), kind: "browser", title: "New page", url };
+      requestedSelection.current = JSON.stringify([scope, tab.id]);
+      pending.current = { id: tab.id, scope, previous: new Set(latest.current.tabs.map(t => t.id)), tab };
+      update(s => panelReducer(s, { type: "open", tab }));
+      await browserRequest({ action: "new" });
+      if (url !== "about:blank") await browserRequest({ action: "navigate", url });
+      setAddress("");
+    } catch (e) { orphan.current = pending.current; pending.current = null; pageOpenFailed.current = true; setError(String(e)); }
+    finally { opening.current = false; setBusy(false); }
+  }, [scope, searchUrl, update, features.browser]);
+  const pageRef = useRef(openPage); pageRef.current = openPage;
+  const selectedBrowser = state.tabs.find(tab => tab.kind === "browser" && tab.id === (state.browserActive ?? state.active)) ?? state.tabs.find(tab => tab.kind === "browser");
+  const browserVisible = dock ? state.open && Boolean(state.dock && dockPanes(state.dock.tree).includes("browser")) : state.open && activeKind === "browser";
+  const browserSelection = dock ? selectedBrowser : active;
+  const activeRef = useRef(browserSelection); activeRef.current = browserSelection;
+  const openingPage = busy || Boolean(pending.current);
+  useEffect(() => {
+    if (!browserVisible) { requestedSelection.current = undefined; return; }
+    const key = JSON.stringify([scope, browserSelection?.id]);
+    if (openingPage || requestedSelection.current === key) return;
+    requestedSelection.current = key;
+    const tab = activeRef.current;
+    if (tab?.kind === "browser") void pageRef.current(tab.url, tab);
+  }, [scope, browserVisible, browserSelection?.id, openingPage]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || reservedShortcuts.some(shortcut => matchesShortcut(e, shortcut))) return;
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "b") { e.preventDefault(); void pageRef.current(); }
+      if (matchesShortcut(e, isMacPlatform() ? "cmd+p" : "ctrl+p") && toolRef.current.some(t => t.id === "files")) { e.preventDefault(); openTool("files"); }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "g") { e.preventDefault(); openTool("git"); }
+    };
+    const toggle = (event: Event) => update(s => ({ ...s, open: typeof (event as CustomEvent).detail === "boolean" ? (event as CustomEvent<boolean>).detail : !s.open }));
+    window.addEventListener("nucode:panel-toggle", toggle);
+    window.addEventListener("keydown", key); return () => { window.removeEventListener("keydown", key); window.removeEventListener("nucode:panel-toggle", toggle); };
+  }, [openTool, update, reservedShortcuts]);
+  const close = async (tab: PanelTab) => {
+    try {
+      if (tab.kind === "browser" && tab.target && latest.current.tabs.some(t => t.id === tab.target)) await browserRequest({ action: "close", id: tab.target });
+      toolRef.current.find(t => t.id === tab.kind)?.onClose?.();
+      update(s => panelReducer(s, { type: "close", id: tab.id }));
+    } catch (e) { setError(String(e)); }
+  };
+  const navigate = (index: number) => { historyPosition.current = index; setHistoryIndex(index); onNavigate?.(history.current[index]); };
+  useTauriEvent<MenuViewAction>(subscribeMenuViewAction, action => {
+    if (action === "toggle_side_panel") update(s => ({ ...s, open: !s.open }));
+    if (action === "new_browser_tab") void openPage();
+    if (action === "back" && onNavigate && historyIndex > 0) navigate(historyIndex - 1);
+    if (action === "forward" && onNavigate && historyIndex < history.current.length - 1) navigate(historyIndex + 1);
+    if ((action === "previous_tab" || action === "next_tab") && state.tabs.length) {
+      const index = state.tabs.findIndex(tab => tab.id === state.active);
+      const next = (index + (action === "next_tab" ? 1 : -1) + state.tabs.length) % state.tabs.length;
+      update(s => panelReducer(s, { type: "select", id: state.tabs[next].id }));
+    }
+  });
+  return { state, update, browser, pageStatuses, resize, layout, overlay, panelRef, mainRef, expanded, setExpanded, address, setAddress, error, busy: openingPage, recent, pending, history, historyIndex, openTool, closeTool, active, openPage, close, navigate };
+}

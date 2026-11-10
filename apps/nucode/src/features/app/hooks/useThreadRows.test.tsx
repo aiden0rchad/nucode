@@ -1,0 +1,186 @@
+// @vitest-environment jsdom
+import { renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import type { ThreadSummary } from "../../../types";
+import { useThreadRows } from "./useThreadRows";
+
+describe("useThreadRows", () => {
+  it("nests persisted side chats and never promotes an orphan side chat to a root", () => {
+    const parent = { id: "main", name: "Main", updatedAt: 1 };
+    const side = { id: "side", name: "Side", updatedAt: 2, sideOf: { threadId: "main", workspaceId: "ws", atItemId: null } };
+    const { result } = renderHook(() => useThreadRows({}));
+    const rows = result.current.getThreadRows([side, parent], true, "ws", () => null);
+    expect(rows.unpinnedRows.map(r => [r.thread.id, r.depth])).toEqual([["main", 0], ["side", 1]]);
+    expect(result.current.getThreadRows([side], true, "ws", () => null).unpinnedRows).toEqual([]);
+  });
+  it("reuses cached results for identical inputs and cache version", () => {
+    const threads: ThreadSummary[] = [
+      { id: "thread-a", name: "A", updatedAt: 1 },
+      { id: "thread-b", name: "B", updatedAt: 2 },
+      { id: "thread-c", name: "C", updatedAt: 3 },
+    ];
+    const getPinTimestamp = vi.fn((workspaceId: string, threadId: string) => {
+      if (workspaceId === "ws-1" && threadId === "thread-a") {
+        return 100;
+      }
+      return null;
+    });
+    const { result } = renderHook(() => useThreadRows({}));
+
+    const first = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      7,
+    );
+    const second = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      7,
+    );
+
+    expect(second).toBe(first);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(3);
+
+    const third = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      8,
+    );
+    expect(third).not.toBe(first);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(6);
+
+    const thirdRepeat = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      8,
+    );
+    expect(thirdRepeat).toBe(third);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(6);
+  });
+
+  it("does not retain stale pin-version cache entries", () => {
+    const threads: ThreadSummary[] = [
+      { id: "thread-a", name: "A", updatedAt: 1 },
+      { id: "thread-b", name: "B", updatedAt: 2 },
+      { id: "thread-c", name: "C", updatedAt: 3 },
+    ];
+    const getPinTimestamp = vi.fn((workspaceId: string, threadId: string) => {
+      if (workspaceId === "ws-1" && threadId === "thread-a") {
+        return 100;
+      }
+      return null;
+    });
+    const { result } = renderHook(() => useThreadRows({}));
+
+    result.current.getThreadRows(threads, true, "ws-1", getPinTimestamp, 1);
+    result.current.getThreadRows(threads, true, "ws-1", getPinTimestamp, 2);
+    result.current.getThreadRows(threads, true, "ws-1", getPinTimestamp, 3);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(9);
+
+    // Reusing the latest version should be cached.
+    result.current.getThreadRows(threads, true, "ws-1", getPinTimestamp, 3);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(9);
+
+    // Returning to an older version recomputes, proving stale versions are not retained.
+    result.current.getThreadRows(threads, true, "ws-1", getPinTimestamp, 1);
+    expect(getPinTimestamp).toHaveBeenCalledTimes(12);
+  });
+
+  it("drops cached rows when thread parent relationships change", () => {
+    const threads: ThreadSummary[] = [
+      { id: "thread-root", name: "Root", updatedAt: 1 },
+      { id: "thread-child", name: "Child", updatedAt: 2 },
+    ];
+    const getPinTimestamp = vi.fn(() => null);
+    const { result, rerender } = renderHook(
+      ({ threadParentById }: { threadParentById: Record<string, string> }) =>
+        useThreadRows(threadParentById),
+      {
+        initialProps: { threadParentById: {} },
+      },
+    );
+
+    const beforeParenting = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      0,
+    );
+    rerender({
+      threadParentById: { "thread-child": "thread-root" },
+    });
+    const afterParenting = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      0,
+    );
+
+    expect(afterParenting).not.toBe(beforeParenting);
+    expect(afterParenting.unpinnedRows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thread-root", 0],
+      ["thread-child", 1],
+    ]);
+  });
+
+  it("hides subagent threads when no parent id is known", () => {
+    const threads: ThreadSummary[] = [
+      { id: "thread-root", name: "Root", updatedAt: 1 },
+      { id: "thread-subagent-orphan", name: "Orphan", updatedAt: 2, isSubagent: true },
+      { id: "thread-subagent-child", name: "Child", updatedAt: 3, isSubagent: true },
+    ];
+    const getPinTimestamp = vi.fn(() => null);
+    const { result } = renderHook(() =>
+      useThreadRows({ "thread-subagent-child": "thread-root" }),
+    );
+
+    const rows = result.current.getThreadRows(
+      threads,
+      true,
+      "ws-1",
+      getPinTimestamp,
+      0,
+    );
+
+    expect(rows.unpinnedRows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thread-root", 0],
+      ["thread-subagent-child", 1],
+    ]);
+  });
+});
+
+
+describe("manual thread order", () => {
+  const threads = ["p1", "p2", "p-new", "a", "child", "b", "c", "d", "new"].map((id, index) => ({ id, name: id, updatedAt: index }));
+  const parents = { child: "c" };
+  const pinTime = (_workspaceId: string, id: string) => id.startsWith("p") ? threads.findIndex(t => t.id === id) : null;
+  it("sorts unpinned roots, puts new roots first, keeps children nested and preserves pin order", () => {
+    const { result } = renderHook(() => useThreadRows(parents, () => ["p2", "p1", "d", "c", "b", "a"]));
+    const rows = result.current.getThreadRows(threads, true, "ws", pinTime);
+    expect(rows.pinnedRows.map(r => r.thread.id)).toEqual(["p1", "p2", "p-new"]);
+    expect(rows.unpinnedRows.map(r => [r.thread.id, r.depth])).toEqual([["new", 0], ["d", 0], ["c", 0], ["child", 1], ["b", 0], ["a", 0]]);
+    expect(result.current.getThreadRows(threads, false, "ws", pinTime).unpinnedRows.map(r => r.thread.id)).toEqual(["new", "d", "c", "child"]);
+  });
+  it("preserves today's order without a manual order and invalidates cached rows on writes", () => {
+    let order: string[] = [];
+    const getOrder = () => order;
+    const { result, rerender } = renderHook(({ version }) => useThreadRows(parents, getOrder, version), { initialProps: { version: 0 } });
+    const before = result.current.getThreadRows(threads, true, "ws", pinTime);
+    expect(before.pinnedRows.map(r => r.thread.id)).toEqual(["p1", "p2", "p-new"]);
+    expect(before.unpinnedRows.map(r => r.thread.id)).toEqual(["a", "b", "c", "child", "d", "new"]);
+    order = ["new", "d", "c", "b", "a"];
+    rerender({ version: 1 });
+    expect(result.current.getThreadRows(threads, true, "ws", pinTime).unpinnedRows.map(r => r.thread.id)).toEqual(["new", "d", "c", "child", "b", "a"]);
+  });
+});

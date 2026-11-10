@@ -1,0 +1,2038 @@
+import { useFeatures } from "@settings/features";
+import { exportMarkdownFile, getAppSettings, updateAppSettings } from "@services/tauri";
+import { buildThreadTranscript } from "@utils/threadText";
+import { Checkpoints } from "@/features/checkpoints/Checkpoints";
+import { useModeSettings } from "@/features/chat/ModeShell";
+import { AgentsContext, agentThreadDetails } from "@/features/agents/agents";
+import { useSideChats, sideChatQuote } from "@/features/sidechats/useSideChats";
+import { SideChatPane, SideChatSplit } from "@/features/sidechats/SideChatPane";
+import { ComposerPolicyProvider } from "@/features/composer/components/ComposerPolicy";
+import { useConversationPolicy } from "@/features/composer/hooks/useConversationPolicy";
+import { useEngines } from "@settings/engines";
+import { defaultAgentPolicy, mergePolicy, modelKey } from "@/features/settings/registry";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import successSoundUrl from "@/assets/success-notification.mp3";
+import errorSoundUrl from "@/assets/error-notification.mp3";
+import { MainAppShell } from "@app/components/MainAppShell";
+import { useThreads } from "@threads/hooks/useThreads";
+import { usePullRequestComposer } from "@/features/git/hooks/usePullRequestComposer";
+import { useAutoExitEmptyDiff } from "@/features/git/hooks/useAutoExitEmptyDiff";
+import { useModels } from "@/features/models/hooks/useModels";
+import { modelsForThread } from "@/features/models/utils/modelListResponse";
+import { useCollaborationModes } from "@/features/collaboration/hooks/useCollaborationModes";
+import { useCollaborationModeSelection } from "@/features/collaboration/hooks/useCollaborationModeSelection";
+import { useSkills } from "@/features/skills/hooks/useSkills";
+import { useCustomPrompts } from "@/features/prompts/hooks/useCustomPrompts";
+import { useBranchSwitcherShortcut } from "@/features/git/hooks/useBranchSwitcherShortcut";
+import { useRenameWorktreePrompt } from "@/features/workspaces/hooks/useRenameWorktreePrompt";
+import { useLayoutController } from "@app/hooks/useLayoutController";
+import { useUpdaterController } from "@app/hooks/useUpdaterController";
+import { setIssueReportContext } from "@/features/report/issueReportContext";
+import { useResponseRequiredNotificationsController } from "@app/hooks/useResponseRequiredNotificationsController";
+import { useErrorToasts } from "@/features/notifications/hooks/useErrorToasts";
+import { useComposerShortcuts } from "@/features/composer/hooks/useComposerShortcuts";
+import { useComposerMenuActions } from "@/features/composer/hooks/useComposerMenuActions";
+import { useComposerEditorState } from "@/features/composer/hooks/useComposerEditorState";
+import { useMainAppComposerWorkspaceState } from "@app/hooks/useMainAppComposerWorkspaceState";
+import { useMainAppGitState } from "@app/hooks/useMainAppGitState";
+import { useMainAppLayoutSurfaces } from "@app/hooks/useMainAppLayoutSurfaces";
+import { useMainAppLayoutNodes } from "@app/hooks/useMainAppLayoutNodes";
+import { useWorkspaceFromUrlPrompt } from "@/features/workspaces/hooks/useWorkspaceFromUrlPrompt";
+import { useWorkspaceController } from "@app/hooks/useWorkspaceController";
+import { useWorkspaceSelection } from "@/features/workspaces/hooks/useWorkspaceSelection";
+import { usePlanReadyActions } from "@app/hooks/usePlanReadyActions";
+import { useThreadRows } from "@app/hooks/useThreadRows";
+import { useInterruptShortcut } from "@app/hooks/useInterruptShortcut";
+import { useArchiveShortcut } from "@app/hooks/useArchiveShortcut";
+import { useCopyThread } from "@threads/hooks/useCopyThread";
+import { useTerminalController } from "@/features/terminal/hooks/useTerminalController";
+import { useWorkspaceLaunchScript } from "@app/hooks/useWorkspaceLaunchScript";
+import { useWorkspaceLaunchScripts } from "@app/hooks/useWorkspaceLaunchScripts";
+import { useWorktreeSetupScript } from "@app/hooks/useWorktreeSetupScript";
+import { effectiveCommitMessageModelId } from "@/features/git/utils/commitMessageModelSelection";
+import { useMobileServerSetup } from "@/features/mobile/hooks/useMobileServerSetup";
+import { useMainAppModals } from "@app/hooks/useMainAppModals";
+import { useMainAppDisplayNodes } from "@app/hooks/useMainAppDisplayNodes";
+import { useMainAppPromptActions } from "@app/hooks/useMainAppPromptActions";
+import { useMainAppShellProps } from "@app/hooks/useMainAppShellProps";
+import { useMainAppSidebarMenuOrchestration } from "@app/hooks/useMainAppSidebarMenuOrchestration";
+import { useMainAppSettingsActions } from "@app/hooks/useMainAppSettingsActions";
+import { useMainAppThreadCodexState } from "@app/hooks/useMainAppThreadCodexState";
+import { useMainAppWorktreeState } from "@app/hooks/useMainAppWorktreeState";
+import { useMainAppWorkspaceActions } from "@app/hooks/useMainAppWorkspaceActions";
+import { useMainAppWorkspaceLifecycle } from "@app/hooks/useMainAppWorkspaceLifecycle";
+import { useMainAppMobileThreadRefresh } from "@app/hooks/useMainAppMobileThreadRefresh";
+import type {
+  ComposerEditorSettings,
+  ServiceTier,
+  WorkspaceInfo,
+} from "@/types";
+import { useOpenAppIcons } from "@app/hooks/useOpenAppIcons";
+import { useNewAgentDraft } from "@app/hooks/useNewAgentDraft";
+import { useSystemNotificationThreadLinks } from "@app/hooks/useSystemNotificationThreadLinks";
+import { useThreadListSortKey } from "@app/hooks/useThreadListSortKey";
+import { useThreadListActions } from "@app/hooks/useThreadListActions";
+import { useRemoteThreadLiveConnection } from "@app/hooks/useRemoteThreadLiveConnection";
+import { useTrayRecentThreads } from "@app/hooks/useTrayRecentThreads";
+import { useTauriEvent } from "@app/hooks/useTauriEvent";
+import { useAppBootstrapOrchestration } from "@app/bootstrap/useAppBootstrapOrchestration";
+import {
+  useThreadCodexBootstrapOrchestration,
+  useThreadCodexSyncOrchestration,
+  useThreadSelectionHandlersOrchestration,
+  useThreadUiOrchestration,
+} from "@app/orchestration/useThreadOrchestration";
+import {
+  useWorkspaceInsightsOrchestration,
+  useWorkspaceOrderingOrchestration,
+} from "@app/orchestration/useWorkspaceOrchestration";
+import { useAppShellOrchestration } from "@app/orchestration/useLayoutOrchestration";
+import { normalizeCodexArgsInput } from "@/utils/codexArgsInput";
+import { subscribeTrayOpenThread } from "@services/events";
+import { WorkspaceShell, PanelToolRequest } from "@/features/panels/SidePanel";
+import { buildGitNodes } from "@/features/layout/hooks/layoutNodes/buildGitNodes";
+import { formatShortcut } from "@utils/shortcuts";
+import { AppModals } from "./AppModals";
+import { CodeSessionRail, CodeBackgroundTasks } from "@/features/session/CodeSessionRail";
+import { useCodeSessionData } from "@/features/session/useCodeSessionData";
+import { useManagedTasks } from "@/features/tasks/useManagedTasks";
+import { useCodeEnvironments } from "@/features/session/useCodeEnvironments";
+import { useBrowserContextDraft } from "@/features/session/useBrowserContextDraft";
+import { useFileLinkOpener } from "@/features/messages/hooks/useFileLinkOpener";
+
+const SettingsView = lazy(() =>
+  import("@settings/components/SettingsView").then((module) => ({
+    default: module.SettingsView,
+  })),
+);
+
+export default function MainApp({ settingsOnly = false, onCloseModeSettings, initialSettingsSection }: { settingsOnly?: boolean; initialSettingsSection?: import("@settings/components/settingsTypes").CodexSection; onCloseModeSettings?: () => void } = {}) {
+  const features = useFeatures();
+  const [selectedEngine, setSelectedEngine] = useState<import("@/types").EngineKind | undefined>();
+  const [environmentDraft, setEnvironmentDraft] = useState<{ workspaceId: string; profile: import("@/types").CodeEnvironment; revision: number } | null>(null);
+  const [requestedSessionFile, setRequestedSessionFile] = useState<{ workspaceId: string; path: string; requestId: number } | null>(null);
+  const {
+    appSettings,
+    setAppSettings,
+    doctor,
+    codexUpdate,
+    appSettingsLoading,
+    scaleShortcutTitle,
+    scaleShortcutText,
+    queueSaveSettings,
+    dictationModel,
+    dictationState,
+    dictationLevel,
+    dictationTranscript,
+    dictationError,
+    dictationHint,
+    dictationReady,
+    handleToggleDictation,
+    cancelDictation,
+    clearDictationTranscript,
+    clearDictationError,
+    clearDictationHint,
+    debugOpen,
+    setDebugOpen,
+    debugEntries,
+    showDebugButton,
+    addDebugEntry,
+    handleCopyDebug,
+    clearDebugEntries,
+  } = useAppBootstrapOrchestration();
+  useModeSettings(appSettingsLoading ? null : appSettings);
+  const {
+    threadListSortKey,
+    setThreadListSortKey,
+    threadListOrganizeMode,
+    setThreadListOrganizeMode,
+  } = useThreadListSortKey();
+  const [activeTab, setActiveTab] = useState<
+    "home" | "projects" | "codex" | "git" | "log"
+  >("codex");
+  const tabletTab =
+    activeTab === "projects" || activeTab === "home" ? "codex" : activeTab;
+  const {
+    workspaces,
+    workspaceGroups,
+    groupedWorkspaces,
+    getWorkspaceGroupName,
+    ungroupedLabel,
+    activeWorkspace,
+    activeWorkspaceId,
+    setActiveWorkspaceId,
+    addWorkspace,
+    addWorkspaceFromPath,
+    addWorkspaceFromGitUrl,
+    addWorkspacesFromPaths,
+    mobileRemoteWorkspacePathPrompt,
+    updateMobileRemoteWorkspacePathInput,
+    appendMobileRemoteWorkspacePathFromRecent,
+    cancelMobileRemoteWorkspacePathPrompt,
+    submitMobileRemoteWorkspacePathPrompt,
+    addCloneAgent,
+    addWorktreeAgent,
+    connectWorkspace,
+    markWorkspaceConnected,
+    updateWorkspaceSettings,
+    createWorkspaceGroup,
+    renameWorkspaceGroup,
+    moveWorkspaceGroup,
+    deleteWorkspaceGroup,
+    assignWorkspaceGroup,
+    removeWorkspace,
+    removeWorktree,
+    renameWorktree,
+    renameWorktreeUpstream,
+    deletingWorktreeIds,
+    hasLoaded,
+    refreshWorkspaces,
+  } = useWorkspaceController({
+    appSettings,
+    addDebugEntry,
+    queueSaveSettings,
+  });
+  const {
+    isMobileRuntime,
+    showMobileSetupWizard,
+    mobileSetupWizardProps,
+    handleMobileConnectSuccess,
+  } = useMobileServerSetup({
+    appSettings,
+    appSettingsLoading,
+    queueSaveSettings,
+    refreshWorkspaces,
+  });
+  const updaterEnabled = !isMobileRuntime;
+
+  const workspacesById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
+    [workspaces],
+  );
+  const {
+    threadCodexParamsVersion,
+    getThreadCodexParams,
+    patchThreadCodexParams,
+    accessMode,
+    setAccessMode,
+    preferredModelId,
+    setPreferredModelId,
+    preferredEffort,
+    setPreferredEffort,
+    preferredServiceTier,
+    setPreferredServiceTier,
+    preferredCollabModeId,
+    setPreferredCollabModeId,
+    preferredCodexArgsOverride,
+    setPreferredCodexArgsOverride,
+    threadCodexSelectionKey,
+    setThreadCodexSelectionKey,
+    activeThreadIdRef,
+    pendingNewThreadSeedRef,
+    persistThreadCodexParams,
+  } = useThreadCodexBootstrapOrchestration({
+    activeWorkspaceId,
+  });
+  const {
+    appRef,
+    isResizing,
+    sidebarWidth,
+    chatDiffSplitPositionPercent,
+    rightPanelWidth,
+    onSidebarResizeStart,
+    onChatDiffSplitPositionResizeStart,
+    onRightPanelResizeStart,
+    planPanelHeight,
+    onPlanPanelResizeStart,
+    terminalPanelHeight,
+    onTerminalPanelResizeStart,
+    debugPanelHeight,
+    onDebugPanelResizeStart,
+    isCompact,
+    isTablet,
+    isPhone,
+    sidebarCollapsed,
+    rightPanelCollapsed,
+    collapseSidebar,
+    expandSidebar,
+    collapseRightPanel,
+    expandRightPanel,
+    terminalOpen,
+    handleDebugClick,
+    handleToggleTerminal,
+    openTerminal,
+    closeTerminal: closeTerminalPanel,
+  } = useLayoutController({
+    activeWorkspaceId,
+    setActiveTab,
+    setDebugOpen,
+    toggleDebugPanelShortcut: appSettings.toggleDebugPanelShortcut,
+    toggleTerminalShortcut: appSettings.toggleTerminalShortcut,
+  });
+  const sidebarToggleProps = {
+    isCompact,
+    sidebarCollapsed,
+    rightPanelCollapsed,
+    onCollapseSidebar: collapseSidebar,
+    onExpandSidebar: expandSidebar,
+    onCollapseRightPanel: collapseRightPanel,
+    onExpandRightPanel: expandRightPanel,
+  };
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [modelPickerRequest, setModelPickerRequest] = useState(0);
+  const workspaceHomeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const getWorkspaceName = useCallback(
+    (workspaceId: string) => workspacesById.get(workspaceId)?.name,
+    [workspacesById],
+  );
+
+  const recordPendingThreadLinkRef = useRef<
+    (workspaceId: string, threadId: string) => void
+  >(() => {});
+
+  const { errorToasts, dismissErrorToast } = useErrorToasts();
+  const queueGitStatusRefreshRef = useRef<() => void>(() => {});
+  const handleThreadMessageActivity = useCallback(() => {
+    queueGitStatusRefreshRef.current();
+  }, []);
+
+  // Access mode is thread-scoped (best-effort persisted) and falls back to the app default.
+
+  const draftEnvironment = environmentDraft?.workspaceId === activeWorkspaceId && !activeThreadIdRef.current ? environmentDraft : null;
+  const {
+    models,
+    selectedModel,
+    selectedModelId,
+    setSelectedModelId,
+    reasoningSupported,
+    reasoningOptions,
+    selectedEffort,
+    setSelectedEffort, refreshModels,
+  } = useModels({
+    threadId: activeThreadIdRef.current,
+    activeWorkspace,
+    onDebug: addDebugEntry,
+    preferredModelId: draftEnvironment?.profile.modelId ?? preferredModelId ?? (modelKey(activeWorkspace?.settings.agentPolicy?.defaultModel ?? appSettings.agentPolicy?.defaultModel) || null),
+    preferredEffort,
+    selectionKey: draftEnvironment ? `${threadCodexSelectionKey}:environment:${draftEnvironment.revision}` : threadCodexSelectionKey,
+  });
+
+  useEffect(() => { void refreshModels(); }, [appSettings.providers, refreshModels]);
+
+  const threadEngines = useRef<Record<string, import("@/types").ThreadSummary[]>>({});
+  const activeEngine = threadEngines.current[activeWorkspaceId ?? ""]?.find(thread => thread.id === activeThreadIdRef.current)?.engine ?? selectedEngine ?? activeWorkspace?.settings.agentPolicy?.defaultEngine ?? appSettings.agentPolicy?.defaultEngine ?? "pi";
+  const {
+    collaborationModes,
+    selectedCollaborationMode,
+    selectedCollaborationModeId,
+    setSelectedCollaborationModeId,
+  } = useCollaborationModes({
+    activeWorkspace,
+    engine: activeEngine,
+    enabled: appSettings.collaborationModesEnabled,
+    preferredModeId: preferredCollabModeId,
+    selectionKey: threadCodexSelectionKey,
+    onDebug: addDebugEntry,
+  });
+
+  const [selectedCodexArgsOverride, setSelectedCodexArgsOverride] = useState<string | null>(
+    null,
+  );
+  const [selectedServiceTier, setSelectedServiceTier] = useState<
+    ServiceTier | null | undefined
+  >(undefined);
+  useEffect(() => {
+    setSelectedCodexArgsOverride(normalizeCodexArgsInput(preferredCodexArgsOverride));
+  }, [preferredCodexArgsOverride, threadCodexSelectionKey]);
+  useEffect(() => {
+    setSelectedServiceTier(preferredServiceTier);
+  }, [preferredServiceTier, threadCodexSelectionKey]);
+
+  const {
+    handleSelectModel,
+    handleSelectEffort,
+    handleSelectServiceTier,
+    handleSelectCollaborationMode,
+    handleSelectAccessMode,
+    handleSelectCodexArgsOverride,
+  } = useThreadSelectionHandlersOrchestration({
+    activeWorkspaceId,
+    appSettingsLoading,
+    setAppSettings,
+    queueSaveSettings,
+    activeThreadIdRef,
+    setSelectedModelId,
+    setSelectedEffort,
+    setSelectedServiceTier,
+    setSelectedCollaborationModeId,
+    setAccessMode,
+    setSelectedCodexArgsOverride,
+    persistThreadCodexParams,
+  });
+  const commitMessageModelId = useMemo(
+    () => effectiveCommitMessageModelId(models, appSettings.commitMessageModelId),
+    [models, appSettings.commitMessageModelId],
+  );
+
+  const composerShortcuts = {
+    modelShortcut: appSettings.composerModelShortcut,
+    accessShortcut: appSettings.composerAccessShortcut,
+    reasoningShortcut: appSettings.composerReasoningShortcut,
+    collaborationShortcut: appSettings.collaborationModesEnabled
+      ? appSettings.composerCollaborationShortcut
+      : null,
+    models,
+    collaborationModes,
+    selectedModelId,
+    onSelectModel: handleSelectModel,
+    selectedCollaborationModeId,
+    onSelectCollaborationMode: handleSelectCollaborationMode,
+    accessMode,
+    onSelectAccessMode: handleSelectAccessMode,
+    reasoningOptions,
+    selectedEffort,
+    onSelectEffort: handleSelectEffort,
+    selectedServiceTier: selectedServiceTier ?? null,
+    reasoningSupported,
+  };
+
+  useComposerShortcuts({
+    textareaRef: composerInputRef,
+    ...composerShortcuts,
+  });
+
+  useComposerShortcuts({
+    textareaRef: workspaceHomeTextareaRef,
+    ...composerShortcuts,
+  });
+
+  useComposerMenuActions({
+    models,
+    selectedModelId,
+    onSelectModel: handleSelectModel,
+    collaborationModes,
+    selectedCollaborationModeId,
+    onSelectCollaborationMode: handleSelectCollaborationMode,
+    accessMode,
+    onSelectAccessMode: handleSelectAccessMode,
+    reasoningOptions,
+    selectedEffort,
+    onSelectEffort: handleSelectEffort,
+    reasoningSupported,
+    onFocusComposer: () => composerInputRef.current?.focus(),
+  });
+  const { skills } = useSkills({ activeWorkspace, engine: activeEngine, onDebug: addDebugEntry });
+  const {
+    prompts,
+    createPrompt,
+    updatePrompt,
+    deletePrompt,
+    movePrompt,
+    getWorkspacePromptsDir,
+    getGlobalPromptsDir,
+  } = useCustomPrompts({ activeWorkspace, onDebug: addDebugEntry });
+  const resolvedModel = selectedModel?.model ?? null;
+  const resolvedEffort = reasoningSupported ? selectedEffort : null;
+
+  const {
+    handleThreadCodexMetadataDetected,
+    codexArgsOptions,
+    ensureWorkspaceRuntimeCodexArgs,
+    getThreadArgsBadge,
+  } = useMainAppThreadCodexState({
+    appCodexArgs: appSettings.codexArgs,
+    selectedCodexArgsOverride,
+    getThreadCodexParams,
+    patchThreadCodexParams,
+  });
+
+  const { collaborationModePayload } = useCollaborationModeSelection({
+    selectedCollaborationMode,
+    selectedCollaborationModeId,
+    selectedEffort: resolvedEffort,
+    resolvedModel,
+  });
+
+  const {
+    setActiveThreadId,
+    hasLocalThreadSnapshot,
+    historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
+    activeThreadId,
+    activeItems,
+    itemsByThread,
+    approvals,
+    userInputRequests,
+    threadsByWorkspace,
+    threadParentById,
+    isSubagentThread,
+    threadStatusById,
+    threadResumeLoadingById,
+    threadListLoadingByWorkspace,
+    threadListPagingByWorkspace,
+    threadListCursorByWorkspace,
+    activeTurnIdByThread,
+    tokenUsageByThread,
+    planByThread,
+    lastAgentMessageByThread,
+    pinnedThreadsVersion,
+    interruptTurn,
+    interruptThread,
+    removeThread,
+    pinThread,
+    unpinThread,
+    isThreadPinned,
+    getPinTimestamp,
+    renameThread,
+    startThreadForWorkspace,
+    listThreadsForWorkspaces,
+    listThreadsForWorkspace,
+    loadOlderThreadsForWorkspace,
+    resetWorkspaceThreads,
+    refreshThread,
+    sendUserMessage,
+    sendUserMessageToThread,
+    startFork,
+    startReview,
+    startUncommittedReview,
+    startResume,
+    startCompact,
+    startMcp,
+    startFast,
+    startStatus,
+    reviewPrompt,
+    closeReviewPrompt,
+    showPresetStep,
+    choosePreset,
+    highlightedPresetIndex,
+    setHighlightedPresetIndex,
+    highlightedBranchIndex,
+    setHighlightedBranchIndex,
+    highlightedCommitIndex,
+    setHighlightedCommitIndex,
+    handleReviewPromptKeyDown,
+    confirmBranch,
+    selectBranch,
+    selectBranchAtIndex,
+    selectCommit,
+    selectCommitAtIndex,
+    confirmCommit,
+    updateCustomInstructions,
+    confirmCustom,
+    handleApprovalDecision,
+    handleApprovalRemember,
+    handleUserInputSubmit,
+  } = useThreads({
+    engine: selectedEngine,
+    activeWorkspace,
+    onWorkspaceConnected: markWorkspaceConnected,
+    onDebug: addDebugEntry,
+    model: resolvedModel,
+    effort: resolvedEffort,
+    serviceTier: selectedServiceTier,
+    collaborationMode: collaborationModePayload,
+    onSelectServiceTier: handleSelectServiceTier,
+    accessMode,
+    ensureWorkspaceRuntimeCodexArgs,
+    reviewDeliveryMode: appSettings.reviewDeliveryMode,
+    steerEnabled: appSettings.steerEnabled,
+    threadTitleAutogenerationEnabled: appSettings.threadTitleAutogenerationEnabled,
+    chatHistoryScrollbackItems: appSettingsLoading
+      ? null
+      : appSettings.chatHistoryScrollbackItems,
+    customPrompts: prompts,
+    onMessageActivity: handleThreadMessageActivity,
+    threadSortKey: threadListSortKey,
+    onThreadCodexMetadataDetected: handleThreadCodexMetadataDetected,
+  });
+  const { connectionState: remoteThreadConnectionState, reconnectLive } =
+    useRemoteThreadLiveConnection({
+      backendMode: appSettings.backendMode,
+      activeWorkspace,
+      activeThreadId,
+      activeThreadHasLocalSnapshot: hasLocalThreadSnapshot(activeThreadId),
+      activeThreadIsProcessing: Boolean(
+        activeThreadId && threadStatusById[activeThreadId]?.isProcessing,
+      ),
+      refreshThread,
+      reconnectWorkspace: connectWorkspace,
+    });
+
+  const { mobileThreadRefreshLoading, handleMobileThreadRefresh } =
+    useMainAppMobileThreadRefresh({
+      activeWorkspace,
+      activeThreadId,
+      startThreadForWorkspace,
+      refreshThread,
+      reconnectLive,
+    });
+  const {
+    updaterState,
+    dismissUpdate,
+    postUpdateNotice,
+    dismissPostUpdateNotice,
+    handleTestNotificationSound,
+    handleTestSystemNotification,
+  } = useUpdaterController({
+    enabled: updaterEnabled,
+    autoCheckOnMount:
+      !appSettingsLoading && appSettings.automaticAppUpdateChecksEnabled,
+    notificationSoundsEnabled: appSettings.notificationSoundsEnabled,
+    systemNotificationsEnabled: appSettings.systemNotificationsEnabled,
+    subagentSystemNotificationsEnabled:
+      appSettings.subagentSystemNotificationsEnabled,
+    isSubagentThread,
+    getWorkspaceName,
+    onThreadNotificationSent: (workspaceId, threadId) =>
+      recordPendingThreadLinkRef.current(workspaceId, threadId),
+    onDebug: addDebugEntry,
+    successSoundUrl,
+    errorSoundUrl,
+  });
+  const gitState = useMainAppGitState({
+    activeWorkspace,
+    activeWorkspaceId,
+    activeItems,
+    activeThreadId,
+    activeTab,
+    tabletTab,
+    isCompact,
+    isTablet,
+    setActiveTab,
+    appSettings: {
+      preloadGitDiffs: appSettings.preloadGitDiffs,
+      gitDiffIgnoreWhitespaceChanges: appSettings.gitDiffIgnoreWhitespaceChanges,
+      splitChatDiffView: appSettings.splitChatDiffView,
+      reviewDeliveryMode: appSettings.reviewDeliveryMode,
+    },
+    addDebugEntry,
+    updateWorkspaceSettings,
+    commitMessageModelId,
+    connectWorkspace,
+    startThreadForWorkspace,
+    sendUserMessageToThread,
+  });
+  const {
+    activeWorkspaceRef,
+    activeWorkspaceIdRef,
+    queueGitStatusRefresh,
+    alertError,
+    centerMode,
+    setCenterMode,
+    selectedDiffPath,
+    setSelectedDiffPath,
+    gitPanelMode,
+    setGitPanelMode,
+    gitDiffViewStyle,
+    setGitDiffViewStyle,
+    filePanelMode,
+    selectedPullRequest,
+    setSelectedPullRequest,
+    selectedCommitSha,
+    diffSource,
+    setDiffSource,
+    gitLogEntries,
+    gitLogAheadEntries,
+    gitLogBehindEntries,
+    shouldLoadDiffs,
+    activeDiffs,
+    activeDiffLoading,
+    activeDiffError,
+    shouldLoadGitHubPanelData,
+    handleGitIssuesChange,
+    handleGitPullRequestsChange,
+    handleGitPullRequestDiffsChange,
+    handleGitPullRequestCommentsChange,
+    refreshGitRemote,
+    branches,
+    currentBranch,
+    isBranchSwitcherEnabled,
+    handleCheckoutBranch,
+    handleCreateGitHubRepo,
+    createGitHubRepoLoading,
+    handleInitGitRepo,
+    initGitRepoLoading,
+    isLaunchingPullRequestReview,
+    pullRequestReviewActions,
+    runPullRequestReview,
+  } = gitState;
+  queueGitStatusRefreshRef.current = queueGitStatusRefresh;
+  const { isExpanded: composerEditorExpanded, toggleExpanded: toggleComposerEditorExpanded } =
+    useComposerEditorState();
+
+  const composerEditorSettings = useMemo<ComposerEditorSettings>(
+    () => ({
+      preset: appSettings.composerEditorPreset,
+      expandFenceOnSpace: appSettings.composerFenceExpandOnSpace,
+      expandFenceOnEnter: appSettings.composerFenceExpandOnEnter,
+      fenceLanguageTags: appSettings.composerFenceLanguageTags,
+      fenceWrapSelection: appSettings.composerFenceWrapSelection,
+      autoWrapPasteMultiline: appSettings.composerFenceAutoWrapPasteMultiline,
+      autoWrapPasteCodeLike: appSettings.composerFenceAutoWrapPasteCodeLike,
+      continueListOnShiftEnter: appSettings.composerListContinuation,
+    }),
+    [
+      appSettings.composerEditorPreset,
+      appSettings.composerFenceExpandOnSpace,
+      appSettings.composerFenceExpandOnEnter,
+      appSettings.composerFenceLanguageTags,
+      appSettings.composerFenceWrapSelection,
+      appSettings.composerFenceAutoWrapPasteMultiline,
+      appSettings.composerFenceAutoWrapPasteCodeLike,
+      appSettings.composerListContinuation,
+    ],
+  );
+
+
+  useThreadCodexSyncOrchestration({
+    activeWorkspaceId,
+    activeThreadId,
+    appSettings: {
+      defaultAccessMode: appSettings.defaultAccessMode,
+      lastComposerModelId: appSettings.lastComposerModelId,
+      lastComposerReasoningEffort: appSettings.lastComposerReasoningEffort,
+    },
+    threadCodexParamsVersion,
+    getThreadCodexParams,
+    patchThreadCodexParams,
+    setThreadCodexSelectionKey,
+    setAccessMode,
+    setPreferredModelId,
+    setPreferredEffort,
+    setPreferredServiceTier,
+    setPreferredCollabModeId,
+    setPreferredCodexArgsOverride,
+    activeThreadIdRef,
+    pendingNewThreadSeedRef,
+    selectedModelId,
+    resolvedEffort,
+    selectedServiceTier,
+    accessMode,
+    selectedCollaborationModeId,
+    selectedCodexArgsOverride,
+  });
+
+  const { handleSetThreadListSortKey, handleRefreshAllWorkspaceThreads } =
+    useThreadListActions({
+      threadListSortKey,
+      setThreadListSortKey,
+      workspaces,
+      refreshWorkspaces,
+      listThreadsForWorkspaces,
+      resetWorkspaceThreads,
+    });
+
+  useResponseRequiredNotificationsController({
+    systemNotificationsEnabled: appSettings.systemNotificationsEnabled,
+    subagentSystemNotificationsEnabled:
+      appSettings.subagentSystemNotificationsEnabled,
+    isSubagentThread,
+    approvals,
+    userInputRequests,
+    getWorkspaceName,
+    onDebug: addDebugEntry,
+  });
+
+  const {
+    newAgentDraftWorkspaceId,
+    startingDraftThreadWorkspaceId,
+    isDraftModeForActiveWorkspace: isNewAgentDraftMode,
+    startNewAgentDraft,
+    clearDraftState,
+    clearDraftStateIfDifferentWorkspace,
+    runWithDraftStart,
+  } = useNewAgentDraft({
+    activeWorkspace,
+    activeWorkspaceId,
+    activeThreadId,
+  });
+  const { getThreadRows } = useThreadRows(threadParentById);
+
+  useTrayRecentThreads({
+    workspaces,
+    threadsByWorkspace,
+    isSubagentThread,
+  });
+
+  useAutoExitEmptyDiff({
+    centerMode,
+    autoExitEnabled: diffSource === "local",
+    activeDiffCount: activeDiffs.length,
+    activeDiffLoading,
+    activeDiffError,
+    activeThreadId,
+    isCompact,
+    setCenterMode,
+    setSelectedDiffPath,
+    setActiveTab,
+  });
+
+  const { handleCopyThread } = useCopyThread({
+    activeItems,
+    onDebug: addDebugEntry,
+  });
+
+  const {
+    renamePrompt: renameWorktreePrompt,
+    notice: renameWorktreeNotice,
+    upstreamPrompt: renameWorktreeUpstreamPrompt,
+    confirmUpstream: confirmRenameWorktreeUpstream,
+    openRenamePrompt: openRenameWorktreePrompt,
+    handleRenameChange: handleRenameWorktreeChange,
+    handleRenameCancel: handleRenameWorktreeCancel,
+    handleRenameConfirm: handleRenameWorktreeConfirm,
+  } = useRenameWorktreePrompt({
+    workspaces,
+    activeWorkspaceId,
+    renameWorktree,
+    renameWorktreeUpstream,
+    onRenameSuccess: (workspace) => {
+      resetWorkspaceThreads(workspace.id);
+      void listThreadsForWorkspace(workspace);
+      if (activeThreadId && activeWorkspaceId === workspace.id) {
+        void refreshThread(workspace.id, activeThreadId);
+      }
+    },
+  });
+
+  const handleOpenRenameWorktree = useCallback(() => {
+    if (activeWorkspace) {
+      openRenameWorktreePrompt(activeWorkspace.id);
+    }
+  }, [activeWorkspace, openRenameWorktreePrompt]);
+
+  const {
+    terminalTabs,
+    activeTerminalId,
+    onSelectTerminal,
+    onNewTerminal,
+    onCloseTerminal,
+    terminalState,
+    ensureTerminalWithTitle,
+    restartTerminalSession,
+    requestTerminalFocus,
+  } = useTerminalController({
+    activeWorkspaceId,
+    activeWorkspace,
+    terminalOpen,
+    onCloseTerminalPanel: closeTerminalPanel,
+    onDebug: addDebugEntry,
+  });
+
+  const ensureLaunchTerminal = useCallback(
+    (workspaceId: string) => ensureTerminalWithTitle(workspaceId, "launch", "Launch"),
+    [ensureTerminalWithTitle],
+  );
+
+  const openTerminalWithFocus = useCallback(() => {
+    if (!activeWorkspaceId) {
+      return;
+    }
+    requestTerminalFocus();
+    openTerminal();
+  }, [activeWorkspaceId, openTerminal, requestTerminalFocus]);
+
+  const handleToggleTerminalWithFocus = useCallback(() => {
+    if (!activeWorkspaceId) {
+      return;
+    }
+    if (!terminalOpen) {
+      requestTerminalFocus();
+    }
+    handleToggleTerminal();
+  }, [
+    activeWorkspaceId,
+    handleToggleTerminal,
+    requestTerminalFocus,
+    terminalOpen,
+  ]);
+
+  const launchScriptState = useWorkspaceLaunchScript({
+    activeWorkspace,
+    updateWorkspaceSettings,
+    openTerminal: openTerminalWithFocus,
+    ensureLaunchTerminal,
+    restartLaunchSession: restartTerminalSession,
+    terminalState,
+    activeTerminalId,
+  });
+
+  const launchScriptsState = useWorkspaceLaunchScripts({
+    activeWorkspace,
+    updateWorkspaceSettings,
+    openTerminal: openTerminalWithFocus,
+    ensureLaunchTerminal: (workspaceId, entry, title) => {
+      const label = entry.label?.trim() || entry.icon;
+      return ensureTerminalWithTitle(
+        workspaceId,
+        `launch:${entry.id}`,
+        title || `Launch ${label}`,
+      );
+    },
+    restartLaunchSession: restartTerminalSession,
+    terminalState,
+    activeTerminalId,
+  });
+
+  const worktreeSetupScriptState = useWorktreeSetupScript({
+    ensureTerminalWithTitle,
+    restartTerminalSession,
+    openTerminal,
+    onDebug: addDebugEntry,
+  });
+
+  const handleWorktreeCreated = useCallback(
+    async (worktree: WorkspaceInfo, _parentWorkspace?: WorkspaceInfo) => {
+      await worktreeSetupScriptState.maybeRunWorktreeSetupScript(worktree);
+    },
+    [worktreeSetupScriptState],
+  );
+
+  const { exitDiffView, selectWorkspace, selectHome } = useWorkspaceSelection({
+    workspaces,
+    isCompact,
+    activeWorkspaceId,
+    setActiveTab,
+    setActiveWorkspaceId,
+    updateWorkspaceSettings,
+    setCenterMode,
+    setSelectedDiffPath,
+  });
+
+  const resolveCloneProjectContext = useCallback(
+    (workspace: WorkspaceInfo) => {
+      const groupId = workspace.settings.groupId ?? null;
+      const group = groupId
+        ? appSettings.workspaceGroups.find((entry) => entry.id === groupId)
+        : null;
+      return {
+        groupId,
+        copiesFolder: group?.copiesFolder ?? null,
+      };
+    },
+    [appSettings.workspaceGroups],
+  );
+
+  const { handleMoveWorkspace, handleReorderWorkspace } = useWorkspaceOrderingOrchestration({
+    workspaces,
+    workspacesById,
+    updateWorkspaceSettings,
+  });
+
+  const {
+    handleSelectOpenAppId,
+    handleToggleAutomaticAppUpdateChecks,
+    persistProjectCopiesFolder,
+  } = useMainAppSettingsActions({
+    appSettings,
+    setAppSettings,
+    queueSaveSettings,
+  });
+
+  const openAppIconById = useOpenAppIcons(appSettings.openAppTargets);
+
+  const {
+    workspaceFromUrlPrompt,
+    openWorkspaceFromUrlPrompt,
+    closeWorkspaceFromUrlPrompt,
+    chooseWorkspaceFromUrlDestinationPath,
+    submitWorkspaceFromUrlPrompt,
+    updateWorkspaceFromUrlUrl,
+    updateWorkspaceFromUrlTargetFolderName,
+    clearWorkspaceFromUrlDestinationPath,
+    canSubmitWorkspaceFromUrlPrompt,
+  } = useWorkspaceFromUrlPrompt({
+    onSubmit: async (url, destinationPath, targetFolderName) => {
+      await handleAddWorkspaceFromGitUrl(url, destinationPath, targetFolderName);
+    },
+  });
+
+  const { appModalsProps, modalActions } = useMainAppModals({
+    settingsViewComponent: SettingsView,
+    workspaces,
+    workspaceGroups,
+    groupedWorkspaces,
+    ungroupedLabel,
+    activeWorkspace,
+    setActiveWorkspaceId,
+    branches,
+    currentBranch,
+    threadRename: {
+      threadsByWorkspace,
+      renameThread,
+    },
+    git: {
+      checkoutBranch: handleCheckoutBranch,
+      initGitRepo: handleInitGitRepo,
+      createGitHubRepo: handleCreateGitHubRepo,
+      refreshGitRemote,
+      initGitRepoLoading,
+      createGitHubRepoLoading,
+    },
+    workspacePrompts: {
+      addWorktreeAgent,
+      addCloneAgent,
+      connectWorkspace,
+      updateWorkspaceSettings,
+      selectWorkspace,
+      handleWorktreeCreated,
+      resolveCloneProjectContext,
+      persistProjectCopiesFolder,
+      onCompactActivate: isCompact ? () => setActiveTab("codex") : undefined,
+      onWorkspacePromptError: (message, kind) => {
+        addDebugEntry({
+          id: `${Date.now()}-client-add-${kind}-error`,
+          timestamp: Date.now(),
+          source: "error",
+          label: `${kind}/add error`,
+          payload: message,
+        });
+      },
+      mobileRemoteWorkspacePathPrompt,
+      updateMobileRemoteWorkspacePathInput,
+      appendMobileRemoteWorkspacePathFromRecent,
+      cancelMobileRemoteWorkspacePathPrompt,
+      submitMobileRemoteWorkspacePathPrompt,
+      openWorkspaceFromUrlPrompt,
+      workspaceFromUrl: {
+        workspaceFromUrlPrompt,
+        workspaceFromUrlCanSubmit: canSubmitWorkspaceFromUrlPrompt,
+        onWorkspaceFromUrlPromptUrlChange: updateWorkspaceFromUrlUrl,
+        onWorkspaceFromUrlPromptTargetFolderNameChange:
+          updateWorkspaceFromUrlTargetFolderName,
+        onWorkspaceFromUrlPromptChooseDestinationPath:
+          chooseWorkspaceFromUrlDestinationPath,
+        onWorkspaceFromUrlPromptClearDestinationPath:
+          clearWorkspaceFromUrlDestinationPath,
+        onWorkspaceFromUrlPromptCancel: closeWorkspaceFromUrlPrompt,
+        onWorkspaceFromUrlPromptConfirm: submitWorkspaceFromUrlPrompt,
+      },
+    },
+    settings: {
+      handleMoveWorkspace,
+      removeWorkspace,
+      createWorkspaceGroup,
+      renameWorkspaceGroup,
+      moveWorkspaceGroup,
+      deleteWorkspaceGroup,
+      assignWorkspaceGroup,
+      appSettings,
+      openAppIconById,
+      queueSaveSettings,
+      handleToggleAutomaticAppUpdateChecks,
+      doctor,
+      codexUpdate,
+      updateWorkspaceSettings,
+      scaleShortcutTitle,
+      scaleShortcutText,
+      handleTestNotificationSound,
+      handleTestSystemNotification,
+      handleMobileConnectSuccess,
+      dictationModel,
+    },
+  });
+
+  useBranchSwitcherShortcut({
+    shortcut: appSettings.branchSwitcherShortcut,
+    isEnabled: isBranchSwitcherEnabled,
+    onTrigger: modalActions.openBranchSwitcher,
+  });
+
+  const handleRenameThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      modalActions.openRenamePrompt(workspaceId, threadId);
+    },
+    [modalActions],
+  );
+
+  const showHome = !activeWorkspace;
+  const {
+    latestAgentRuns,
+    isLoadingLatestAgents,
+    usageMetric,
+    setUsageMetric,
+    usageWorkspaceId,
+    setUsageWorkspaceId,
+    usageWorkspaceOptions,
+    localUsageSnapshot,
+    isLoadingLocalUsage,
+    localUsageError,
+    refreshLocalUsage,
+  } = useWorkspaceInsightsOrchestration({
+    workspaces,
+    workspacesById,
+    hasLoaded,
+    showHome,
+    threadsByWorkspace,
+    lastAgentMessageByThread,
+    threadStatusById,
+    threadListLoadingByWorkspace,
+    getWorkspaceGroupName,
+  });
+
+  const activeTokenUsage = activeThreadId
+    ? tokenUsageByThread[activeThreadId] ?? null
+    : null;
+  const activePlan = activeThreadId
+    ? planByThread[activeThreadId] ?? null
+    : null;
+  const hasActivePlan = Boolean(
+    activePlan && (activePlan.steps.length > 0 || activePlan.explanation)
+  );
+  const composerWorkspaceState = useMainAppComposerWorkspaceState({
+    view: {
+      activeTab,
+      tabletTab,
+      centerMode,
+      isCompact,
+      isTablet,
+      rightPanelCollapsed,
+      filePanelMode,
+    },
+    workspace: {
+      activeWorkspace,
+      activeWorkspaceId,
+      isNewAgentDraftMode,
+      startingDraftThreadWorkspaceId,
+      threadsByWorkspace,
+    },
+    thread: {
+      activeThreadId,
+      activeItems,
+      itemsByThread,
+      threadStatusById,
+      activeTurnIdByThread,
+      userInputRequests,
+    },
+    settings: {
+      steerEnabled: appSettings.steerEnabled,
+      followUpMessageBehavior: appSettings.followUpMessageBehavior,
+
+      pauseQueuedMessagesWhenResponseRequired:
+        appSettings.pauseQueuedMessagesWhenResponseRequired,
+    },
+    models: {
+      models,
+      selectedModelId,
+      resolvedEffort,
+      selectedServiceTier,
+      collaborationModePayload,
+    },
+    refs: {
+      composerInputRef,
+      workspaceHomeTextareaRef,
+    },
+    actions: {
+      connectWorkspace,
+      startThreadForWorkspace,
+      sendUserMessage,
+      sendUserMessageToThread,
+      seedThreadCodexParams: patchThreadCodexParams,
+      startFork,
+      startReview,
+      startResume,
+      startCompact,
+      startMcp,
+      startFast,
+      startStatus,
+      addWorktreeAgent,
+      handleWorktreeCreated,
+      addDebugEntry,
+    },
+  });
+  const {
+    files,
+    setFileAutocompleteActive,
+    showWorkspaceHome,
+    showComposer,
+    canInterrupt,
+    recentThreadInstances,
+    recentThreadsUpdatedAt,
+    clearActiveImages,
+    removeImagesForThread,
+    handleSend,
+    setPrefillDraft,
+    clearDraftForThread,
+    workspaceHomeState,
+    agentMdState,
+  } = composerWorkspaceState;
+  const {
+    runs: workspaceRuns,
+    draft: workspacePrompt,
+    runMode: workspaceRunMode,
+    modelSelections: workspaceModelSelections,
+    error: workspaceRunError,
+    isSubmitting: workspaceRunSubmitting,
+    setDraft: setWorkspacePrompt,
+    setRunMode: setWorkspaceRunMode,
+    toggleModelSelection: toggleWorkspaceModelSelection,
+    setModelCount: setWorkspaceModelCount,
+    startRun: startWorkspaceRun,
+  } = workspaceHomeState;
+  const {
+    content: agentMdContent,
+    exists: agentMdExists,
+    truncated: agentMdTruncated,
+    isLoading: agentMdLoading,
+    isSaving: agentMdSaving,
+    error: agentMdError,
+    isDirty: agentMdDirty,
+    setContent: setAgentMdContent,
+    refresh: refreshAgentMd,
+    save: saveAgentMd,
+  } = agentMdState;
+  const promptActions = useMainAppPromptActions({
+    activeWorkspace,
+    connectWorkspace,
+    startThreadForWorkspace,
+    sendUserMessageToThread,
+    alertError,
+    createPrompt,
+    updatePrompt,
+    deletePrompt,
+    movePrompt,
+    getWorkspacePromptsDir,
+    getGlobalPromptsDir,
+  });
+  const worktreeState = useMainAppWorktreeState({
+    activeWorkspace,
+    workspacesById,
+    renameWorktreePrompt,
+    renameWorktreeNotice,
+    renameWorktreeUpstreamPrompt,
+    confirmRenameWorktreeUpstream,
+    handleOpenRenameWorktree,
+    handleRenameWorktreeChange,
+    handleRenameWorktreeCancel,
+    handleRenameWorktreeConfirm,
+  });
+  const { baseWorkspaceRef } = worktreeState;
+
+  useMainAppWorkspaceLifecycle({
+    activeTab,
+    isTablet,
+    setActiveTab,
+    workspaces,
+    hasLoaded,
+    connectWorkspace,
+    listThreadsForWorkspaces,
+    refreshWorkspaces,
+    backendMode: appSettings.backendMode,
+    activeWorkspace,
+    activeThreadId,
+    threadStatusById,
+    remoteThreadConnectionState,
+    refreshThread,
+  });
+
+  const {
+    handleAddWorkspace,
+    handleAddWorkspaceFromGitUrl,
+    handleAddAgent,
+    handleAddWorktreeAgent,
+    handleAddCloneAgent,
+    dropTargetRef: workspaceDropTargetRef,
+    isDragOver: isWorkspaceDropActive,
+    handleDragOver: handleWorkspaceDragOver,
+    handleDragEnter: handleWorkspaceDragEnter,
+    handleDragLeave: handleWorkspaceDragLeave,
+    handleDrop: handleWorkspaceDrop,
+  } = useMainAppWorkspaceActions({
+    workspaceActions: {
+      isCompact,
+      addWorkspace,
+      addWorkspaceFromPath,
+      addWorkspaceFromGitUrl,
+      addWorkspacesFromPaths,
+      setActiveThreadId,
+      setActiveTab,
+      exitDiffView,
+      selectWorkspace,
+      onStartNewAgentDraft: startNewAgentDraft,
+      openWorktreePrompt: modalActions.openWorktreePrompt,
+      openClonePrompt: modalActions.openClonePrompt,
+      composerInputRef,
+      onDebug: addDebugEntry,
+    },
+  });
+
+  useInterruptShortcut({
+    isEnabled: canInterrupt,
+    shortcut: appSettings.interruptShortcut,
+    onTrigger: () => {
+      void interruptTurn();
+    },
+  });
+
+  const selectedCommitEntry = useMemo(() => {
+    if (!selectedCommitSha) {
+      return null;
+    }
+    return (
+      [...gitLogAheadEntries, ...gitLogBehindEntries, ...gitLogEntries].find(
+        (entry) => entry.sha === selectedCommitSha,
+      ) ?? null
+    );
+  }, [gitLogAheadEntries, gitLogBehindEntries, gitLogEntries, selectedCommitSha]);
+
+  const {
+    handleSelectPullRequest,
+    resetPullRequestSelection,
+    composerContextActions,
+    composerSendLabel,
+    handleComposerSend,
+  } = usePullRequestComposer({
+    activeWorkspace,
+    selectedPullRequest,
+    selectedCommit: selectedCommitEntry,
+    filePanelMode,
+    gitPanelMode,
+    centerMode,
+    isCompact,
+    setSelectedPullRequest,
+    setDiffSource,
+    setSelectedDiffPath,
+    setCenterMode,
+    setGitPanelMode,
+    setPrefillDraft,
+    setActiveTab,
+    pullRequestReviewActions,
+    pullRequestReviewLaunching: isLaunchingPullRequestReview,
+    runPullRequestReview,
+    startReview,
+    clearActiveImages,
+    handleSend,
+  });
+
+  const {
+    handleComposerSendWithDraftStart,
+    handleSelectWorkspaceInstance,
+    handleOpenThreadLink,
+    handleArchiveActiveThread,
+  } = useThreadUiOrchestration({
+    activeWorkspaceId,
+    activeThreadId,
+    accessMode,
+    selectedServiceTier,
+    selectedCollaborationModeId,
+    selectedCodexArgsOverride,
+    pendingNewThreadSeedRef,
+    runWithDraftStart,
+    handleComposerSend,
+    clearDraftState,
+    exitDiffView,
+    resetPullRequestSelection,
+    selectWorkspace,
+    setActiveThreadId,
+    setActiveTab,
+    isCompact,
+    removeThread,
+    clearDraftForThread,
+    removeImagesForThread,
+  });
+
+  const handleOpenThreadLinkFromExternal = useCallback(
+    (workspaceId: string, threadId: string) => {
+      setActiveTab("codex");
+      handleOpenThreadLink(threadId, workspaceId);
+    },
+    [handleOpenThreadLink, setActiveTab],
+  );
+
+  const { recordPendingThreadLink, openThreadLinkOrQueue } =
+    useSystemNotificationThreadLinks({
+      hasLoadedWorkspaces: hasLoaded,
+      workspacesById,
+      refreshWorkspaces,
+      connectWorkspace,
+      openThreadLink: handleOpenThreadLinkFromExternal,
+    });
+
+  useTauriEvent(
+    subscribeTrayOpenThread,
+    ({ workspaceId, threadId }: { workspaceId: string; threadId: string }) => {
+      openThreadLinkOrQueue(workspaceId, threadId);
+    },
+  );
+
+  useEffect(() => {
+    recordPendingThreadLinkRef.current = recordPendingThreadLink;
+    return () => {
+      recordPendingThreadLinkRef.current = () => {};
+    };
+  }, [recordPendingThreadLink]);
+
+  const { handlePlanAccept, handlePlanSubmitChanges } = usePlanReadyActions({
+    activeWorkspace,
+    activeThreadId,
+    collaborationModes,
+    resolvedModel,
+    resolvedEffort,
+    connectWorkspace,
+    sendUserMessageToThread,
+    setSelectedCollaborationModeId,
+    persistThreadCodexParams,
+  });
+
+  const {
+    showGitDetail,
+    isThreadOpen,
+    dropOverlayActive,
+    dropOverlayText,
+    appClassName,
+    appStyle,
+  } = useAppShellOrchestration({
+    isCompact,
+    isPhone,
+    isTablet,
+    sidebarCollapsed,
+    rightPanelCollapsed,
+    isWorkspaceDropActive,
+    centerMode,
+    selectedDiffPath,
+    showComposer,
+    activeThreadId,
+    sidebarWidth,
+    chatDiffSplitPositionPercent,
+    rightPanelWidth,
+    planPanelHeight,
+    terminalPanelHeight,
+    debugPanelHeight,
+    appSettings,
+  });
+
+  const sidebarMenuOrchestration = useMainAppSidebarMenuOrchestration({
+    sidebarActions: {
+      openSettings: modalActions.openSettings,
+      resetPullRequestSelection,
+      clearDraftState,
+      clearDraftStateIfDifferentWorkspace,
+      selectHome,
+      exitDiffView,
+      selectWorkspace,
+      setActiveThreadId,
+      connectWorkspace,
+      isCompact,
+      setActiveTab,
+      workspacesById,
+      updateWorkspaceSettings,
+      removeThread,
+      clearDraftForThread,
+      removeImagesForThread,
+      refreshThread,
+      handleRenameThread,
+      removeWorkspace,
+      removeWorktree,
+      loadOlderThreadsForWorkspace,
+      listThreadsForWorkspace,
+    },
+    workspaceCycling: {
+      workspaces,
+      groupedWorkspaces,
+      threadsByWorkspace,
+      getThreadRows,
+      getPinTimestamp,
+      pinnedThreadsVersion,
+      activeWorkspaceIdRef,
+      activeThreadIdRef,
+      exitDiffView,
+      resetPullRequestSelection,
+      selectWorkspace,
+      setActiveThreadId,
+    },
+    appMenu: {
+      activeWorkspaceRef,
+      baseWorkspaceRef,
+      onAddWorkspace: handleAddWorkspace,
+      onAddWorkspaceFromUrl: openWorkspaceFromUrlPrompt,
+      onAddAgent: handleAddAgent,
+      onAddWorktreeAgent: handleAddWorktreeAgent,
+      onAddCloneAgent: handleAddCloneAgent,
+      onToggleDebug: handleDebugClick,
+      onToggleTerminal: handleToggleTerminalWithFocus,
+      sidebarCollapsed,
+      rightPanelCollapsed,
+      onExpandSidebar: expandSidebar,
+      onCollapseSidebar: collapseSidebar,
+      onExpandRightPanel: expandRightPanel,
+      onCollapseRightPanel: collapseRightPanel,
+    },
+    appSettings,
+    onDebug: addDebugEntry,
+  });
+  useArchiveShortcut({
+    isEnabled: isThreadOpen,
+    shortcut: appSettings.archiveThreadShortcut,
+    onTrigger: handleArchiveActiveThread,
+  });
+  const showCompactCodexThreadActions =
+    Boolean(activeWorkspace) &&
+    isCompact &&
+    ((isPhone && activeTab === "codex") || (isTablet && tabletTab === "codex"));
+  const showMobilePollingFetchStatus =
+    showCompactCodexThreadActions &&
+    Boolean(activeWorkspace?.connected) &&
+    appSettings.backendMode === "remote" &&
+    remoteThreadConnectionState === "polling";
+  const displayNodes = useMainAppDisplayNodes({
+    showCompactCodexThreadActions,
+    handleMobileThreadRefresh,
+    mobileThreadRefreshLoading,
+    centerMode,
+    gitDiffViewStyle,
+    setGitDiffViewStyle,
+    isCompact,
+    rightPanelCollapsed,
+    sidebarToggleProps,
+    workspaceHomeProps: activeWorkspace
+      ? {
+          workspace: activeWorkspace,
+          imageAttachments: composerWorkspaceState,
+          showGitInitBanner: false,
+          initGitRepoLoading,
+          onInitGitRepo: modalActions.openInitGitRepoPrompt,
+          runs: workspaceRuns,
+          recentThreadInstances,
+          recentThreadsUpdatedAt,
+          prompt: workspacePrompt,
+          onPromptChange: setWorkspacePrompt,
+          onStartRun: startWorkspaceRun,
+          runMode: workspaceRunMode,
+          onRunModeChange: setWorkspaceRunMode,
+          models,
+          selectedModelId,
+          onSelectModel: setSelectedModelId,
+          modelSelections: workspaceModelSelections,
+          onToggleModel: toggleWorkspaceModelSelection,
+          onModelCountChange: setWorkspaceModelCount,
+          collaborationModes,
+          selectedCollaborationModeId,
+          onSelectCollaborationMode: setSelectedCollaborationModeId,
+          engine: selectedEngine ?? activeWorkspace.settings.agentPolicy?.defaultEngine ?? appSettings.agentPolicy?.defaultEngine ?? "pi",
+          selectedEffort,
+          onSelectEffort: setSelectedEffort,
+          error: workspaceRunError,
+          isSubmitting: workspaceRunSubmitting,
+          activeWorkspaceId,
+          activeThreadId,
+          threadStatusById,
+          onSelectInstance: handleSelectWorkspaceInstance,
+          skills,
+
+
+          prompts,
+          files,
+          onFileAutocompleteActiveChange: setFileAutocompleteActive,
+          dictationEnabled: features.dictation && appSettings.dictationEnabled && dictationReady,
+          dictationState,
+          dictationLevel,
+          onToggleDictation: handleToggleDictation,
+          onCancelDictation: cancelDictation,
+          onOpenDictationSettings: () => modalActions.openSettings("dictation"),
+          dictationError,
+          onDismissDictationError: clearDictationError,
+          dictationHint,
+          onDismissDictationHint: clearDictationHint,
+          dictationTranscript,
+          onDictationTranscriptHandled: clearDictationTranscript,
+          textareaRef: workspaceHomeTextareaRef,
+          agentMdFilename: agentMdState.selectedFile,
+          agentMdStatuses: agentMdState.fileStatuses,
+          agentMdDetected: agentMdState.detected,
+          onAgentMdSelect: agentMdState.selectFile,
+          agentMdContent,
+          agentMdExists,
+          agentMdTruncated,
+          agentMdLoading,
+          agentMdSaving,
+          agentMdError,
+          agentMdDirty,
+          onAgentMdChange: setAgentMdContent,
+          onAgentMdRefresh: () => {
+            void refreshAgentMd();
+          },
+          onAgentMdSave: () => {
+            void saveAgentMd();
+          },
+        }
+      : null,
+  });
+  const { workspaceHomeNode } = displayNodes;
+  const layoutSurfaces = useMainAppLayoutSurfaces({
+    appSettings: {
+      composerCodeBlockCopyUseModifier:
+        appSettings.composerCodeBlockCopyUseModifier,
+      showMessageFilePath: appSettings.showMessageFilePath,
+      openAppTargets: appSettings.openAppTargets,
+      selectedOpenAppId: appSettings.selectedOpenAppId,
+
+      followUpMessageBehavior: appSettings.followUpMessageBehavior,
+      composerFollowUpHintEnabled: appSettings.composerFollowUpHintEnabled,
+      dictationEnabled: features.dictation && appSettings.dictationEnabled,
+      splitChatDiffView: appSettings.splitChatDiffView,
+      gitDiffIgnoreWhitespaceChanges:
+        appSettings.gitDiffIgnoreWhitespaceChanges,
+    },
+    workspaces,
+    groupedWorkspaces,
+    workspaceGroupsCount: workspaceGroups.length,
+    deletingWorktreeIds,
+    newAgentDraftWorkspaceId,
+    startingDraftThreadWorkspaceId,
+    threadsByWorkspace,
+    threadParentById,
+    threadStatusById,
+    threadResumeLoadingById,
+    threadListLoadingByWorkspace,
+    threadListPagingByWorkspace,
+    threadListCursorByWorkspace,
+    pinnedThreadsVersion,
+    threadListSortKey,
+    onSetThreadListSortKey: handleSetThreadListSortKey,
+    threadListOrganizeMode,
+    onSetThreadListOrganizeMode: setThreadListOrganizeMode,
+    onRefreshAllThreads: handleRefreshAllWorkspaceThreads,
+    activeWorkspace,
+    activeWorkspaceId,
+    activeThreadId,
+    activeItems,
+    userInputRequests,
+    approvals,
+    onDecision: handleApprovalDecision,
+    onRemember: handleApprovalRemember,
+    onUserInputSubmit: handleUserInputSubmit,
+    onPlanAccept: handlePlanAccept,
+    onPlanSubmitChanges: handlePlanSubmitChanges,
+    activePlan,
+    activeTokenUsage,
+    latestAgentRuns,
+    isLoadingLatestAgents,
+    localUsageSnapshot,
+    isLoadingLocalUsage,
+    localUsageError,
+    onRefreshLocalUsage: () => {
+      refreshLocalUsage()?.catch(() => {});
+    },
+    usageMetric,
+    onUsageMetricChange: setUsageMetric,
+    usageWorkspaceId,
+    usageWorkspaceOptions,
+    onUsageWorkspaceChange: setUsageWorkspaceId,
+    gitState,
+    selectedServiceTier: selectedServiceTier ?? null,
+    composerWorkspaceState,
+    promptActions,
+    worktreeState,
+    sidebarHandlers: sidebarMenuOrchestration,
+    displayNodes,
+    threadPinning: {
+      pinThread,
+      unpinThread,
+      isThreadPinned,
+      getPinTimestamp,
+      getThreadArgsBadge,
+    },
+    workspaceDrop: {
+      workspaceDropTargetRef,
+      isWorkspaceDropActive: dropOverlayActive,
+      workspaceDropText: dropOverlayText,
+      onWorkspaceDragOver: handleWorkspaceDragOver,
+      onWorkspaceDragEnter: handleWorkspaceDragEnter,
+      onWorkspaceDragLeave: handleWorkspaceDragLeave,
+      onWorkspaceDrop: handleWorkspaceDrop,
+    },
+    threadNavigation: {
+      exitDiffView,
+      clearDraftState,
+      selectWorkspace,
+      setActiveThreadId,
+      resetPullRequestSelection,
+      selectHome,
+    },
+    pullRequestComposer: {
+      composerSendLabel,
+      handleSelectPullRequest,
+    },
+    dictationUi: {
+      onOpenDictationSettings: () => modalActions.openSettings('dictation'),
+      dictationTranscript,
+      dictationError,
+      dictationHint,
+    },
+    openAppIconById,
+    openInitGitRepoPrompt: modalActions.openInitGitRepoPrompt,
+    startUncommittedReview,
+    handleAddWorkspace,
+    openWorkspaceFromUrlPrompt,
+    handleAddAgent,
+    handleAddWorktreeAgent,
+    handleAddCloneAgent,
+    handleOpenThreadLink,
+    handleSelectOpenAppId,
+    handleCopyThread,
+    handleToggleTerminalWithFocus,
+    launchScriptState,
+    launchScriptsState,
+    engine: (activeThreadId ? threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.engine : undefined) ?? selectedEngine ?? activeWorkspace?.settings.agentPolicy?.defaultEngine ?? appSettings.agentPolicy?.defaultEngine ?? "pi",
+    onSelectEngine: activeThreadId ? undefined : setSelectedEngine,
+    models: modelsForThread(models, threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)),
+    selectedModelId,
+    onSelectModel: handleSelectModel,
+    collaborationModes,
+    selectedCollaborationModeId,
+    onSelectCollaborationMode: handleSelectCollaborationMode,
+    reasoningOptions,
+    selectedEffort,
+    onSelectEffort: handleSelectEffort,
+    reasoningSupported,
+    codexArgsOptions,
+    selectedCodexArgsOverride,
+    onSelectCodexArgsOverride: handleSelectCodexArgsOverride,
+    accessMode,
+    onSelectAccessMode: handleSelectAccessMode,
+    skills,
+
+    prompts,
+    composerInputRef,
+    composerEditorSettings,
+    composerEditorExpanded,
+    onToggleComposerEditorExpanded: toggleComposerEditorExpanded,
+    dictationReady,
+    dictationState,
+    dictationLevel,
+    onToggleDictation: handleToggleDictation,
+    onCancelDictation: cancelDictation,
+    clearDictationTranscript,
+    clearDictationError,
+    clearDictationHint,
+    composerContextActions,
+    reviewPrompt,
+    closeReviewPrompt,
+    showPresetStep,
+    choosePreset,
+    highlightedPresetIndex,
+    setHighlightedPresetIndex,
+    highlightedBranchIndex,
+    setHighlightedBranchIndex,
+    highlightedCommitIndex,
+    setHighlightedCommitIndex,
+    handleReviewPromptKeyDown,
+    selectBranch,
+    selectBranchAtIndex,
+    confirmBranch,
+    selectCommit,
+    selectCommitAtIndex,
+    confirmCommit,
+    updateCustomInstructions,
+    confirmCustom,
+    handleComposerSendWithDraftStart,
+    interruptTurn,
+    terminalOpen,
+    debugOpen,
+    debugEntries,
+    terminalTabs,
+    activeTerminalId,
+    onSelectTerminal,
+    onNewTerminal,
+    onCloseTerminal,
+    terminalState,
+    onClearDebug: clearDebugEntries,
+    onCopyDebug: handleCopyDebug,
+    onResizeDebug: onDebugPanelResizeStart,
+    onResizeTerminal: onTerminalPanelResizeStart,
+    isCompact,
+    isPhone,
+    activeTab,
+    setActiveTab,
+    tabletTab,
+    showMobilePollingFetchStatus,
+    appModalsAboutOpen:
+      appModalsProps.settingsOpen && appModalsProps.settingsSection === 'about',
+    updaterState,
+    dismissUpdate,
+    postUpdateNotice,
+    dismissPostUpdateNotice,
+    errorToasts,
+    dismissErrorToast,
+    showDebugButton,
+    handleDebugClick,
+  });
+
+  threadEngines.current = threadsByWorkspace;
+  const parentEngine = threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.engine ?? selectedEngine ?? activeWorkspace?.settings.agentPolicy?.defaultEngine ?? appSettings.agentPolicy?.defaultEngine ?? "pi";
+  const teamEngines = useEngines();
+  const conversationTeam = features.subagents && !!activeThreadId && teamEngines.some(engine => engine.id === parentEngine && engine.protocol === "pi-rpc");
+  const projectPolicy = useMemo(() => mergePolicy(appSettings.agentPolicy ?? defaultAgentPolicy, activeWorkspace?.settings.agentPolicy), [appSettings.agentPolicy, activeWorkspace?.settings.agentPolicy]);
+  const team = useConversationPolicy(conversationTeam ? activeWorkspaceId : null, conversationTeam ? activeThreadId : null, !!activeWorkspace?.connected, projectPolicy);
+  const reportModel = selectedModel?.id ?? resolvedModel;
+  useEffect(() => setIssueReportContext({ engine: parentEngine, model: reportModel }), [parentEngine, reportModel]);
+  const sideChats = useSideChats({
+    workspace: activeWorkspace, threadId: activeThreadId,
+    threads: threadsByWorkspace[activeWorkspaceId ?? ""] ?? [],
+    engine: parentEngine, model: selectedModel?.id ?? resolvedModel,
+    refresh: refreshThread, list: listThreadsForWorkspace,
+  });
+
+  const {
+    sidebarNode,
+    messagesNode,
+    composerNode,
+    approvalToastsNode,
+    updateToastNode,
+    errorToastsNode,
+    homeNode,
+    mainHeaderNode,
+    desktopTopbarLeftNode,
+    tabletNavNode,
+    tabBarNode,
+    gitDiffPanelNode,
+    gitDiffViewerNode,
+    planPanelNode,
+    debugPanelNode,
+    debugPanelFullNode,
+    terminalDockNode,
+    compactEmptyCodexNode,
+    compactEmptyGitNode,
+    compactGitBackNode,
+  } = useMainAppLayoutNodes({
+    ...layoutSurfaces,
+    primary: {
+      ...layoutSurfaces.primary,
+      composerProps: layoutSurfaces.primary.composerProps ? {
+        ...layoutSurfaces.primary.composerProps,
+        modelPickerRequest,
+        onSideChat: features.sideChats && activeThreadId ? () => void sideChats.create() : undefined,
+        sideChatDisabledReason: !features.sideChats ? "Enable side chats in Settings to use /sidechat." : sideChats.disabledReason ?? (sideChats.creating ? "Creating side chat…" : null),
+      } : null,
+      sidebarProps: {
+        ...layoutSurfaces.primary.sidebarProps,
+        onReorderWorkspace: handleReorderWorkspace,
+        onMoveWorkspace: (id, direction) => handleMoveWorkspace(id, direction, true),
+        newThreadShortcut: appSettings.newAgentShortcut,
+        onSelectThread: (workspaceId, threadId) => {
+          const thread = threadsByWorkspace[workspaceId]?.find(t => t.id === threadId);
+          if (thread?.sideOf) {
+            layoutSurfaces.primary.sidebarProps.onSelectThread(workspaceId, thread.sideOf.threadId);
+            sideChats.open(thread);
+          } else {
+            layoutSurfaces.primary.sidebarProps.onSelectThread(workspaceId, threadId);
+          }
+        },
+      },
+      mainHeaderProps: layoutSurfaces.primary.mainHeaderProps ? {
+        ...layoutSurfaces.primary.mainHeaderProps,
+        model: threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.modelId ?? selectedModel?.id ?? resolvedModel,
+        extraActionsNode: <>
+          {sideChats.error && <span role="alert">{sideChats.error}</span>}
+          {layoutSurfaces.primary.mainHeaderProps.extraActionsNode}
+        </>,
+      } : null,
+      messagesProps: {
+        ...layoutSurfaces.primary.messagesProps,
+        onChangeModel: layoutSurfaces.primary.composerProps ? () => setModelPickerRequest(request => request + 1) : undefined,
+        onRetryMessage: async (text, images) => {
+          if (!activeWorkspace || !activeThreadId || threadStatusById[activeThreadId]?.isProcessing || threadStatusById[activeThreadId]?.isStopping) return false;
+          const result = await sendUserMessageToThread(activeWorkspace, activeThreadId, text, images, { skipPromptExpansion: true, sendIntent: "default" });
+          return result.status === "sent";
+        },
+        onSideChat: features.sideChats ? itemId => void sideChats.create(itemId) : undefined,
+        sideChatDisabledReason: sideChats.messageDisabledReason ?? (sideChats.creating ? "Creating side chat…" : undefined),
+        hasOlderHistory: Boolean(activeThreadId && historyCursorByThread[activeThreadId]),
+        isLoadingHistory: Boolean(activeThreadId && historyLoadingByThread[activeThreadId]),
+        historyError: activeThreadId ? historyErrorByThread[activeThreadId] : null,
+        onLoadOlderHistory: async () => {
+          if (activeWorkspaceId && activeThreadId) await loadOlderHistory(activeWorkspaceId, activeThreadId);
+        },
+      },
+    },
+  });
+
+  const sideChat = sideChats.current;
+  const [splitSideChatId, setSplitSideChatId] = useState<string | null>(null);
+  const sideChatInSplit = Boolean(features.sideChats && sideChat && splitSideChatId === sideChat.id);
+  useEffect(() => {
+    if (import.meta.env.MODE === "uipreview") {
+      void import("@/dev/uiPreview").then(({ selectSideChat }) => selectSideChat(activeThreadId, sideChats.open));
+    }
+  }, [activeThreadId, sideChats.open]);
+  useEffect(() => {
+    if (import.meta.env.MODE === "uipreview") {
+      void import("@/dev/uiPreview").then(({ selectCode }) => selectCode(
+        workspaces, layoutSurfaces.primary.sidebarProps.onSelectThread, modalActions.openSettings,
+      ));
+    }
+  }, [workspaces, layoutSurfaces.primary.sidebarProps.onSelectThread, modalActions.openSettings]);
+
+  const mainMessagesNode = showWorkspaceHome ? workspaceHomeNode : messagesNode;
+  const sideChatNode = sideChat && activeWorkspace ? (
+      <SideChatPane key={sideChat.id} chat={sideChat}
+        items={itemsByThread[sideChat.id] ?? []}
+        running={threadStatusById[sideChat.id]?.isProcessing ?? false}
+        processingStartedAt={threadStatusById[sideChat.id]?.processingStartedAt ?? null}
+        lastDurationMs={threadStatusById[sideChat.id]?.lastDurationMs ?? null}
+        models={models} parentModel={selectedModel} messageProps={layoutSurfaces.primary.messagesProps}
+        onClose={() => { setSplitSideChatId(null); sideChats.close(); }}
+        onRename={() => handleRenameThread(sideChat.workspaceId, sideChat.id)}
+        onOpenSplit={() => setSplitSideChatId(sideChat.id)}
+        onDelete={() => { removeThread(sideChat.workspaceId, sideChat.id); sideChats.close(); }}
+        onInterrupt={() => interruptThread(sideChat.workspaceId, sideChat.id)}
+        onSend={async (text, model, mode, effort) => {
+          const result = await sendUserMessageToThread(activeWorkspace, sideChat.id, text, [], { model, effort, accessMode: mode, collaborationMode: null });
+          if (result.threadId && result.threadId !== sideChat.id) {
+            sideChats.open({ id: result.threadId, name: sideChat.title, updatedAt: Date.now(), engine: sideChat.engine, modelId: model,
+              sideOf: { threadId: sideChat.parentId, workspaceId: sideChat.workspaceId, atItemId: null } });
+          }
+          return result;
+        }}
+        onSendToMain={text => composerWorkspaceState.handleDraftChange(
+          [composerWorkspaceState.activeDraft, sideChatQuote(sideChat.title, text)].filter(Boolean).join("\n\n")
+        )}
+      />
+  ) : <button onClick={() => void sideChats.create()} disabled={sideChats.creating || Boolean(sideChats.disabledReason)}>Start side chat</button>;
+  const compactThreadConnectionState: "live" | "polling" | "disconnected" =
+    !activeWorkspace?.connected
+      ? "disconnected"
+      : remoteThreadConnectionState;
+  const mainAppShellProps = useMainAppShellProps({
+    shell: {
+      appClassName,
+      isResizing,
+      appStyle,
+      appRef,
+      sidebarToggleProps,
+      shouldLoadGitHubPanelData,
+      appModalsProps,
+      showMobileSetupWizard,
+      mobileSetupWizardProps,
+    },
+    gitHubPanelDataProps: {
+      activeWorkspace,
+      gitPanelMode,
+      shouldLoadDiffs,
+      diffSource,
+      selectedPullRequestNumber: selectedPullRequest?.number ?? null,
+      onIssuesChange: handleGitIssuesChange,
+      onPullRequestsChange: handleGitPullRequestsChange,
+      onPullRequestDiffsChange: handleGitPullRequestDiffsChange,
+      onPullRequestCommentsChange: handleGitPullRequestCommentsChange,
+    },
+    appLayout: {
+      isPhone,
+      isTablet,
+      showHome,
+      showGitDetail,
+      activeTab,
+      tabletTab,
+      centerMode,
+      preloadGitDiffs: appSettings.preloadGitDiffs,
+      splitChatDiffView: appSettings.splitChatDiffView,
+      hasActivePlan: hasActivePlan,
+      activeWorkspace: Boolean(activeWorkspace),
+      sidebarNode,
+      messagesNode: sideChatInSplit ? <SideChatSplit compact={isCompact} main={<>{mainMessagesNode}{composerNode}</>}>{sideChatNode}</SideChatSplit> : mainMessagesNode,
+      composerNode: sideChatInSplit ? null : composerNode,
+      approvalToastsNode,
+      updateToastNode,
+      errorToastsNode,
+      homeNode,
+      mainHeaderNode,
+      tabletNavNode,
+      tabBarNode,
+      gitDiffPanelNode,
+      gitDiffViewerNode,
+      planPanelNode,
+      debugPanelNode,
+      debugPanelFullNode,
+      terminalDockNode,
+      compactEmptyCodexNode,
+      compactEmptyGitNode,
+      compactGitBackNode,
+      onSidebarResizeStart,
+      onChatDiffSplitPositionResizeStart,
+      onRightPanelResizeStart,
+      onPlanPanelResizeStart,
+    },
+    topbar: {
+      isCompact,
+      desktopTopbarLeftNode,
+      hasActiveWorkspace: Boolean(activeWorkspace),
+      backendMode: appSettings.backendMode,
+      remoteThreadConnectionState: compactThreadConnectionState,
+    },
+  });
+
+  const agentDetails = useMemo(() => agentThreadDetails(Object.values(threadsByWorkspace).flat(), threadStatusById, tokenUsageByThread), [threadsByWorkspace, threadStatusById, tokenUsageByThread]);
+  const sessionData = useCodeSessionData(settingsOnly ? null : activeWorkspaceId, JSON.stringify([appSettings.mcpServers, appSettings.codegraphEnabled, appSettings.computer?.enabled, appSettings.browser?.approval, appSettings.features, activeWorkspace?.settings.mcpServers, activeWorkspace?.settings.codegraphEnabled]), activeItems, activeWorkspace?.path);
+  const managedTaskState = useManagedTasks(settingsOnly ? null : activeWorkspaceId, activeThreadId);
+  const managedTasks = { ...managedTaskState, canStart: features.terminal && managedTaskState.canStart };
+  const fileLinkOpener = useFileLinkOpener(activeWorkspace?.path ?? null, appSettings.openAppTargets, appSettings.selectedOpenAppId);
+  const addBrowserContext = useBrowserContextDraft({
+    scope: activeWorkspaceId ? JSON.stringify([activeWorkspaceId, activeThreadId, showWorkspaceHome]) : null,
+    draft: showWorkspaceHome ? workspacePrompt : composerWorkspaceState.activeDraft,
+    onDraftChange: showWorkspaceHome ? setWorkspacePrompt : composerWorkspaceState.handleDraftChange,
+    attachImages: composerWorkspaceState.attachImages,
+    textareaRef: showWorkspaceHome ? workspaceHomeTextareaRef : composerInputRef,
+  });
+  const environments = useCodeEnvironments({
+    settings: appSettings, saveSettings: queueSaveSettings, workspaces,
+    engine: activeEngine, modelId: selectedModelId, selectWorkspace: layoutSurfaces.primary.sidebarProps.onSelectWorkspace,
+    setActiveThreadId, startDraft: startNewAgentDraft,
+    restore: (profile, workspaceId) => {
+      setSelectedEngine(profile.engine);
+      setEnvironmentDraft(previous => ({ workspaceId, profile, revision: (previous?.revision ?? 0) + 1 }));
+    },
+  });
+  const sessionRail = activeWorkspace ? <CodeSessionRail key={`${activeWorkspace.id}:${activeThreadId ?? ""}`}
+    workspace={activeWorkspace} workspaces={workspaces} branch={currentBranch || activeWorkspace.worktree?.branch || ""} branches={branches} canCheckoutBranch={isBranchSwitcherEnabled}
+    onCheckoutBranch={branch => { void handleCheckoutBranch(branch); }} onSelectWorkspace={layoutSurfaces.primary.sidebarProps.onSelectWorkspace}
+    profiles={environments.profiles} engine={activeEngine} modelId={selectedModelId}
+    onSaveEnvironment={environments.save} onSelectEnvironment={environments.select} onDeleteEnvironment={environments.remove}
+    remote={{ mode: appSettings.backendMode, host: appSettings.remoteBackendHost }}
+    usage={activeTokenUsage} protocol={appSettings.engines?.find(engine => engine.id === activeEngine)?.protocol ?? (activeEngine === "claude" ? "acp" : activeEngine === "codex" ? "codex-app-server" : "pi-rpc")}
+    skills={skills} skillsAvailable={activeEngine === "codex"} memoryFiles={[...Object.entries(agentMdState.fileStatuses).filter(([, exists]) => exists).map(([path]) => path), ...agentMdState.detected]}
+    {...sessionData} browserEnabled={features.browser}
+    onOpenFile={path => {
+      const root = activeWorkspace.path.replace(/\\/g, "/").replace(/\/$/, "");
+      const normalized = path.replace(/\\/g, "/");
+      if ((normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) && !normalized.startsWith(`${root}/`)) {
+        void fileLinkOpener.openFileLink({ path, line: null, column: null }); return false;
+      }
+      setRequestedSessionFile({ workspaceId: activeWorkspace.id, path: normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : path, requestId: Date.now() });
+      return true;
+    }}
+    git={{ enabled: features.git, files: gitState.gitStatus.files.length, additions: gitState.gitStatus.totalAdditions, deletions: gitState.gitStatus.totalDeletions, error: gitState.gitStatus.error }}
+    tasks={managedTasks} tasksEnabled={features.terminal} onOpenSettings={modalActions.openSettings} onEditLaunchScripts={launchScriptsState.onOpenNew}
+  /> : null;
+  if (settingsOnly) return <div className="mode-settings-host" style={mainAppShellProps.appStyle}><AppModals {...mainAppShellProps.appModalsProps} settingsOpen settingsSection={initialSettingsSection ?? mainAppShellProps.appModalsProps.settingsSection} onCloseSettings={onCloseModeSettings ?? mainAppShellProps.appModalsProps.onCloseSettings} /></div>;
+  return <ComposerPolicyProvider policy={team.policy} conversation={conversationTeam} loading={team.loading} loadError={team.error}
+    scopeKey={`${activeWorkspaceId}:${activeThreadId}:${parentEngine}`} scope={conversationTeam ? `This conversation · ${team.overridden ? "Custom team" : "Project team"}` : activeWorkspace ? `Project defaults · ${activeWorkspace.name}` : "App defaults"}
+    onReset={conversationTeam && (team.overridden || team.error) ? () => team.change() : undefined} onChange={async agentPolicy => {
+    if (conversationTeam) await team.change(agentPolicy);
+    else if (activeWorkspace) await updateWorkspaceSettings(activeWorkspace.id, { agentPolicy });
+    else setAppSettings(await updateAppSettings({ ...await getAppSettings(), agentPolicy }));
+  }}><AgentsContext.Provider value={{ details: agentDetails, workspaceId: activeWorkspaceId, threadId: activeThreadId, itemsByThread,
+    policy: team.policy.subagents }}>
+    {features.checkpoints && <Checkpoints running={threadStatusById} onChanged={async (workspace, thread, text) => {
+    await refreshThread(workspace, thread);
+    if (text !== undefined) composerWorkspaceState.restoreDraftForThread(thread, text);
+    if (text !== undefined && workspace === activeWorkspaceId && thread === activeThreadId) setPrefillDraft({ id: `rewind-${Date.now()}`, text, createdAt: Date.now() });
+  }} />}<WorkspaceShell dock sessionRail={sessionRail} onBrowserContext={activeWorkspace ? addBrowserContext : undefined} reservedShortcuts={Object.entries(appSettings).filter(([key, value]) => key.endsWith("Shortcut") && typeof value === "string").map(([, value]) => String(value))} scope={`code:${encodeURIComponent(activeWorkspaceId ?? "")}:${encodeURIComponent(activeThreadId ?? "")}`} title={threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.name || activeWorkspace?.name || "nucode"}
+    onNavigate={scope => { const [, workspace, thread] = scope.split(":").map(decodeURIComponent); if (workspace && thread) layoutSurfaces.primary.sidebarProps.onSelectThread(workspace, thread); else if (workspace) layoutSurfaces.primary.sidebarProps.onSelectWorkspace(workspace); else layoutSurfaces.primary.sidebarProps.onSelectHome(); }}
+    actions={activeWorkspaceId && activeThreadId ? [
+      { label: "Rename", onClick: () => handleRenameThread(activeWorkspaceId, activeThreadId) },
+      { label: "Copy", onClick: () => { void layoutSurfaces.primary.mainHeaderProps?.onCopyThread?.(); } },
+      { label: "Export", onClick: () => { void exportMarkdownFile(buildThreadTranscript(activeItems), "thread.md", "Export thread").catch(error => console.error(error)); } },
+      { label: "Archive", onClick: handleArchiveActiveThread },
+    ] : []}
+    tools={activeWorkspace ? [
+      ...(["git", "files", "agents", "prompts"] as const).map(id => ({ id, label: { git: "Changes", files: "Files", agents: "Agents", prompts: "Prompts" }[id], shortcut: id === "git" ? "⌃⇧G" : id === "files" ? "⌘P" : undefined,
+        onOpen: () => layoutSurfaces.git.gitDiffPanelProps.onFilePanelModeChange(id),
+        content: buildGitNodes({ ...layoutSurfaces.git, filePanelMode: id, fileTreeProps: layoutSurfaces.git.fileTreeProps ? { ...layoutSurfaces.git.fileTreeProps, requestedFile: requestedSessionFile?.workspaceId === activeWorkspace.id ? requestedSessionFile : null } : null, gitDiffPanelProps: { ...layoutSurfaces.git.gitDiffPanelProps, planSection: hasActivePlan ? <details className="changes-plan" open><summary>Plan</summary>{planPanelNode}</details> : null } }).gitDiffPanelNode,
+      })),
+      { id: "background", label: "Background tasks", content: <CodeBackgroundTasks key={`${activeWorkspace.id}:${activeThreadId ?? ""}`} tasks={managedTasks} commandsEnabled={features.terminal} commands={[...(activeWorkspace.settings.launchScript ? [{ id: "default", script: activeWorkspace.settings.launchScript, icon: "play" as const, label: "Launch script" }] : []), ...launchScriptsState.launchScripts]} /> },
+      { id: "terminal", label: "Terminal", shortcut: formatShortcut(appSettings.toggleTerminalShortcut || "ctrl+`"), onOpen: openTerminalWithFocus, onClose: closeTerminalPanel, content: terminalDockNode },
+      { id: "sidechat", label: "Side chat", shortcut: "⌘⇧K", target: sideChat?.id, content: sideChatInSplit ? null : sideChatNode, onClose: sideChats.close,
+        onOpen: (tab: import("@/features/panels/panelState").PanelTab) => { setSplitSideChatId(null); if (tab.target && sideChat?.id !== tab.target && activeThreadId) sideChats.open({ id: tab.target, name: "Side chat", updatedAt: Date.now(), engine: parentEngine, sideOf: { threadId: activeThreadId, workspaceId: activeWorkspace.id, atItemId: null } }); },
+      },
+    ].filter(tool => tool.id === "git" ? features.git : tool.id === "agents" ? features.subagents : tool.id === "terminal" ? features.terminal : tool.id === "sidechat" ? features.sideChats : true) : []} searchUrl={appSettings.browser?.searchUrl} onInterrupt={interruptTurn}><PanelToolRequest id="terminal" requestKey={layoutSurfaces.secondary.terminalDockProps.isOpen} /><PanelToolRequest id="sidechat" requestKey={sideChatInSplit ? null : sideChat?.id} /><MainAppShell {...mainAppShellProps} /></WorkspaceShell></AgentsContext.Provider></ComposerPolicyProvider>;
+}

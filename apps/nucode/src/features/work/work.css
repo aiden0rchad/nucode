@@ -1,0 +1,152 @@
+/* Reuse Code's density, tree guides and selected-row paint. */
+[data-sidebar-density="comfortable"] .work-layout .sidebar { --sidebar-row-height: 32px; }
+.work-layout .sidebar .work-space { padding: 6px; margin: 0; }
+.work-layout .sidebar-body { display: flex; flex-direction: column; gap: 6px; }
+.work-layout .work-space { flex-shrink: 0; }
+.work-layout .sidebar .mode-row { margin: 0; }
+.work-layout .sidebar .work-task-row { padding-right: 8px; }
+.work-layout .sidebar .work-task-row .thread-time { flex-shrink: 0; padding: 0; font-weight: 400; font-size: 11.5px; text-transform: none; }
+.work-layout .sidebar > .sidebar-section-header { margin-right: 0; padding-right: 0; }
+.work-layout .mode-section-actions .icon-button { width: 28px; height: 28px; padding: 6px; }
+.work-layout .work-space-toggle .workspace-name { text-align: left; }
+.work-layout .sidebar .work-space-chevron { display: none; }
+.work-layout .work-readonly-folders { margin: 2px 0 2px 24px; color: var(--text-muted); font-size: 12px; }
+.work-layout .work-readonly-folders summary { display: flex; align-items: center; gap: 6px; padding: 4px 8px; color: inherit; cursor: pointer; }
+.work-readonly-folders summary::-webkit-details-marker { display: none; }
+.work-layout .work-readonly-folders summary > svg { width: 14px; height: 14px; transform: none; }
+.work-readonly-folders summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-readonly-folders summary > svg:last-child { margin-left: auto; }
+.work-layout .work-readonly-folders:not([open]) summary > svg:last-child { transform: rotate(-90deg); }
+.work-readonly-folders p { padding-inline: 8px; overflow-wrap: anywhere; }
+.work-layout .work-input-callout { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 6px 8px; border-radius: 6px; color: var(--text-primary); background: color-mix(in srgb, var(--status-warning) 10%, transparent); font-size: 12px; text-align: left; }
+.work-layout .sidebar .thread-status { box-sizing: border-box; }
+.work-layout .sidebar .work-status-needs-input { background: var(--status-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-warning) 18%, transparent); animation: work-input-pulse 1.8s ease-in-out infinite; }
+.work-layout .sidebar :is(.work-status-starting, .work-status-running, .work-status-stopping) { border: 1.5px solid var(--border-accent); border-top-color: transparent; animation: work-status-spin 1s linear infinite; }
+.work-layout .sidebar :is(.work-status-queued, .work-status-done, .work-status-stopped) { border: 1px solid var(--text-muted); }
+.work-layout .sidebar .work-status-done { opacity: .6; }
+.work-layout .sidebar .work-status-failed { background: var(--status-error); }
+@keyframes work-status-spin { to { transform: rotate(360deg); } }
+@keyframes work-input-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-warning) 6%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+  .work-layout .sidebar :is(.work-status-needs-input, .work-status-starting, .work-status-running, .work-status-stopping) { animation: none; }
+}
+@media (hover: none) { .work-layout .sidebar .workspace-row .sidebar-title-add { opacity: 1; } }
+.work-concurrency { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.work-empty { padding-top: clamp(32px, 6vh, 70px); padding-bottom: 24px; }
+.work-templates { grid-template-columns: repeat(3, 1fr); margin-top: 24px; }
+.work-composer { padding: 20px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface-card-muted); margin-bottom: 30px; }
+.work-fields { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.work-fields label { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 120px; }
+.work-brief { display: block; margin-top: 20px; font-size: 12px; }
+.work-brief textarea { display: block; box-sizing: border-box; width: 100%; min-height: 140px; resize: vertical; margin-top: 8px; padding: 12px; background: var(--surface-messages); border: 1px solid var(--border-subtle); border-radius: 8px; line-height: 1.6; }
+.work-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.work-actions > span:empty { flex: 1; }
+.work-task-view { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+.work-progress { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.work-jump-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); border: 1px solid var(--border-strong); }
+.work-follow-up { flex-shrink: 0; width: min(780px, calc(100% - 64px)); margin: 12px auto 20px; }
+.work-follow-up textarea { width: 100%; min-height: 44px; max-height: 180px; resize: vertical; border: 0; outline: none; background: transparent; line-height: 1.6; }
+.work-state-queued, .work-state-stopped, .work-state-stopping { --work-state-color: var(--text-muted); }
+.work-state-starting, .work-state-running { --work-state-color: var(--text-accent); }
+.work-state-needs-input { --work-state-color: var(--status-warning); }
+.work-state-failed { --work-state-color: var(--status-error); }
+.work-state-done { --work-state-color: var(--status-success); }
+.work-actions .thread-state-chip { color: var(--work-state-color); border-color: color-mix(in srgb, var(--work-state-color) 30%, transparent); background: color-mix(in srgb, var(--work-state-color) 8%, transparent); }
+/* Task state is a compact pill above the composer: status, one line of guidance, at most one action. */
+.work-conversation-state { display: flex; align-items: center; gap: 12px; width: fit-content; max-width: 100%; margin: 0 0 8px; padding: 4px 4px 4px 12px; min-height: 32px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-card-muted); font-size: 12.5px; line-height: 1.4; }
+.work-conversation-state:not(:has(button)) { padding-right: 12px; }
+.work-conversation-state > [role="status"] { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.work-conversation-state strong { flex-shrink: 0; color: var(--work-state-color); font-weight: 600; }
+.work-conversation-state p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.work-conversation-state button { flex-shrink: 0; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; }
+.work-input:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 3px; }
+.work-inspector { border-left: 1px solid var(--border-subtle); padding: 22px 18px; overflow: auto; background: var(--surface-card-muted); }
+.work-inspector h2 { font-size: 13px; font-weight: 600; margin: 0 0 16px; }
+.work-inspector section + section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+.work-plan { padding: 0; list-style: none; }
+.work-plan li { display: flex; align-items: start; gap: 9px; margin-bottom: 14px; font-size: 12px; line-height: 1.6; }
+.work-plan input { flex-shrink: 0; margin-top: 3px; }
+.work-plan [role="checkbox"] { flex-shrink: 0; }
+.work-plan li > div { min-width: 0; }
+.work-plan .markdown { font-size: inherit; line-height: inherit; }
+.work-plan .markdown p { margin: 0; }
+.work-output { margin: 18px 0; }
+.work-output strong { display: block; overflow-wrap: anywhere; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
+.work-output button { font-size: 11px; padding: 5px 7px; }
+/* A pending request uses the same amber as every other "needs input" signal. */
+.work-input { margin: 18px 0; padding: 16px 18px 18px; border: 1px solid color-mix(in srgb, var(--status-warning) 55%, var(--border-subtle)); border-radius: 12px; background: color-mix(in srgb, var(--status-warning) 5%, var(--surface-card-muted)); }
+.work-input h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--text-strong); }
+.work-input h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--status-warning); }
+.work-input > p { margin: 0 0 10px; color: var(--text-primary); }
+.work-input pre { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-command); color: var(--text-strong); font-size: 12px; }
+.work-input .work-actions { gap: 8px; justify-content: flex-end; }
+.work-input .work-actions button { height: 30px; padding: 0 14px; border-radius: 8px; font-size: 13px; }
+.work-input pre, .work-tool pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; }
+.work-tool pre { font-size: 11px; }
+.work-tool { border-bottom: 1px solid var(--border-subtle); padding: 12px 0; font-size: 12px; }
+.work-add-space { padding: 20px 28px; border-bottom: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.work-error { padding: 12px 28px; color: var(--text-strong); background: var(--surface-card-muted); margin: 0; }
+@media (max-width: 1100px) {
+  .work-inspector { border-left: 0; border-top: 1px solid var(--border-subtle); overflow: visible; }
+}
+@media (max-width: 600px) {
+  .work-layout { grid-template-columns: minmax(0, 1fr); }
+  .work-templates { grid-template-columns: 1fr; }
+  .work-composer { padding: 14px; }
+  .work-follow-up { width: calc(100% - 24px); margin-bottom: 12px; }
+  .work-conversation-state { align-items: flex-start; flex-wrap: wrap; }
+}
+
+
+.work-layout .sidebar .work-attention-needs-input { color: color-mix(in srgb, var(--status-warning) 75%, var(--text-muted)); }
+.work-layout .sidebar .work-attention-failed { color: color-mix(in srgb, var(--status-error) 75%, var(--text-muted)); }
+
+.work-tool-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-tool summary > svg { flex-shrink: 0; }
+
+.work-agents-link { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0; }
+.work-space .work-task-group h3 { display: flex; align-items: center; gap: 6px; margin: 10px 10px 5px 24px; color: var(--text-muted); font-size: 11.5px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.work-task-group h3 span { color: var(--text-faint); font-weight: 400; }
+.work-input .work-actions button.secondary { background: transparent; color: var(--text-primary); border: 1px solid var(--border-strong); }
+.work-input .work-actions button.secondary:hover:not(:disabled) { background: var(--surface-hover); }
+/* Titlebar Stop is a real (small, outlined) button, not bare text next to the status pill. */
+.work-layout .main-header-action.work-stop-task { display: inline-flex; align-items: center; gap: 6px; width: auto; height: 26px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-primary); font-size: 12px; font-weight: 500; }
+.work-layout .main-header-action.work-stop-task:hover:not(:disabled) { border-color: color-mix(in srgb, var(--status-error) 50%, var(--border-subtle)); color: var(--status-error); }
+/* Task states read at a glance: queued is a dashed ring, completed a muted check. */
+.work-layout .sidebar .thread-status.work-status-queued { visibility: visible; background: transparent; border: 1.5px dashed var(--text-subtle); box-sizing: border-box; }
+.work-layout .sidebar .thread-status.work-status-done { visibility: visible; position: relative; width: 12px; height: 12px; margin: 0 1px; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--status-success) 22%, transparent); }
+.work-layout .sidebar .thread-status.work-status-done::after { content: ""; position: absolute; left: 4px; top: 2.5px; width: 3px; height: 5px; border: solid var(--status-success); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+/* "Needs input" is already the orange dot and the banner; the row keeps its width for the title. */
+.work-layout .sidebar .thread-time.work-attention-needs-input { display: none; }
+/* Work inspector buttons match the Code inspector's compact secondary size. */
+.work-inspector button:not(.ds-icon-button) { min-height: 26px; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+/* Completed plan steps recede; pending steps keep full contrast. */
+.work-plan li.is-done { color: var(--text-subtle); }
+.work-plan li.is-done svg { color: var(--status-success); }
+/* The approval card keeps the standard card surface; amber lives in the frame and the dot. */
+.work-input { background: var(--surface-card-muted); }
+/* Small spaces: one row per task already shows its status glyph, so one-item status headers are visually hidden. */
+.work-space.is-compact .work-task-group h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.work-space.is-compact .work-task-group + .work-task-group { margin-top: 0; }
+/* The step in progress carries the accent; done steps recede. */
+.work-plan li.is-current { color: var(--text-strong); font-weight: 500; }
+.work-plan li.is-current svg { color: var(--text-accent); }
+.work-layout .sidebar .thread-status.work-status-running, .work-layout .sidebar .thread-status.work-status-starting { width: 12px; height: 12px; }
+/* One status glyph size in the Work sidebar. */
+.work-layout .sidebar .work-task-row > .thread-status { flex: 0 0 12px; width: 12px; height: 12px; margin: 0 2px 0 0; box-sizing: border-box; }
+.work-plan-spinner { color: var(--text-accent); animation: work-plan-spin 1.1s linear infinite; }
+@keyframes work-plan-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .work-plan-spinner { animation: none; } }
+/* Status glyphs are outlines throughout: needs-input is an amber ring like the spinner and queued rings. */
+.work-layout .sidebar .thread-status.work-status-needs-input { background: transparent; border: 2px solid var(--status-warning); }
+/* Done is an outline check like the plan list, not a filled disc. */
+.work-layout .sidebar .thread-status.work-status-done { background: transparent; border: 1.5px solid var(--status-success); opacity: 1; }
+.work-layout .sidebar .thread-status.work-status-done::after { left: 3.5px; top: 1.5px; }
+/* One status-sorted list per space: group headers are visually hidden everywhere (still announced as regions). */
+.work-space .work-task-group h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.work-space .work-task-group + .work-task-group { margin-top: 0; }
+/* Done is the resting state: a quiet monochrome check, so colour is left for running, needs-input and failed. */
+.work-layout .sidebar .thread-status.work-status-done { border-color: var(--text-faint); }
+.work-layout .sidebar .thread-status.work-status-done::after { border-color: var(--text-subtle); }
+/* Finished is the resting state: no glyph, so a status mark always means running, waiting for you, or failed. */
+.work-layout .sidebar .thread-status.work-status-done { visibility: hidden; }

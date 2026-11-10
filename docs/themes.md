@@ -1,0 +1,178 @@
+# nucode themes
+
+## Change the look without editing files
+
+Open **Settings → Appearance** and choose a built-in theme. **System** follows your computer's light/dark appearance, using the light and dark themes you select. **Glass** adds a translucent appearance where supported.
+
+**Expected result:** the app's colors change. You can select another built-in theme if you prefer it. You do not need to edit JSON or know CSS to use the gallery.
+
+The reference below explains custom themes. A **token** is a named visual setting, such as the accent color; **JSON** is the text format used to save those settings. See the [glossary](glossary.md) and continue here when you want to create or share a custom theme.
+
+## Theme behavior
+
+Choose a theme in Settings → Appearance. System follows the OS using your Light theme and Dark theme selections. Glass uses Tauri's built-in window material API; its sidebar and title bar are about 50% opaque, with app and message surfaces at 72%. The material is pinned to the theme’s light or dark appearance. Composer, menus, modals, side panels and code remain opaque. Claude palettes are community approximations, not official brand assets.
+
+## Format (v1)
+
+Save a UTF-8 `*.nucode-theme.json` file:
+
+```json
+{
+  "$schema": "https://nucode.dev/theme.schema.json",
+  "schemaVersion": 1,
+  "id": "my-green",
+  "name": "My Green",
+  "author": "Your name",
+  "version": "1.0.0",
+  "description": "A green accent on Dark.",
+  "appearance": "dark",
+  "extends": "dark",
+  "tokens": { "--text-accent": "#80efac" },
+  "fonts": { "ui": "system-ui", "mono": "monospace", "prose": "serif" },
+  "window": { "translucent": false, "material": "none" },
+  "effects": { "digitalRain": false, "neonGlow": false }
+}
+```
+
+`schemaVersion`, `id`, `name`, `appearance` and `tokens` are required. IDs contain 1–40 lowercase ASCII letters, digits or hyphens. Built-in IDs are reserved. `author`, `version` and `description` are optional metadata. `$schema` enables editor completion. `extends` selects a built-in except System; without it, the appearance selects Light or Dark. Tokens, fonts, window, effects, shape and border inherit from that base. Appearance is `light` or `dark` and controls native color scheme, syntax highlighting and terminal colors. Font keys are `ui`, `mono`, `prose`. Window material is `none`, `sidebar`, `underWindow` or `hudWindow`; translucency must be enabled to apply a material. `effects.digitalRain` enables an empty-state animation, capped at 20 fps and disabled by reduced motion or the per-theme Animated background preference.
+
+Cyberpunk Neon pairs magenta primary actions with cyan links and focus rings on deep violet surfaces. Its static glows can be disabled with **Glow effects** in Appearance, independently of animation and reduced-motion preferences. Both effect fields are optional booleans. Custom themes can inherit Cyberpunk Neon or enable either effect in the editor.
+
+## Effects reference
+
+<!-- effects:start -->
+| Effect | Type | Behavior |
+| --- | --- | --- |
+| `effects.digitalRain` | boolean | Empty-state animation; respects reduced motion and Animated background. |
+| `effects.neonGlow` | boolean | Static accent, focus, selected-row and heading glows; controlled by Glow effects. |
+<!-- effects:end -->
+
+## Shape and border
+
+All fields are optional in schema v1. Omitted shape and border objects inherit from the base; an explicit empty object resets that group to defaults. Solid squircles remain the default. Round uses the circular `--radius-window` radius. Chamfer cuts the top-left and bottom-right corners, retains 2px rounding on the other corners and clamps cuts to one-third of the smaller side.
+
+```json
+{
+  "shape": { "corners": "chamfer", "chamfer": 10 },
+  "border": { "gradient": ["#ff2bd6", "#a855f7", "#00e5ff"], "angle": 135, "highlight": false }
+}
+```
+
+Glass Dark and Glass Light use silver gradients at 160° with an inner top highlight. Glass Light adds a dark separating hairline. Cyberpunk Neon uses the example above, a subtly lit fill, and a static gradient glow controlled by **Glow effects**. Selected cards brighten the gradient; solid cards retain their active border color. Thread rows retain their own styling.
+
+Gradient stops accept the same safe colors and allowlisted token references as color tokens. Angles follow CSS gradients (0° points up, 90° right). Without a gradient, the solid border is used. The editor's **Shape & border** controls and gallery previews use the shared Squircle renderer.
+
+<!-- shape:start -->
+| Field | Values | Default |
+| --- | --- | --- |
+| `shape.corners` | squircle, round, chamfer | squircle |
+| `shape.chamfer` | 4–20 px | 10 |
+| `border.gradient` | 2–4 safe colors | Solid border |
+| `border.angle` | 0–360 degrees | 135 |
+| `border.highlight` | boolean | false |
+<!-- shape:end -->
+
+## Validation and safety
+
+Both TypeScript and Rust validate shared fixtures. Colors accept hex (3, 4, 6 or 8 digits), numeric rgb/rgba/hsl/hsla/oklch functions, color-mix in srgb of colors, and references to allowlisted tokens. Radius tokens accept nonnegative px/rem lengths. Unknown tokens, reference cycles, values longer than 120 characters, `url(`, `image-set(`, `expression`, `@`, `;`, braces, backslash and `<` are rejected. Font stacks accept quoted local family names and CSS generic families, separated by commas. No remote fonts, custom CSS, scripts, images or network resources are permitted. Newer schema versions require a newer nucode.
+
+## Create, develop and share
+
+Duplicate any gallery card or choose New theme. Edit tokens, fonts and effects with live preview; Cancel restores the selected theme. Save writes atomically to the app data directory's `themes/<id>.nucode-theme.json`. Open themes folder locates it. Edit that file externally: file size and modification time are polled once per second; only changed files are read, and notifications are debounced for 200 ms, then the active theme reloads. Invalid files appear as errors in the gallery; the last valid active theme remains until fixed. Deleting the selected theme falls back to System with a notification.
+
+Export a card as a file or Copy JSON. Recipients use Import or Paste theme. ID conflicts offer Replace or Keep both; Keep both adds a numeric suffix. Built-ins cannot be overwritten or deleted.
+
+## Token reference
+
+Scrollbars use `--scrollbar-thumb` and `--scrollbar-thumb-hover` (the **Scrollbars**
+group in the editor). Defaults mix the foreground at 18% and 32% opacity. Glass uses
+white, Matrix green, and Neon blends its magenta and cyan tokens into a thumb gradient.
+Thumbs appear on hover or for 900ms after scrolling; tracks stay transparent.
+WebKit uses 8px thumbs with a 2px inset; other engines use thin colored scrollbars.
+Where native overlay scrollbars are unavailable, the transparent gutter stays fixed
+so showing a thumb cannot move content.
+
+Sidebar guides follow glyph bounds with 8px elbows, a 4px glyph gap and a 3px parent
+gap. The active ancestor path uses `--tree-line-active`; only Neon adds a glow.
+Glass Light retains dark tree colors for contrast against its light material.
+
+Generated from the Dark theme's themeable color and radius properties. Layout dimensions and typography metrics are deliberately excluded. Run `npm run themes:docs` from `apps/nucode` after changing the allowlist source. The same command generates the Dark, Light and Dim palettes from their CSS and updates the schema's token properties. Tests reject stale generated palettes, allowlists and documentation.
+
+<!-- tokens:start -->
+| Token | Group | Label |
+| --- | --- | --- |
+| `--setup-base` | Setup | setup base |
+| `--setup-blob-1` | Setup | setup blob 1 |
+| `--setup-blob-2` | Setup | setup blob 2 |
+| `--scrollbar-thumb` | Scrollbars | scrollbar thumb |
+| `--scrollbar-thumb-hover` | Scrollbars | scrollbar thumb hover |
+| `--surface-app` | Surfaces | surface app |
+| `--text-primary` | Text | text primary |
+| `--text-strong` | Text | text strong |
+| `--text-emphasis` | Text | text emphasis |
+| `--text-stronger` | Text | text stronger |
+| `--text-quiet` | Text | text quiet |
+| `--text-muted` | Text | text muted |
+| `--text-subtle` | Text | text subtle |
+| `--text-faint` | Text | text faint |
+| `--text-fainter` | Text | text fainter |
+| `--text-dim` | Text | text dim |
+| `--surface-sidebar` | Surfaces | surface sidebar |
+| `--tree-line` | Tree | tree line |
+| `--tree-line-active` | Tree | tree line active |
+| `--surface-sidebar-opaque` | Surfaces | surface sidebar opaque |
+| `--surface-topbar` | Surfaces | surface topbar |
+| `--surface-right-panel` | Surfaces | surface right panel |
+| `--surface-composer` | Surfaces | surface composer |
+| `--surface-messages` | Surfaces | surface messages |
+| `--surface-card` | Surfaces | surface card |
+| `--surface-card-strong` | Surfaces | surface card strong |
+| `--surface-card-muted` | Surfaces | surface card muted |
+| `--surface-item` | Surfaces | surface item |
+| `--surface-control` | Surfaces | surface control |
+| `--surface-control-hover` | Surfaces | surface control hover |
+| `--surface-control-disabled` | Surfaces | surface control disabled |
+| `--surface-hover` | Surfaces | surface hover |
+| `--surface-active` | Surfaces | surface active |
+| `--surface-approval` | Surfaces | surface approval |
+| `--surface-debug` | Surfaces | surface debug |
+| `--surface-command` | Surfaces | surface command |
+| `--surface-diff-card` | Surfaces | surface diff card |
+| `--surface-bubble` | Surfaces | surface bubble |
+| `--surface-bubble-user` | Surfaces | surface bubble user |
+| `--surface-context-core` | Surfaces | surface context core |
+| `--surface-popover` | Surfaces | surface popover |
+| `--surface-review` | Surfaces | surface review |
+| `--border-review` | Borders | border review |
+| `--surface-review-active` | Surfaces | surface review active |
+| `--text-review-active` | Text | text review active |
+| `--surface-review-done` | Surfaces | surface review done |
+| `--text-review-done` | Text | text review done |
+| `--border-subtle` | Borders | border subtle |
+| `--border-muted` | Borders | border muted |
+| `--border-strong` | Borders | border strong |
+| `--border-stronger` | Borders | border stronger |
+| `--border-quiet` | Borders | border quiet |
+| `--border-accent` | Accent | border accent |
+| `--border-accent-soft` | Accent | border accent soft |
+| `--text-accent` | Accent | text accent |
+| `--message-link-color` | Accent | message link color |
+| `--shadow-accent` | Accent | shadow accent |
+| `--status-success` | Status | status success |
+| `--status-warning` | Status | status warning |
+| `--status-error` | Status | status error |
+| `--status-unknown` | Status | status unknown |
+| `--select-caret` | Surfaces | select caret |
+| `--surface-text-accent` | Accent | surface text accent |
+| `--surface-text-muted` | Surfaces | surface text muted |
+| `--surface-border-subtle` | Surfaces | surface border subtle |
+| `--surface-border-strong` | Surfaces | surface border strong |
+| `--surface-border-accent` | Accent | surface border accent |
+| `--surface-border-accent-soft` | Accent | surface border accent soft |
+| `--surface-text-dim` | Surfaces | surface text dim |
+| `--surface-status-error` | Surfaces | surface status error |
+| `--surface-status-success` | Surfaces | surface status success |
+| `--surface-status-warning` | Surfaces | surface status warning |
+| `--surface-status-unknown` | Surfaces | surface status unknown |
+| `--surface-border-muted` | Surfaces | surface border muted |
+<!-- tokens:end -->

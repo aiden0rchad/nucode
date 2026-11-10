@@ -1,0 +1,39 @@
+/* Geometry belongs to the primitive, including inside feature-specific toolbars. */
+button.ds-icon-button[data-icon-button] {
+  --icon-button-size: var(--icon-button-28);
+  --icon-size: 16px;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  max-width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+  max-height: var(--icon-button-size);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  line-height: 1;
+  vertical-align: middle;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+button.ds-icon-button[data-icon-button="sm"] { --icon-button-size: var(--icon-button-24); --icon-size: 14px; }
+button.ds-icon-button[data-icon-button="lg"] { --icon-button-size: var(--icon-button-32); --icon-size: 18px; }
+button.ds-icon-button.ds-icon-button--ghost { background: transparent; }
+button.ds-icon-button.ds-icon-button--subtle { background: var(--surface-card-strong); }
+button.ds-icon-button:is(.ds-icon-button--active, [aria-pressed="true"], .is-active),
+button.ds-icon-button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
+button.ds-icon-button:is(:hover, :active):not(:disabled) { transform: none; box-shadow: none; }
+button.ds-icon-button:focus-visible { outline: 2px solid var(--border-accent); outline-offset: 2px; }
+button.ds-icon-button[data-icon-button] svg { width: var(--icon-size); height: var(--icon-size); stroke-width: 1.75; }
+/* Send and Stop are the composer's one solid control; disabled send is a quiet well, not a faded accent. */
+button.ds-icon-button.composer-action:is(.is-send, .is-stop) { width: 32px; height: 32px; border-radius: 50%; opacity: 1; }
+button.ds-icon-button.composer-action.is-send, button.ds-icon-button.composer-action.is-send:hover:not(:disabled) { background: var(--text-strong); color: var(--ink-on-fill, var(--surface-app)); }
+button.ds-icon-button.composer-action.is-send:hover:not(:disabled) { opacity: .88; }
+button.ds-icon-button.composer-action.is-send:disabled { background: var(--surface-control); color: var(--text-faint); opacity: 1; }
+/* Stop matches Send: a neutral solid disc with a square, so a running reply never reads as an error. */
+button.ds-icon-button.composer-action.is-stop, button.ds-icon-button.composer-action.is-stop:hover:not(:disabled) { background: var(--composer-stop, var(--text-strong)); color: var(--ink-on-fill, var(--surface-app)); }
+button.ds-icon-button.composer-action.is-stop svg { fill: currentColor; stroke: none; width: 12px; height: 12px; }

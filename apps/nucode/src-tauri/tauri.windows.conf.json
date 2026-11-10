@@ -1,0 +1,26 @@
+{
+  "build": {
+    "beforeBuildCommand": "node scripts/bundle-node-windows.mjs && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "nucode",
+        "width": 1200,
+        "height": 700,
+        "minWidth": 360,
+        "minHeight": 600,
+        "dragDropEnabled": true,
+        "titleBarStyle": "Visible",
+        "hiddenTitle": false,
+        "transparent": true,
+        "devtools": true,
+        "windowEffects": null
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false
+  }
+}

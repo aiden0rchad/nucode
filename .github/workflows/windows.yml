@@ -1,0 +1,78 @@
+name: Windows x64
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/nucode
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: apps/nucode/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/nucode/src-tauri
+          cache-on-failure: true
+      - name: Stage uv
+        shell: pwsh
+        run: |
+          $base = 'https://github.com/astral-sh/uv/releases/download/0.9.5'
+          $archive = 'uv-x86_64-pc-windows-msvc.zip'
+          $zip = Join-Path $env:RUNNER_TEMP $archive
+          Invoke-WebRequest "$base/$archive" -OutFile $zip
+          Invoke-WebRequest "$base/$archive.sha256" -OutFile "$zip.sha256"
+          $expected = ((Get-Content "$zip.sha256").Trim() -split '\s+')[0]
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'uv checksum mismatch' }
+          $dest = Join-Path $env:RUNNER_TEMP 'nucode-uv'
+          Expand-Archive $zip -DestinationPath $dest
+          foreach ($license in @('LICENSE-APACHE', 'LICENSE-MIT')) {
+            Invoke-WebRequest "https://raw.githubusercontent.com/astral-sh/uv/0.9.5/$license" -OutFile (Join-Path $dest $license)
+          }
+          "NUCODE_BUNDLE_UV=$dest" >> $env:GITHUB_ENV
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Fetch Rust dependencies
+        working-directory: apps/nucode/src-tauri
+        env:
+          CARGO_NET_OFFLINE: "false"
+        run: cargo fetch --locked
+      - name: Build installer
+        run: npm run tauri:build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nucode-windows-x64
+          path: apps/nucode/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Smoke test installer
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $dest = Join-Path $env:RUNNER_TEMP 'nucode-smoke'
+          $setup = Start-Process $installer -ArgumentList '/S', "/D=$dest" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Installer exited with $($setup.ExitCode)" }
+          & "$dest/node/bin/node.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Node failed' }
+          & "$dest/uv/uv.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled uv failed' }
+          $app = Start-Process "$dest/codex-monitor.exe" -PassThru
+          Start-Sleep -Seconds 10
+          if ($app.HasExited) { throw "App exited during startup: $($app.ExitCode)" }
+          Stop-Process -Id $app.Id

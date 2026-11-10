@@ -1,0 +1,45 @@
+import { useEffect, useRef, useState } from "react";
+import { browserNativeBounds } from "@services/tauri";
+import { nativeOverlayIntersects, trackNativeDragOverlay } from "@/features/design-system/nativeOverlays";
+
+export function roundedRect(rect: DOMRect) {
+  return { x: Math.max(0, Math.round(rect.x)), y: Math.max(0, Math.round(rect.y)), w: Math.max(1, Math.round(rect.width)), h: Math.max(1, Math.round(rect.height)) };
+}
+export function NativeSlot({ tabId, snapshot, ready, blocked, onError }: { tabId: string; snapshot?: string; ready: boolean; blocked: boolean; onError: (error: string) => void }) {
+  const slot = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState(true);
+  useEffect(() => {
+    const element = slot.current;
+    if (!element || !tabId) return;
+    const stopDrag = trackNativeDragOverlay();
+    let frame = 0, disposed = false, pending = false, last = "";
+    let rect = roundedRect(element.getBoundingClientRect());
+    // IPC is sent only when rounded bounds/visibility change, one call at a time.
+    const sync = () => {
+      if (disposed) return;
+      const bounds = element.getBoundingClientRect();
+      rect = roundedRect(bounds);
+      // Placement lets the backend recreate evicted tabs; it gates showing on ready.
+      const visible = !blocked && !document.hidden && bounds.width > 0 && bounds.height > 0 && bounds.x >= 0 && bounds.y >= 0 && !nativeOverlayIntersects(bounds);
+      const hidden = !ready || !visible;
+      setHidden(old => old === hidden ? old : hidden);
+      const key = JSON.stringify([rect, visible, window.innerWidth, window.innerHeight]);
+      if (pending || key === last) return;
+      pending = true; last = key;
+      // A drag outpaces the round trip; send the newest bounds as soon as this one lands.
+      void browserNativeBounds(tabId, rect, visible).catch(e => { if (!disposed) onError(String(e)); }).finally(() => { pending = false; sync(); });
+    };
+    // One measurement per frame covers ancestor scrolls, transitions, mode changes and overlays.
+    const measure = () => { if (disposed) return; sync(); frame = requestAnimationFrame(measure); };
+    frame = requestAnimationFrame(measure);
+    // Resizer drags change the size after this frame's measurement ran; sync right after layout
+    // instead of a frame later, so the page keeps up with the panel edge.
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => { disposed = true; stopDrag(); cancelAnimationFrame(frame); observer.disconnect(); void browserNativeBounds(tabId, rect, false).catch(() => {}); };
+  }, [tabId, ready, blocked, onError]);
+  return <div ref={slot} className="browser-native-slot" data-native-hidden={hidden} aria-label="Native browser page">
+    {snapshot && <img className="browser-native-snapshot" src={snapshot.startsWith("data:") ? snapshot : `data:image/png;base64,${snapshot}`} alt="Last page snapshot" />}
+    {!ready && !blocked && <div className="browser-empty">Loading page…</div>}
+  </div>;
+}

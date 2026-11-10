@@ -1,0 +1,108 @@
+.browser-pane { padding: 10px; gap: 8px; min-width: 0; container: browser-pane / inline-size; }
+.browser-toolbar, .browser-tabs, .browser-tab, .browser-agent { display: flex; align-items: center; gap: 4px; }
+.browser-tabs { overflow-x: auto; flex-shrink: 0; }
+.browser-tab { min-width: 70px; max-width: 200px; border-radius: 6px; background: var(--surface-card); }
+.browser-tab button { background: transparent; border: 0; color: var(--text-muted); padding: 6px; }
+.browser-tab [role="tab"] { display: flex; gap: 5px; align-items: center; min-width: 0; }
+.browser-tab [aria-selected="true"] { color: var(--text-strong); font-weight: 600; }
+.browser-tab span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.browser-tab img { width: 14px; height: 14px; }
+ .browser-toolbar { height: 36px; min-height: 36px; flex: 0 0 36px; }
+.browser-toolbar .ghost { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: var(--icon-button-28, 28px); height: var(--icon-button-28, 28px); min-width: 28px; min-height: 28px; padding: 0; flex: 0 0 28px; }
+.browser-toolbar svg { width: 16px; height: 16px; }
+.browser-toolbar .mode-row { display: flex; align-items: center; height: 28px; margin: 0; padding: 0; min-height: 0; flex: 0 0 28px; }
+.browser-toolbar .mode-row .mode-row-menu-trigger { margin: 0; }
+.browser-address { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--ds-border-subtle); border-radius: 8px; background: var(--surface-card); }
+.browser-address svg { flex-shrink: 0; color: var(--text-muted); }
+.browser-address input { width: 100%; height: 100%; min-width: 0; padding: 0; border: 0; outline-offset: 2px; background: transparent; color: var(--text-strong); }
+@container browser-pane (max-width: 400px) {
+  .browser-toolbar { height: auto; flex: 0 0 auto; flex-wrap: wrap; }
+  .browser-address { flex: 0 0 100%; order: -1; }
+  .browser-toolbar .mode-row { margin-left: auto; }
+}
+.browser-progress { height: 2px; flex: 0 0 2px; overflow: hidden; }
+.browser-progress span { display: block; height: 2px; background: var(--text-accent, var(--text-strong)); transition: width .15s; }
+.browser-tab.active { background: var(--surface-active, var(--surface-hover)); }
+.browser-native-slot { position: absolute; inset: 0; background: var(--surface-card); }
+.browser-native-snapshot { display: block; width: 100%; height: 100%; object-fit: fill; }
+.browser-agent-active .browser-surface { outline: 2px solid var(--text-accent, var(--text-strong)); outline-offset: 2px; }
+.browser-confirm { font-size: 12px; color: var(--text-strong); overflow-wrap: anywhere; }
+.browser-confirm button { margin-left: 6px; }
+.browser-agent { justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+.browser-error { position: absolute; z-index: var(--z-base); inset: 12px; margin: auto; height: fit-content; padding: 16px; border-radius: 8px; background: var(--surface-card); border: 1px solid var(--ds-border-subtle); color: var(--text-strong); font-size: 12px; overflow-wrap: anywhere; }
+.browser-surface { flex: 1; position: relative; min-height: 100px; overflow: hidden; border-radius: 6px; background: var(--surface-card); }
+.browser-surface canvas { display: block; width: 100%; height: 100%; }
+.browser-keyboard { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; padding: 0; border: 0; }
+.browser-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 13px; pointer-events: none; }
+.browser-surface[data-viewport="phone"] { width: min(390px, 100%); align-self: center; }
+.browser-annotations { position: absolute; inset: 0; z-index: var(--z-panel); background: var(--surface-panel, var(--surface-card)); }
+.browser-annotation-image { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; user-select: none; }
+.browser-annotation-controls { position: absolute; bottom: 12px; left: 8px; right: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.browser-annotation-toolbar, .browser-annotation-label, .browser-annotation-error { pointer-events: auto; box-sizing: border-box; max-width: 100%; color: var(--text-strong); background: var(--surface-popover, var(--surface-card)); border: 1px solid var(--ds-border-subtle); border-radius: 8px; box-shadow: 0 4px 16px #0002; }
+.browser-annotation-toolbar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px; padding: 5px; }
+.browser-annotation-toolbar .ghost { display: grid; place-items: center; width: 28px; height: 28px; min-width: 28px; padding: 0; }
+.browser-annotation-toolbar svg { width: 15px; height: 15px; }
+.browser-annotation-toolbar [aria-pressed="true"] { background: var(--surface-active, var(--surface-hover)); color: var(--text-accent); }
+.browser-annotation-toolbar input[type="color"] { width: 26px; height: 26px; padding: 2px; background: transparent; border: 0; cursor: pointer; }
+.browser-annotation-toolbar select { max-width: 76px; height: 28px; padding: 2px 4px; font-size: 11px; background: transparent; color: var(--text-strong); border: 0; }
+.browser-annotation-add { min-height: 28px; padding: 3px 8px; font-size: 11px; white-space: nowrap; }
+.browser-annotation-label { width: 280px; padding: 8px; font-size: 12px; }
+.browser-annotation-error { padding: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.browser-annotation-hint { padding: 3px 6px; font-size: 11px; text-align: center; color: var(--text-muted); background: var(--surface-card); border-radius: 4px; }
+/* The address field owns its focus ring (1px accent edge plus a soft halo) instead of a square outline on the bare input. */
+.browser-address input:focus, .browser-address input:focus-visible { outline: none; }
+.browser-address:focus-within { border-color: var(--border-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-accent) 22%, transparent); }
+/* A failed page is a centred empty state with one clear action. */
+.browser-error { inset: 12px; height: auto; margin: 0; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; border: 0; background: transparent; }
+.browser-error button { flex: 0 0 auto; height: 30px; padding: 0 14px; border-radius: 8px; }
+.browser-error p { margin: 0; color: var(--text-primary); font-size: 13px; }
+.browser-error small { max-width: 300px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+/* Toolbar buttons are bare icons with a hover fill, like every other toolbar in the app. */
+.browser-toolbar .ghost, .browser-toolbar .ghost:disabled { border: 1px solid transparent; background: transparent; box-shadow: none; border-radius: 7px; }
+.browser-toolbar .ghost:hover:not(:disabled) { background: var(--surface-hover); }
+.browser-error-secondary { height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-strong); }
+/* Load error actions sit side by side at one height: secondary, then the primary Retry. */
+.browser-error { flex-direction: row; flex-wrap: wrap; justify-content: center; align-content: center; column-gap: 8px; }
+.browser-error p, .browser-error small { flex-basis: 100%; }
+.browser-error button { height: 30px; }
+/* The hint takes its own line above the actions (its max-width had let it share the button row). */
+.browser-error small { flex: 0 0 100%; max-width: none; box-sizing: border-box; padding-inline: max(0px, calc(50% - 170px)); }
+/* New tab: the tools grid (as in Codex) — every panel opens from here, with its shortcut. */
+.browser-new-tab { position: absolute; inset: 0; overflow: auto; padding: 40px 24px; box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; max-width: 760px; margin: 0 auto; z-index: var(--z-base); }
+.browser-new-tab h3 { margin: 0 0 10px; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.browser-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.browser-tool { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--surface-card); color: var(--text-primary); font-size: 13px; text-align: left; cursor: pointer; }
+.browser-tool:hover { background: var(--surface-hover); color: var(--text-strong); }
+.browser-tool:focus-visible { outline: 2px solid var(--border-accent); outline-offset: 1px; }
+.browser-tool > svg { flex-shrink: 0; color: var(--text-muted); }
+.browser-tool > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tool > kbd { flex-shrink: 0; padding: 1px 6px; border-radius: 5px; background: var(--surface-control, var(--surface-hover)); color: var(--text-subtle); font: 11px var(--ui-font-family, inherit); }
+.browser-new-tab-hint { margin: 18px 0 0; font-size: 12px; color: var(--text-subtle); }
+.browser-tool { background: color-mix(in srgb, var(--text-strong) 5%, transparent); }
+.browser-tool:hover { background: color-mix(in srgb, var(--text-strong) 9%, transparent); }
+/* Browser chrome as in Codex: back/forward/reload share one rounded group, the address is a centred pill,
+   and the page actions share a matching group on the right. */
+.browser-toolbar { gap: 8px; }
+.browser-nav-group, .browser-actions-group { display: flex; align-items: center; gap: 0; height: 30px; padding: 0 2px; border-radius: 999px; background: color-mix(in srgb, var(--text-strong) 6%, transparent); flex: 0 0 auto; }
+.browser-nav-group .ghost, .browser-actions-group .ghost { width: 26px !important; height: 26px !important; min-width: 26px !important; flex: 0 0 26px !important; border-radius: 999px !important; }
+.browser-address { height: 30px; border: 1px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--text-strong) 6%, transparent); padding: 0 14px; }
+.browser-address input { text-align: center; }
+.browser-address input:focus { text-align: left; }
+.browser-address:focus-within { border-color: var(--border-accent); }
+/* Browser pane header as in Codex: tabs, then "+" right beside them; pane controls stay at the far end. */
+.dock-pane[data-dock-pane="browser"] .dock-browser-tabs { flex: 0 1 auto; min-width: 0; }
+.dock-pane[data-dock-pane="browser"] .dock-pane-header > [aria-label="New browser tab"] { margin-right: auto; }
+/* Narrow panes keep Codex's single row: nav pill, address pill, actions; the action group leaves first when very tight. */
+@container browser-pane (max-width: 400px) {
+  .browser-toolbar { height: 36px; flex: 0 0 36px; flex-wrap: nowrap; }
+  .browser-address { flex: 1 1 auto; order: 0; min-width: 80px; }
+}
+@container browser-pane (max-width: 300px) { .browser-actions-group { display: none; } }
+.browser-address:focus-within { border-color: transparent; box-shadow: none; }
+/* WebKit keeps :focus-visible on the field while the window is inactive; :focus drops, so require both. */
+.browser-address:has(input:focus:focus-visible) { border-color: var(--border-accent); }
+/* A blank tab is the pane itself (as in Codex): no inset page card behind the Tools list; rows carry the only fill. */
+.browser-surface:has(> .browser-new-tab) { background: transparent; border-radius: 0; }
+
+.browser-logins { flex-wrap: wrap; }
+.browser-confirm > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

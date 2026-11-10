@@ -1,0 +1,171 @@
+# Engines and features
+
+An **engine** is the background program that manages a conversation and the model's tool requests. Start with **pi**, the default. Your provider and model are separate choices; see the [glossary](glossary.md#engine).
+
+## Start with the default engine
+
+1. Open **Settings → Engines**.
+2. Find **pi** and check that it is enabled.
+3. If it needs setup, choose **Install** and wait for the download/preparation to finish.
+4. When it is ready, try the [first Chat message](getting-started.md#_4-send-a-first-chat-message).
+
+**Expected result:** the runtime is ready and your selected model answers. You do not need to add a custom executable or change protocol settings for this first test. Chat and Work use their own pi profiles even when Code uses another engine.
+
+## What is a feature switch?
+
+A feature switch shows or enables an optional part of the app. Find these under **Settings → Features**. For example, Browser adds web tools, Computer use enables the desktop-control feature, and Git enables repository controls. Some features still need their own setup and permissions after being switched on.
+
+If a control seems missing, check its feature switch first. Start with the features needed for your task and add more when you have a reason to use them.
+
+## Detailed engine behavior
+
+The remaining sections cover engine readiness, custom engines, isolation, and advanced controls.
+
+Settings → Engines selects the default runtime from enabled, ready engines and
+enables engines for project and composer pickers. Each row groups its icon, name,
+protocol and status together. Install/Retry appears only when needed; installation
+shows progress and Cancel. The row menu provides default selection, runtime checks
+(for built-ins), protocol tests (for custom engines), details, and custom Edit/Delete.
+Deletion requires confirmation and keeps conversation files. Built-ins are pi (default), oh-my-pi, Codex and Claude Code (ACP).
+Existing threads retain their engine ID. Disabled engines are hidden from pickers;
+their threads open read-only with an enable notice. Unknown IDs resolve to the
+current enabled default with a notice.
+
+Oh-my-pi uses the shared pi-RPC adapter, with its own profile and storage. Enabling
+it or selecting Install prepares the bundled lockfile on demand. Installation is
+approximately 1.1 GB and can be cancelled. It requires Bun >= 1.3.14; the bundled
+manifest pins Bun 1.4.4 and omp 18.12.6. Only manifests and support files ship as
+resources, never node_modules. `engines/omp/no-accounts.mjs` is explicitly listed in
+`tauri.conf.json`; the install path calls `copy_tree`, which copies the guard into
+app-data alongside the manifests while excluding dependency directories. Work remains on pi because its work extension has
+not been validated under omp.
+
+## Add a custom engine
+
+Choose Add engine in the engine group header. The modal accepts a name, ACP/pi-RPC
+protocol, executable (with Browse), one argument per line, optional non-secret
+environment key/value rows, and an optional config-directory variable.
+The command must resolve through PATH or be an executable file. Use Test before
+saving: ACP receives `initialize`; pi-RPC receives `get_state` in `--mode rpc`.
+The handshake has a 15-second timeout and its process is stopped afterwards. Test
+shows the reported version when available, or a failure with up to 4 KiB of stderr.
+
+Examples:
+
+| Engine | Protocol | Command | Args | Config-directory variable |
+| --- | --- | --- | --- | --- |
+| Gemini CLI | ACP | `gemini` | `--experimental-acp` | Agent-specific, if supported |
+| pi fork | pi-RPC | `/path/to/pi-fork` | Leave empty | `PI_CODING_AGENT_DIR` |
+
+These examples require an installed agent with the selected protocol. A pi fork
+must also support pi's extension API and the nucode approval extension handshake.
+ACP agents must implement session creation/loading, prompting and permission
+requests. Routing uses the protocol; adding a compatible agent needs no Rust change.
+
+Custom definitions persist in `AppSettings.engines`. Engine IDs are stable strings.
+Environment keys containing KEY, TOKEN, SECRET or PASSWORD are rejected with
+“use a provider instead”. Loader overrides, PATH/HOME overrides, OMP_AUTH_* and
+OTEL_* overrides are also rejected. Provider credentials come from the provider
+registry via environment or its existing command mechanism, not engine definitions.
+
+## Isolation and enforcement
+
+Each runtime gets an environment allowlist and isolated HOME/configuration.
+Pi profiles use `<data>/<engine-id>/agent/<workspace-id>` and separate session
+storage; ACP profiles use their own engine/workspace directory. The optional
+config-directory variable points into that isolated directory. Project files remain
+available to the agent according to the thread's access policy.
+
+Pi's models.json and omp's models.yml are generated from the same registry and
+reasoning capabilities. They contain environment variable names, never API keys.
+Omp's preload intercepts its SQLite auth_credentials store: credential reads return
+empty, and API-key/OAuth writes fail. No login UI is forwarded. OMP_AUTH_BROKER_URL,
+OMP_AUTH_BROKER_TOKEN and OTEL exporter variables are not inherited.
+
+Omp network checks found in the installed source:
+
+- `main.ts` checks releases through `startup.checkUpdate`; disabled, together with
+  the setup wizard.
+- The plugin marketplace schedules automatic updates; `marketplace.autoUpdate=false`.
+- OTLP export is controlled by `telemetry.otlpExportEnabled=false`, plus
+  `OTEL_SDK_DISABLED=true`.
+- Model discovery and other fetches are restricted by the preload to configured
+  provider and enabled HTTP MCP connector origins. Unconfigured origins fail.
+
+Omp loads nucode's approval and subagent extensions. Bash/edit/write and MCP calls
+use the existing access/connector policies. LSP, debugger and Python/JS eval are
+available when supported by the installed runtime; each native call requires an
+explicit interactive approval, and is denied in read-only threads and subagents.
+Native omp task/browser/computer/login tools are excluded. Nucode supplies its
+own bounded subagents and browser/computer MCP tools. Project MCP configuration,
+external rules, skills and extensions are disabled in the omp profile.
+
+For ACP, nucode filters supplied MCP servers, sends feature restrictions in session
+metadata, and denies permission requests for disabled native capabilities. Arbitrary
+custom executables are trusted programs: ACP metadata is advisory unless the agent
+honors it, and these controls are not an OS sandbox for custom programs or their
+subprocesses. Custom agents must respect the protocol's permission boundary and
+must not implement independent account login or ambient credential discovery.
+
+## Composer commands
+
+In Code, type `/` at the start of the message to see five basic shortcuts.
+Type to filter, use Up/Down to choose, and Enter or Tab to insert; Escape dismisses.
+
+- `/sidechat` opens a side conversation when submitted. It needs an existing
+  conversation and an engine with fork support. Attachments stay with the main draft.
+- `/plan` inserts an editable request to plan first and wait before implementing.
+- `/goal` inserts an editable request with a clear outcome and verification.
+- `/new` starts a fresh conversation; text after the command becomes its first message.
+- `/compact` summarizes the active context on engines that support compaction.
+
+Plan and goal are prompt starters, not persistent modes or background goal loops.
+The objective comes first, with the caret ready to type, so conversation titles
+describe the task. The menu fits above or below the composer as space allows.
+Typing `/plan <task>` or `/goal <outcome>` directly works too. Existing advanced
+commands and custom prompts still work; the default menu stays small. Built-in
+suggestions do not appear for slashes in prose or filesystem paths.
+
+## Recovering from a failed request
+
+Code shows failed requests in a compact card, with the original provider error
+under **Error details**. Only the latest failure offers recovery actions:
+**Change model** opens the composer’s model picker; **Retry** resends the failed
+request and its images using the current model, reasoning and access settings.
+Retry preserves any unsent composer draft and existing file changes. It does not
+rewind work already completed by tools. Older failures remain readable without
+replay buttons. Failed turns are restored from history when reopening a conversation,
+without duplicating errors received live. A failed turn no longer shows a “Done” label.
+
+For a provider-free UI check, open the UI preview with `?failure=quota`, send one
+message, then change models and retry. The first send fails; the retry succeeds.
+
+## Feature switches
+
+Settings → Features defaults every switch on for existing installations. Controls
+and subscriptions update live; engine tool changes take effect on new turns/sessions
+without terminating an active turn. Code always remains available. Git off implies
+worktrees off, while checkpoints use their own store and remain independent.
+Codex's original experimental flags are available through the Codex row menu and
+the Codex flags navigation item under Engines.
+
+The feature accessor filters connector delivery for pi, omp, ACP and Codex. Browser
+and computer helpers also reject startup when disabled. Subagents off sets their
+concurrency to zero; terminal off prevents new PTYs; Work off stops queued tasks
+from starting. Reasoning effects off preserves the slider without animation.
+
+## Checks
+
+The standard verification in `docs/specs/m3-computer-use.md`, plus
+`npm run build -- --mode uipreview`, covers migration, registry resolution, custom
+handshakes, feature gating and existing engine behavior. Rust tests also launch real
+omp with an offline streaming transport and exercise its auth/network preload.
+
+With installed omp and localhost socket access, run from `apps/nucode/src-tauri`:
+
+```sh
+cargo test live_omp_streams_from_registry_stub -- --ignored --nocapture
+```
+
+That separate test uses an actual localhost OpenAI-compatible SSE server and checks
+prompt → streamed delta → completed turn through nucode's adapter.

@@ -1,0 +1,8 @@
+{
+  "name": "nucode-engine-browser",
+  "private": true,
+  "description": "Pinned Playwright MCP used by nucode's built-in browser connector",
+  "dependencies": {
+    "@playwright/mcp": "0.0.83"
+  }
+}

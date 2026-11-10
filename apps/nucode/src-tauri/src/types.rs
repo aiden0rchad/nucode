@@ -1,0 +1,1998 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitFileStatus {
+    pub(crate) path: String,
+    pub(crate) status: String,
+    pub(crate) additions: i64,
+    pub(crate) deletions: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitFileDiff {
+    pub(crate) path: String,
+    pub(crate) diff: String,
+    #[serde(default, rename = "oldLines")]
+    pub(crate) old_lines: Option<Vec<String>>,
+    #[serde(default, rename = "newLines")]
+    pub(crate) new_lines: Option<Vec<String>>,
+    #[serde(default, rename = "isBinary")]
+    pub(crate) is_binary: bool,
+    #[serde(default, rename = "isImage")]
+    pub(crate) is_image: bool,
+    #[serde(rename = "oldImageData")]
+    pub(crate) old_image_data: Option<String>,
+    #[serde(rename = "newImageData")]
+    pub(crate) new_image_data: Option<String>,
+    #[serde(rename = "oldImageMime")]
+    pub(crate) old_image_mime: Option<String>,
+    #[serde(rename = "newImageMime")]
+    pub(crate) new_image_mime: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitCommitDiff {
+    pub(crate) path: String,
+    pub(crate) status: String,
+    pub(crate) diff: String,
+    #[serde(default, rename = "oldLines")]
+    pub(crate) old_lines: Option<Vec<String>>,
+    #[serde(default, rename = "newLines")]
+    pub(crate) new_lines: Option<Vec<String>>,
+    #[serde(default, rename = "isBinary")]
+    pub(crate) is_binary: bool,
+    #[serde(default, rename = "isImage")]
+    pub(crate) is_image: bool,
+    #[serde(rename = "oldImageData")]
+    pub(crate) old_image_data: Option<String>,
+    #[serde(rename = "newImageData")]
+    pub(crate) new_image_data: Option<String>,
+    #[serde(rename = "oldImageMime")]
+    pub(crate) old_image_mime: Option<String>,
+    #[serde(rename = "newImageMime")]
+    pub(crate) new_image_mime: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitLogEntry {
+    pub(crate) sha: String,
+    pub(crate) summary: String,
+    pub(crate) author: String,
+    pub(crate) timestamp: i64,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub(crate) struct GitLogResponse {
+    pub(crate) total: usize,
+    pub(crate) entries: Vec<GitLogEntry>,
+    #[serde(default)]
+    pub(crate) ahead: usize,
+    #[serde(default)]
+    pub(crate) behind: usize,
+    #[serde(default, rename = "aheadEntries")]
+    pub(crate) ahead_entries: Vec<GitLogEntry>,
+    #[serde(default, rename = "behindEntries")]
+    pub(crate) behind_entries: Vec<GitLogEntry>,
+    #[serde(default)]
+    pub(crate) upstream: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubIssue {
+    pub(crate) number: u64,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    #[serde(rename = "updatedAt")]
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubIssuesResponse {
+    pub(crate) total: usize,
+    pub(crate) issues: Vec<GitHubIssue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubPullRequestAuthor {
+    pub(crate) login: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubPullRequest {
+    pub(crate) number: u64,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    #[serde(rename = "updatedAt")]
+    pub(crate) updated_at: String,
+    #[serde(rename = "createdAt")]
+    pub(crate) created_at: String,
+    pub(crate) body: String,
+    #[serde(rename = "headRefName")]
+    pub(crate) head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    pub(crate) base_ref_name: String,
+    #[serde(rename = "isDraft")]
+    pub(crate) is_draft: bool,
+    #[serde(default)]
+    pub(crate) author: Option<GitHubPullRequestAuthor>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubPullRequestsResponse {
+    pub(crate) total: usize,
+    #[serde(rename = "pullRequests")]
+    pub(crate) pull_requests: Vec<GitHubPullRequest>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubPullRequestDiff {
+    pub(crate) path: String,
+    pub(crate) status: String,
+    pub(crate) diff: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitHubPullRequestComment {
+    pub(crate) id: u64,
+    #[serde(default)]
+    pub(crate) body: String,
+    #[serde(rename = "createdAt")]
+    pub(crate) created_at: String,
+    #[serde(default)]
+    pub(crate) url: String,
+    #[serde(default)]
+    pub(crate) author: Option<GitHubPullRequestAuthor>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageDay {
+    pub(crate) day: String,
+    pub(crate) input_tokens: i64,
+    pub(crate) cached_input_tokens: i64,
+    pub(crate) output_tokens: i64,
+    pub(crate) total_tokens: i64,
+    #[serde(default)]
+    pub(crate) agent_time_ms: i64,
+    #[serde(default)]
+    pub(crate) agent_runs: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageTotals {
+    #[serde(default)]
+    pub(crate) all_time_tokens: i64,
+    #[serde(default)]
+    pub(crate) all_time_agent_runs: i64,
+    #[serde(default)]
+    pub(crate) all_time_agent_time_ms: i64,
+    pub(crate) last7_days_tokens: i64,
+    pub(crate) last30_days_tokens: i64,
+    pub(crate) average_daily_tokens: i64,
+    pub(crate) cache_hit_rate_percent: f64,
+    pub(crate) peak_day: Option<String>,
+    pub(crate) peak_day_tokens: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageModel {
+    pub(crate) model: String,
+    pub(crate) tokens: i64,
+    pub(crate) share_percent: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageSnapshot {
+    pub(crate) updated_at: i64,
+    pub(crate) days: Vec<LocalUsageDay>,
+    pub(crate) totals: LocalUsageTotals,
+    #[serde(default)]
+    pub(crate) top_models: Vec<LocalUsageModel>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TcpDaemonState {
+    Stopped,
+    Running,
+    Error,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TcpDaemonStatus {
+    pub(crate) state: TcpDaemonState,
+    #[serde(default)]
+    pub(crate) pid: Option<u32>,
+    #[serde(default)]
+    pub(crate) started_at_ms: Option<i64>,
+    #[serde(default)]
+    pub(crate) last_error: Option<String>,
+    #[serde(default)]
+    pub(crate) listen_addr: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TailscaleStatus {
+    pub(crate) installed: bool,
+    pub(crate) running: bool,
+    #[serde(default)]
+    pub(crate) version: Option<String>,
+    #[serde(default)]
+    pub(crate) dns_name: Option<String>,
+    #[serde(default)]
+    pub(crate) host_name: Option<String>,
+    #[serde(default)]
+    pub(crate) tailnet_name: Option<String>,
+    #[serde(default)]
+    pub(crate) ipv4: Vec<String>,
+    #[serde(default)]
+    pub(crate) ipv6: Vec<String>,
+    #[serde(default)]
+    pub(crate) suggested_remote_host: Option<String>,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TailscaleDaemonCommandPreview {
+    pub(crate) command: String,
+    pub(crate) daemon_path: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) token_configured: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct BranchInfo {
+    pub(crate) name: String,
+    pub(crate) last_commit: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct WorkspaceEntry {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) path: String,
+    #[serde(default)]
+    pub(crate) kind: WorkspaceKind,
+    #[serde(default, rename = "parentId")]
+    pub(crate) parent_id: Option<String>,
+    #[serde(default)]
+    pub(crate) worktree: Option<WorktreeInfo>,
+    #[serde(default)]
+    pub(crate) settings: WorkspaceSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct WorkspaceInfo {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) path: String,
+    pub(crate) connected: bool,
+    #[serde(default)]
+    pub(crate) kind: WorkspaceKind,
+    #[serde(default, rename = "parentId")]
+    pub(crate) parent_id: Option<String>,
+    #[serde(default)]
+    pub(crate) worktree: Option<WorktreeInfo>,
+    #[serde(default)]
+    pub(crate) settings: WorkspaceSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum WorkspaceKind {
+    Eval,
+    Work,
+    Main,
+    Worktree,
+}
+
+impl Default for WorkspaceKind {
+    fn default() -> Self {
+        WorkspaceKind::Main
+    }
+}
+
+impl WorkspaceKind {
+    pub(crate) fn is_worktree(&self) -> bool {
+        matches!(self, WorkspaceKind::Worktree)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct WorktreeInfo {
+    pub(crate) branch: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct WorkspaceGroup {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    #[serde(default, rename = "sortOrder")]
+    pub(crate) sort_order: Option<u32>,
+    #[serde(default, rename = "copiesFolder")]
+    pub(crate) copies_folder: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub(crate) struct WorkspaceSettings {
+    #[serde(default, rename = "defaultEngine", skip_serializing_if = "Option::is_none")]
+    pub(crate) default_engine: Option<EngineKind>,
+    #[serde(default, rename = "mcpServers")]
+    pub(crate) mcp_servers: Vec<McpServerEntry>,
+    #[serde(default, rename = "agentPolicy")]
+    pub(crate) agent_policy: Option<AgentPolicyOverride>,
+    #[serde(default, rename = "codegraphEnabled")]
+    pub(crate) codegraph_enabled: Option<bool>,
+    #[serde(default, rename = "sidebarCollapsed")]
+    pub(crate) sidebar_collapsed: bool,
+    #[serde(default, rename = "sortOrder")]
+    pub(crate) sort_order: Option<u32>,
+    #[serde(default, rename = "groupId")]
+    pub(crate) group_id: Option<String>,
+    #[serde(default, rename = "cloneSourceWorkspaceId")]
+    pub(crate) clone_source_workspace_id: Option<String>,
+    #[serde(default, rename = "gitRoot")]
+    pub(crate) git_root: Option<String>,
+    #[serde(default, rename = "launchScript")]
+    pub(crate) launch_script: Option<String>,
+    #[serde(default, rename = "launchScripts")]
+    pub(crate) launch_scripts: Option<Vec<LaunchScriptEntry>>,
+    #[serde(default, rename = "worktreeSetupScript")]
+    pub(crate) worktree_setup_script: Option<String>,
+    #[serde(default, rename = "worktreesFolder")]
+    pub(crate) worktrees_folder: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct LaunchScriptEntry {
+    pub(crate) id: String,
+    pub(crate) script: String,
+    pub(crate) icon: String,
+    #[serde(default)]
+    pub(crate) label: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct WorktreeSetupStatus {
+    #[serde(rename = "shouldRun")]
+    pub(crate) should_run: bool,
+    pub(crate) script: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct OpenAppTarget {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) kind: String,
+    #[serde(default, rename = "appName")]
+    pub(crate) app_name: Option<String>,
+    #[serde(default)]
+    pub(crate) command: Option<String>,
+    #[serde(default)]
+    pub(crate) args: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct RemoteBackendTarget {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) provider: RemoteBackendProvider,
+    #[serde(default = "default_remote_backend_host")]
+    pub(crate) host: String,
+    #[serde(default)]
+    pub(crate) token: Option<String>,
+    #[serde(default, rename = "lastConnectedAtMs")]
+    pub(crate) last_connected_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodeEnvironment {
+    pub id: String,
+    pub name: String,
+    pub workspace_ids: Vec<String>,
+    pub engine: EngineKind,
+    pub model_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct ChatImport {
+    pub auto: bool,
+    pub sources: Vec<String>,
+    pub include_archived: bool,
+}
+impl Default for ChatImport {
+    fn default() -> Self { Self { auto: false, sources: vec!["claude".into(), "codex".into()], include_archived: false } }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct AppSettings {
+    #[serde(default, rename = "chatImport")]
+    pub(crate) chat_import: ChatImport,
+    #[serde(default, rename = "codeEnvironments")]
+    pub code_environments: Vec<CodeEnvironment>,
+    #[serde(default, rename = "setupComplete")] pub setup_complete: bool,
+    #[serde(default)] pub features: Features,
+    #[serde(default)] pub diagnostics: nucode_diag_mcp::core::Options,
+    #[serde(default)] pub engines: Vec<EngineDefinition>,
+    #[serde(default, rename = "windowModes")]
+    pub(crate) window_modes: std::collections::HashMap<String, String>,
+    /// The mode a window opens in: "code", "chat", "work", or None to reopen the last one used.
+    #[serde(default, rename = "defaultMode", skip_serializing_if = "Option::is_none")]
+    pub(crate) default_mode: Option<String>,
+    #[serde(default, rename = "chatDefaultModel")]
+    pub(crate) chat_default_model: Option<ModelRef>,
+    #[serde(default)]
+    pub(crate) browser: BrowserSettings,
+    #[serde(default)]
+    pub(crate) computer: ComputerSettings,
+    #[serde(default = "default_mcp_servers", rename = "mcpServers")]
+    pub(crate) mcp_servers: Vec<McpServerEntry>,
+    #[serde(default)]
+    pub(crate) providers: Vec<ProviderEntry>,
+    #[serde(default, rename = "agentPolicy")]
+    pub(crate) agent_policy: AgentPolicy,
+    #[serde(default = "default_codegraph_enabled", rename = "codegraphEnabled")]
+    pub(crate) codegraph_enabled: bool,
+    #[serde(default, rename = "codexBin")]
+    pub(crate) codex_bin: Option<String>,
+    #[serde(default, rename = "codexArgs")]
+    pub(crate) codex_args: Option<String>,
+    #[serde(default, rename = "backendMode")]
+    pub(crate) backend_mode: BackendMode,
+    #[serde(default, rename = "remoteBackendProvider")]
+    pub(crate) remote_backend_provider: RemoteBackendProvider,
+    #[serde(default = "default_remote_backend_host", rename = "remoteBackendHost")]
+    pub(crate) remote_backend_host: String,
+    #[serde(default, rename = "remoteBackendToken")]
+    pub(crate) remote_backend_token: Option<String>,
+    #[serde(default = "default_remote_backends", rename = "remoteBackends")]
+    pub(crate) remote_backends: Vec<RemoteBackendTarget>,
+    #[serde(default, rename = "activeRemoteBackendId")]
+    pub(crate) active_remote_backend_id: Option<String>,
+    #[serde(default, rename = "keepDaemonRunningAfterAppClose")]
+    pub(crate) keep_daemon_running_after_app_close: bool,
+    #[serde(default = "default_access_mode", rename = "defaultAccessMode")]
+    pub(crate) default_access_mode: String,
+    #[serde(
+        default = "default_review_delivery_mode",
+        rename = "reviewDeliveryMode"
+    )]
+    pub(crate) review_delivery_mode: String,
+    #[serde(
+        default = "default_composer_model_shortcut",
+        rename = "composerModelShortcut"
+    )]
+    pub(crate) composer_model_shortcut: Option<String>,
+    #[serde(
+        default = "default_composer_access_shortcut",
+        rename = "composerAccessShortcut"
+    )]
+    pub(crate) composer_access_shortcut: Option<String>,
+    #[serde(
+        default = "default_composer_reasoning_shortcut",
+        rename = "composerReasoningShortcut"
+    )]
+    pub(crate) composer_reasoning_shortcut: Option<String>,
+    #[serde(default = "default_interrupt_shortcut", rename = "interruptShortcut")]
+    pub(crate) interrupt_shortcut: Option<String>,
+    #[serde(
+        default = "default_composer_collaboration_shortcut",
+        rename = "composerCollaborationShortcut"
+    )]
+    pub(crate) composer_collaboration_shortcut: Option<String>,
+    #[serde(default = "default_new_agent_shortcut", rename = "newAgentShortcut")]
+    pub(crate) new_agent_shortcut: Option<String>,
+    #[serde(
+        default = "default_new_worktree_agent_shortcut",
+        rename = "newWorktreeAgentShortcut"
+    )]
+    pub(crate) new_worktree_agent_shortcut: Option<String>,
+    #[serde(
+        default = "default_new_clone_agent_shortcut",
+        rename = "newCloneAgentShortcut"
+    )]
+    pub(crate) new_clone_agent_shortcut: Option<String>,
+    #[serde(
+        default = "default_archive_thread_shortcut",
+        rename = "archiveThreadShortcut"
+    )]
+    pub(crate) archive_thread_shortcut: Option<String>,
+    #[serde(
+        default = "default_toggle_projects_sidebar_shortcut",
+        rename = "toggleProjectsSidebarShortcut"
+    )]
+    pub(crate) toggle_projects_sidebar_shortcut: Option<String>,
+    #[serde(
+        default = "default_toggle_git_sidebar_shortcut",
+        rename = "toggleGitSidebarShortcut"
+    )]
+    pub(crate) toggle_git_sidebar_shortcut: Option<String>,
+    #[serde(
+        default = "default_toggle_debug_panel_shortcut",
+        rename = "toggleDebugPanelShortcut"
+    )]
+    pub(crate) toggle_debug_panel_shortcut: Option<String>,
+    #[serde(
+        default = "default_toggle_terminal_shortcut",
+        rename = "toggleTerminalShortcut"
+    )]
+    pub(crate) toggle_terminal_shortcut: Option<String>,
+    #[serde(
+        default = "default_cycle_agent_next_shortcut",
+        rename = "cycleAgentNextShortcut"
+    )]
+    pub(crate) cycle_agent_next_shortcut: Option<String>,
+    #[serde(
+        default = "default_cycle_agent_prev_shortcut",
+        rename = "cycleAgentPrevShortcut"
+    )]
+    pub(crate) cycle_agent_prev_shortcut: Option<String>,
+    #[serde(
+        default = "default_cycle_workspace_next_shortcut",
+        rename = "cycleWorkspaceNextShortcut"
+    )]
+    pub(crate) cycle_workspace_next_shortcut: Option<String>,
+    #[serde(
+        default = "default_cycle_workspace_prev_shortcut",
+        rename = "cycleWorkspacePrevShortcut"
+    )]
+    pub(crate) cycle_workspace_prev_shortcut: Option<String>,
+    #[serde(default, rename = "lastComposerModelId")]
+    pub(crate) last_composer_model_id: Option<String>,
+    #[serde(default, rename = "lastComposerReasoningEffort")]
+    pub(crate) last_composer_reasoning_effort: Option<String>,
+    #[serde(default = "default_ui_scale", rename = "uiScale")]
+    pub(crate) ui_scale: f64,
+    #[serde(default = "default_theme", rename = "theme")]
+    pub(crate) theme: String,
+    #[serde(default = "default_theme_light", rename = "themeLight")]
+    pub(crate) theme_light: String,
+    #[serde(default = "default_theme_dark", rename = "themeDark")]
+    pub(crate) theme_dark: String,
+    #[serde(default, rename = "themeAnimations")]
+    pub(crate) theme_animations: std::collections::HashMap<String, bool>,
+    #[serde(
+        default = "default_usage_show_remaining",
+        rename = "usageShowRemaining"
+    )]
+    pub(crate) usage_show_remaining: bool,
+    #[serde(
+        default = "default_show_message_file_path",
+        rename = "showMessageFilePath"
+    )]
+    pub(crate) show_message_file_path: bool,
+    #[serde(
+        default = "default_chat_history_scrollback_items",
+        rename = "chatHistoryScrollbackItems"
+    )]
+    pub(crate) chat_history_scrollback_items: Option<u32>,
+    #[serde(default, rename = "threadTitleAutogenerationEnabled")]
+    pub(crate) thread_title_autogeneration_enabled: bool,
+    #[serde(
+        default = "default_automatic_app_update_checks_enabled",
+        rename = "automaticAppUpdateChecksEnabled"
+    )]
+    pub(crate) automatic_app_update_checks_enabled: bool,
+    #[serde(default = "default_ui_font_family", rename = "uiFontFamily")]
+    pub(crate) ui_font_family: String,
+    #[serde(default = "default_code_font_family", rename = "codeFontFamily")]
+    pub(crate) code_font_family: String,
+    #[serde(default = "default_code_font_size", rename = "codeFontSize")]
+    pub(crate) code_font_size: u8,
+    #[serde(
+        default = "default_notification_sounds_enabled",
+        rename = "notificationSoundsEnabled"
+    )]
+    pub(crate) notification_sounds_enabled: bool,
+    #[serde(default = "default_split_chat_diff_view", rename = "splitChatDiffView")]
+    pub(crate) split_chat_diff_view: bool,
+    #[serde(default = "default_preload_git_diffs", rename = "preloadGitDiffs")]
+    pub(crate) preload_git_diffs: bool,
+    #[serde(
+        default = "default_git_diff_ignore_whitespace_changes",
+        rename = "gitDiffIgnoreWhitespaceChanges"
+    )]
+    pub(crate) git_diff_ignore_whitespace_changes: bool,
+    #[serde(
+        default = "default_commit_message_prompt",
+        rename = "commitMessagePrompt"
+    )]
+    pub(crate) commit_message_prompt: String,
+    #[serde(default, rename = "commitMessageModelId")]
+    pub(crate) commit_message_model_id: Option<String>,
+    #[serde(
+        default = "default_system_notifications_enabled",
+        rename = "systemNotificationsEnabled"
+    )]
+    pub(crate) system_notifications_enabled: bool,
+    #[serde(
+        default = "default_subagent_system_notifications_enabled",
+        rename = "subagentSystemNotificationsEnabled"
+    )]
+    pub(crate) subagent_system_notifications_enabled: bool,
+    #[serde(
+        default = "default_collaboration_modes_enabled",
+        rename = "collaborationModesEnabled"
+    )]
+    pub(crate) collaboration_modes_enabled: bool,
+    #[serde(
+        default = "default_steer_enabled",
+        rename = "steerEnabled",
+        alias = "experimentalSteerEnabled"
+    )]
+    pub(crate) steer_enabled: bool,
+    #[serde(
+        default = "default_follow_up_message_behavior",
+        rename = "followUpMessageBehavior"
+    )]
+    pub(crate) follow_up_message_behavior: String,
+    #[serde(
+        default = "default_composer_follow_up_hint_enabled",
+        rename = "composerFollowUpHintEnabled"
+    )]
+    pub(crate) composer_follow_up_hint_enabled: bool,
+    #[serde(
+        default = "default_pause_queued_messages_when_response_required",
+        rename = "pauseQueuedMessagesWhenResponseRequired"
+    )]
+    pub(crate) pause_queued_messages_when_response_required: bool,
+    #[serde(
+        default = "default_unified_exec_enabled",
+        rename = "unifiedExecEnabled",
+        alias = "experimentalUnifiedExecEnabled"
+    )]
+    pub(crate) unified_exec_enabled: bool,
+    #[serde(default = "default_personality", rename = "personality")]
+    pub(crate) personality: String,
+    #[serde(default = "default_dictation_enabled", rename = "dictationEnabled")]
+    pub(crate) dictation_enabled: bool,
+    #[serde(default = "default_dictation_model_id", rename = "dictationModelId")]
+    pub(crate) dictation_model_id: String,
+    #[serde(default, rename = "dictationPreferredLanguage")]
+    pub(crate) dictation_preferred_language: Option<String>,
+    #[serde(default = "default_dictation_hold_key", rename = "dictationHoldKey")]
+    pub(crate) dictation_hold_key: String,
+    #[serde(
+        default = "default_composer_editor_preset",
+        rename = "composerEditorPreset"
+    )]
+    pub(crate) composer_editor_preset: String,
+    #[serde(
+        default = "default_composer_fence_expand_on_space",
+        rename = "composerFenceExpandOnSpace"
+    )]
+    pub(crate) composer_fence_expand_on_space: bool,
+    #[serde(
+        default = "default_composer_fence_expand_on_enter",
+        rename = "composerFenceExpandOnEnter"
+    )]
+    pub(crate) composer_fence_expand_on_enter: bool,
+    #[serde(
+        default = "default_composer_fence_language_tags",
+        rename = "composerFenceLanguageTags"
+    )]
+    pub(crate) composer_fence_language_tags: bool,
+    #[serde(
+        default = "default_composer_fence_wrap_selection",
+        rename = "composerFenceWrapSelection"
+    )]
+    pub(crate) composer_fence_wrap_selection: bool,
+    #[serde(
+        default = "default_composer_fence_auto_wrap_paste_multiline",
+        rename = "composerFenceAutoWrapPasteMultiline"
+    )]
+    pub(crate) composer_fence_auto_wrap_paste_multiline: bool,
+    #[serde(
+        default = "default_composer_fence_auto_wrap_paste_code_like",
+        rename = "composerFenceAutoWrapPasteCodeLike"
+    )]
+    pub(crate) composer_fence_auto_wrap_paste_code_like: bool,
+    #[serde(
+        default = "default_composer_list_continuation",
+        rename = "composerListContinuation"
+    )]
+    pub(crate) composer_list_continuation: bool,
+    #[serde(
+        default = "default_composer_code_block_copy_use_modifier",
+        rename = "composerCodeBlockCopyUseModifier"
+    )]
+    pub(crate) composer_code_block_copy_use_modifier: bool,
+    #[serde(default = "default_workspace_groups", rename = "workspaceGroups")]
+    pub(crate) workspace_groups: Vec<WorkspaceGroup>,
+    #[serde(default, rename = "globalWorktreesFolder")]
+    pub(crate) global_worktrees_folder: Option<String>,
+    #[serde(default = "default_open_app_targets", rename = "openAppTargets")]
+    pub(crate) open_app_targets: Vec<OpenAppTarget>,
+    #[serde(default = "default_selected_open_app_id", rename = "selectedOpenAppId")]
+    pub(crate) selected_open_app_id: String,
+    /// The titlebar "Open in VS Code / Cursor / …" button is opt-in (Settings › Open in).
+    #[serde(default, rename = "showOpenInEditor")]
+    pub(crate) show_open_in_editor: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum BackendMode {
+    Local,
+    Remote,
+}
+
+impl Default for BackendMode {
+    fn default() -> Self {
+        default_backend_mode()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RemoteBackendProvider {
+    Tcp,
+}
+
+impl Default for RemoteBackendProvider {
+    fn default() -> Self {
+        RemoteBackendProvider::Tcp
+    }
+}
+
+fn default_access_mode() -> String {
+    "current".to_string()
+}
+
+fn default_review_delivery_mode() -> String {
+    "inline".to_string()
+}
+
+fn default_backend_mode() -> BackendMode {
+    if cfg!(target_os = "ios") {
+        BackendMode::Remote
+    } else {
+        BackendMode::Local
+    }
+}
+
+fn default_remote_backend_host() -> String {
+    "127.0.0.1:4732".to_string()
+}
+
+fn default_remote_backends() -> Vec<RemoteBackendTarget> {
+    Vec::new()
+}
+
+fn default_ui_scale() -> f64 {
+    1.0
+}
+
+fn default_theme_light() -> String { "light".into() }
+fn default_theme_dark() -> String { "dark".into() }
+
+// Fresh installs start on Glass Dark; keep in sync with DEFAULT_THEME_ID in src/features/themes/defaults.ts.
+fn default_theme() -> String {
+    "glass-dark".to_string()
+}
+
+fn default_usage_show_remaining() -> bool {
+    false
+}
+
+fn default_show_message_file_path() -> bool {
+    true
+}
+
+fn default_chat_history_scrollback_items() -> Option<u32> {
+    Some(200)
+}
+
+fn default_automatic_app_update_checks_enabled() -> bool {
+    true
+}
+
+fn default_ui_font_family() -> String {
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif".to_string()
+}
+
+fn default_code_font_family() -> String {
+    "ui-monospace, \"Cascadia Mono\", \"Segoe UI Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace".to_string()
+}
+
+fn default_code_font_size() -> u8 {
+    11
+}
+
+fn default_composer_model_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+m"
+    } else {
+        "ctrl+shift+m"
+    };
+    Some(value.to_string())
+}
+
+fn default_composer_access_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+a"
+    } else {
+        "ctrl+shift+a"
+    };
+    Some(value.to_string())
+}
+
+fn default_composer_reasoning_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+r"
+    } else {
+        "ctrl+shift+r"
+    };
+    Some(value.to_string())
+}
+
+fn default_interrupt_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "ctrl+c"
+    } else {
+        "ctrl+shift+c"
+    };
+    Some(value.to_string())
+}
+
+fn default_composer_collaboration_shortcut() -> Option<String> {
+    Some("shift+tab".to_string())
+}
+
+fn default_new_agent_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+n"
+    } else {
+        "ctrl+n"
+    };
+    Some(value.to_string())
+}
+
+fn default_new_worktree_agent_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+n"
+    } else {
+        "ctrl+shift+n"
+    };
+    Some(value.to_string())
+}
+
+fn default_new_clone_agent_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+alt+n"
+    } else {
+        "ctrl+alt+n"
+    };
+    Some(value.to_string())
+}
+
+fn default_archive_thread_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+ctrl+a"
+    } else {
+        "ctrl+alt+a"
+    };
+    Some(value.to_string())
+}
+
+fn default_toggle_projects_sidebar_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+p"
+    } else {
+        "ctrl+shift+p"
+    };
+    Some(value.to_string())
+}
+
+fn default_toggle_git_sidebar_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+g"
+    } else {
+        "ctrl+shift+g"
+    };
+    Some(value.to_string())
+}
+
+fn default_toggle_debug_panel_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+d"
+    } else {
+        "ctrl+shift+d"
+    };
+    Some(value.to_string())
+}
+
+fn default_toggle_terminal_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+t"
+    } else {
+        "ctrl+shift+t"
+    };
+    Some(value.to_string())
+}
+
+fn default_cycle_agent_next_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+ctrl+down"
+    } else {
+        "ctrl+alt+down"
+    };
+    Some(value.to_string())
+}
+
+fn default_cycle_agent_prev_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+ctrl+up"
+    } else {
+        "ctrl+alt+up"
+    };
+    Some(value.to_string())
+}
+
+fn default_cycle_workspace_next_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+down"
+    } else {
+        "ctrl+alt+shift+down"
+    };
+    Some(value.to_string())
+}
+
+fn default_cycle_workspace_prev_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+up"
+    } else {
+        "ctrl+alt+shift+up"
+    };
+    Some(value.to_string())
+}
+
+fn default_notification_sounds_enabled() -> bool {
+    true
+}
+
+fn default_system_notifications_enabled() -> bool {
+    true
+}
+
+fn default_subagent_system_notifications_enabled() -> bool {
+    true
+}
+
+fn default_split_chat_diff_view() -> bool {
+    false
+}
+
+fn default_preload_git_diffs() -> bool {
+    true
+}
+
+fn default_git_diff_ignore_whitespace_changes() -> bool {
+    false
+}
+
+fn default_commit_message_prompt() -> String {
+    "Generate a concise git commit message for the following changes. \
+Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
+Keep the summary line under 72 characters. \
+Only output the commit message, nothing else.\n\n\
+Changes:\n{diff}"
+        .to_string()
+}
+
+fn default_collaboration_modes_enabled() -> bool {
+    true
+}
+
+fn default_steer_enabled() -> bool {
+    true
+}
+
+fn default_follow_up_message_behavior() -> String {
+    "queue".to_string()
+}
+
+fn default_composer_follow_up_hint_enabled() -> bool {
+    true
+}
+
+fn default_pause_queued_messages_when_response_required() -> bool {
+    true
+}
+
+fn default_unified_exec_enabled() -> bool {
+    true
+}
+
+fn default_personality() -> String {
+    "friendly".to_string()
+}
+
+fn default_dictation_enabled() -> bool {
+    false
+}
+
+fn default_dictation_model_id() -> String {
+    "base".to_string()
+}
+
+fn default_dictation_hold_key() -> String {
+    "alt".to_string()
+}
+
+fn default_composer_editor_preset() -> String {
+    "default".to_string()
+}
+
+fn default_composer_fence_expand_on_space() -> bool {
+    false
+}
+
+fn default_composer_fence_expand_on_enter() -> bool {
+    false
+}
+
+fn default_composer_fence_language_tags() -> bool {
+    false
+}
+
+fn default_composer_fence_wrap_selection() -> bool {
+    false
+}
+
+fn default_composer_fence_auto_wrap_paste_multiline() -> bool {
+    false
+}
+
+fn default_composer_fence_auto_wrap_paste_code_like() -> bool {
+    false
+}
+
+fn default_composer_list_continuation() -> bool {
+    false
+}
+
+fn default_composer_code_block_copy_use_modifier() -> bool {
+    false
+}
+
+fn default_workspace_groups() -> Vec<WorkspaceGroup> {
+    Vec::new()
+}
+
+fn default_open_app_targets() -> Vec<OpenAppTarget> {
+    if cfg!(target_os = "macos") {
+        return vec![
+            OpenAppTarget {
+                id: "vscode".to_string(),
+                label: "VS Code".to_string(),
+                kind: "app".to_string(),
+                app_name: Some("Visual Studio Code".to_string()),
+                command: None,
+                args: Vec::new(),
+            },
+            OpenAppTarget {
+                id: "cursor".to_string(),
+                label: "Cursor".to_string(),
+                kind: "app".to_string(),
+                app_name: Some("Cursor".to_string()),
+                command: None,
+                args: Vec::new(),
+            },
+            OpenAppTarget {
+                id: "zed".to_string(),
+                label: "Zed".to_string(),
+                kind: "app".to_string(),
+                app_name: Some("Zed".to_string()),
+                command: None,
+                args: Vec::new(),
+            },
+            OpenAppTarget {
+                id: "ghostty".to_string(),
+                label: "Ghostty".to_string(),
+                kind: "app".to_string(),
+                app_name: Some("Ghostty".to_string()),
+                command: None,
+                args: Vec::new(),
+            },
+            OpenAppTarget {
+                id: "antigravity".to_string(),
+                label: "Antigravity".to_string(),
+                kind: "app".to_string(),
+                app_name: Some("Antigravity".to_string()),
+                command: None,
+                args: Vec::new(),
+            },
+            OpenAppTarget {
+                id: "finder".to_string(),
+                label: "Finder".to_string(),
+                kind: "finder".to_string(),
+                app_name: None,
+                command: None,
+                args: Vec::new(),
+            },
+        ];
+    }
+
+    let file_manager_label = if cfg!(target_os = "windows") {
+        "Explorer"
+    } else {
+        "File Manager"
+    };
+
+    vec![
+        OpenAppTarget {
+            id: "vscode".to_string(),
+            label: "VS Code".to_string(),
+            kind: "command".to_string(),
+            app_name: None,
+            command: Some("code".to_string()),
+            args: Vec::new(),
+        },
+        OpenAppTarget {
+            id: "cursor".to_string(),
+            label: "Cursor".to_string(),
+            kind: "command".to_string(),
+            app_name: None,
+            command: Some("cursor".to_string()),
+            args: Vec::new(),
+        },
+        OpenAppTarget {
+            id: "zed".to_string(),
+            label: "Zed".to_string(),
+            kind: "command".to_string(),
+            app_name: None,
+            command: Some("zed".to_string()),
+            args: Vec::new(),
+        },
+        OpenAppTarget {
+            id: "ghostty".to_string(),
+            label: "Ghostty".to_string(),
+            kind: "command".to_string(),
+            app_name: None,
+            command: Some("ghostty".to_string()),
+            args: Vec::new(),
+        },
+        OpenAppTarget {
+            id: "antigravity".to_string(),
+            label: "Antigravity".to_string(),
+            kind: "command".to_string(),
+            app_name: None,
+            command: Some("antigravity".to_string()),
+            args: Vec::new(),
+        },
+        OpenAppTarget {
+            id: "finder".to_string(),
+            label: file_manager_label.to_string(),
+            kind: "finder".to_string(),
+            app_name: None,
+            command: None,
+            args: Vec::new(),
+        },
+    ]
+}
+
+fn default_selected_open_app_id() -> String {
+    if cfg!(target_os = "windows") {
+        "finder".to_string()
+    } else {
+        "vscode".to_string()
+    }
+}
+
+fn default_codegraph_enabled() -> bool {
+    true
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            chat_import: ChatImport::default(),
+            setup_complete: false,
+            code_environments: Vec::new(),
+            features: Features::default(),
+            diagnostics: Default::default(),
+            engines: Vec::new(),
+            browser: Default::default(),
+            computer: Default::default(),
+            mcp_servers: default_mcp_servers(),
+            providers: Vec::new(),
+            agent_policy: AgentPolicy::default(),
+            window_modes: Default::default(),
+            default_mode: None,
+            chat_default_model: None,
+            codegraph_enabled: true,
+            codex_bin: None,
+            codex_args: None,
+            backend_mode: default_backend_mode(),
+            remote_backend_provider: RemoteBackendProvider::Tcp,
+            remote_backend_host: default_remote_backend_host(),
+            remote_backend_token: None,
+            remote_backends: default_remote_backends(),
+            active_remote_backend_id: None,
+            keep_daemon_running_after_app_close: false,
+            default_access_mode: "current".to_string(),
+            review_delivery_mode: default_review_delivery_mode(),
+            composer_model_shortcut: default_composer_model_shortcut(),
+            composer_access_shortcut: default_composer_access_shortcut(),
+            composer_reasoning_shortcut: default_composer_reasoning_shortcut(),
+            interrupt_shortcut: default_interrupt_shortcut(),
+            composer_collaboration_shortcut: default_composer_collaboration_shortcut(),
+            new_agent_shortcut: default_new_agent_shortcut(),
+            new_worktree_agent_shortcut: default_new_worktree_agent_shortcut(),
+            new_clone_agent_shortcut: default_new_clone_agent_shortcut(),
+            archive_thread_shortcut: default_archive_thread_shortcut(),
+            toggle_projects_sidebar_shortcut: default_toggle_projects_sidebar_shortcut(),
+            toggle_git_sidebar_shortcut: default_toggle_git_sidebar_shortcut(),
+            toggle_debug_panel_shortcut: default_toggle_debug_panel_shortcut(),
+            toggle_terminal_shortcut: default_toggle_terminal_shortcut(),
+            cycle_agent_next_shortcut: default_cycle_agent_next_shortcut(),
+            cycle_agent_prev_shortcut: default_cycle_agent_prev_shortcut(),
+            cycle_workspace_next_shortcut: default_cycle_workspace_next_shortcut(),
+            cycle_workspace_prev_shortcut: default_cycle_workspace_prev_shortcut(),
+            last_composer_model_id: None,
+            last_composer_reasoning_effort: None,
+            ui_scale: 1.0,
+            theme: default_theme(),
+            theme_light: default_theme_light(),
+            theme_dark: default_theme_dark(),
+            theme_animations: Default::default(),
+            usage_show_remaining: default_usage_show_remaining(),
+            show_message_file_path: default_show_message_file_path(),
+            chat_history_scrollback_items: default_chat_history_scrollback_items(),
+            thread_title_autogeneration_enabled: false,
+            automatic_app_update_checks_enabled: true,
+            ui_font_family: default_ui_font_family(),
+            code_font_family: default_code_font_family(),
+            code_font_size: default_code_font_size(),
+            notification_sounds_enabled: true,
+            system_notifications_enabled: true,
+            subagent_system_notifications_enabled: true,
+            split_chat_diff_view: default_split_chat_diff_view(),
+            preload_git_diffs: default_preload_git_diffs(),
+            git_diff_ignore_whitespace_changes: default_git_diff_ignore_whitespace_changes(),
+            commit_message_prompt: default_commit_message_prompt(),
+            commit_message_model_id: None,
+            collaboration_modes_enabled: true,
+            steer_enabled: true,
+            follow_up_message_behavior: default_follow_up_message_behavior(),
+            composer_follow_up_hint_enabled: default_composer_follow_up_hint_enabled(),
+            pause_queued_messages_when_response_required:
+                default_pause_queued_messages_when_response_required(),
+            unified_exec_enabled: true,
+            personality: default_personality(),
+            dictation_enabled: false,
+            dictation_model_id: default_dictation_model_id(),
+            dictation_preferred_language: None,
+            dictation_hold_key: default_dictation_hold_key(),
+            composer_editor_preset: default_composer_editor_preset(),
+            composer_fence_expand_on_space: default_composer_fence_expand_on_space(),
+            composer_fence_expand_on_enter: default_composer_fence_expand_on_enter(),
+            composer_fence_language_tags: default_composer_fence_language_tags(),
+            composer_fence_wrap_selection: default_composer_fence_wrap_selection(),
+            composer_fence_auto_wrap_paste_multiline:
+                default_composer_fence_auto_wrap_paste_multiline(),
+            composer_fence_auto_wrap_paste_code_like:
+                default_composer_fence_auto_wrap_paste_code_like(),
+            composer_list_continuation: default_composer_list_continuation(),
+            composer_code_block_copy_use_modifier: default_composer_code_block_copy_use_modifier(),
+            workspace_groups: default_workspace_groups(),
+            global_worktrees_folder: None,
+            open_app_targets: default_open_app_targets(),
+            selected_open_app_id: default_selected_open_app_id(),
+            show_open_in_editor: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AppSettings, BackendMode, RemoteBackendProvider, WorkspaceEntry, WorkspaceGroup,
+        WorkspaceKind, WorkspaceSettings,
+    };
+
+    #[test]
+    fn code_environments_round_trip_metadata_and_workspace_references() {
+        let value = serde_json::json!({"codeEnvironments":[{"id":"saved","name":"Project","workspaceIds":["w1","w2"],"engine":"omp","modelId":"provider/model"}]});
+        let settings: AppSettings = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(settings).unwrap()["codeEnvironments"], value["codeEnvironments"]);
+    }
+
+    #[test]
+    fn app_settings_defaults_from_empty_json() {
+        let settings: AppSettings = serde_json::from_str("{}").expect("settings deserialize");
+        assert!(settings.code_environments.is_empty());
+        assert!(settings.codex_bin.is_none());
+        let expected_backend_mode = if cfg!(target_os = "ios") {
+            BackendMode::Remote
+        } else {
+            BackendMode::Local
+        };
+        assert!(matches!(
+            (&settings.backend_mode, &expected_backend_mode),
+            (BackendMode::Local, BackendMode::Local) | (BackendMode::Remote, BackendMode::Remote)
+        ));
+        assert!(matches!(
+            settings.remote_backend_provider,
+            RemoteBackendProvider::Tcp
+        ));
+        assert_eq!(settings.remote_backend_host, "127.0.0.1:4732");
+        assert!(settings.remote_backend_token.is_none());
+        assert!(settings.remote_backends.is_empty());
+        assert!(settings.active_remote_backend_id.is_none());
+        assert!(!settings.keep_daemon_running_after_app_close);
+        assert_eq!(settings.default_access_mode, "current");
+        assert_eq!(settings.review_delivery_mode, "inline");
+        let expected_primary = if cfg!(target_os = "macos") {
+            "cmd"
+        } else {
+            "ctrl"
+        };
+        let expected_model = format!("{expected_primary}+shift+m");
+        let expected_access = format!("{expected_primary}+shift+a");
+        let expected_reasoning = format!("{expected_primary}+shift+r");
+        let expected_toggle_debug = format!("{expected_primary}+shift+d");
+        let expected_toggle_terminal = format!("{expected_primary}+shift+t");
+        assert_eq!(
+            settings.composer_model_shortcut.as_deref(),
+            Some(expected_model.as_str())
+        );
+        assert_eq!(
+            settings.composer_access_shortcut.as_deref(),
+            Some(expected_access.as_str())
+        );
+        assert_eq!(
+            settings.composer_reasoning_shortcut.as_deref(),
+            Some(expected_reasoning.as_str())
+        );
+        assert_eq!(
+            settings.composer_collaboration_shortcut.as_deref(),
+            Some("shift+tab")
+        );
+        let expected_interrupt = if cfg!(target_os = "macos") {
+            "ctrl+c"
+        } else {
+            "ctrl+shift+c"
+        };
+        assert_eq!(
+            settings.interrupt_shortcut.as_deref(),
+            Some(expected_interrupt)
+        );
+        assert_eq!(
+            settings.archive_thread_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "cmd+ctrl+a"
+            } else {
+                "ctrl+alt+a"
+            })
+        );
+        assert_eq!(
+            settings.toggle_debug_panel_shortcut.as_deref(),
+            Some(expected_toggle_debug.as_str())
+        );
+        assert_eq!(
+            settings.toggle_terminal_shortcut.as_deref(),
+            Some(expected_toggle_terminal.as_str())
+        );
+        assert_eq!(
+            settings.cycle_agent_next_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "cmd+ctrl+down"
+            } else {
+                "ctrl+alt+down"
+            })
+        );
+        assert_eq!(
+            settings.cycle_agent_prev_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "cmd+ctrl+up"
+            } else {
+                "ctrl+alt+up"
+            })
+        );
+        assert_eq!(
+            settings.cycle_workspace_next_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "cmd+shift+down"
+            } else {
+                "ctrl+alt+shift+down"
+            })
+        );
+        assert_eq!(
+            settings.cycle_workspace_prev_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "cmd+shift+up"
+            } else {
+                "ctrl+alt+shift+up"
+            })
+        );
+        assert!(settings.last_composer_model_id.is_none());
+        assert!(settings.last_composer_reasoning_effort.is_none());
+        assert!((settings.ui_scale - 1.0).abs() < f64::EPSILON);
+        assert_eq!(settings.theme, "glass-dark");
+        assert!(!settings.usage_show_remaining);
+        assert!(settings.show_message_file_path);
+        assert_eq!(settings.chat_history_scrollback_items, Some(200));
+        assert!(!settings.thread_title_autogeneration_enabled);
+        assert!(settings.automatic_app_update_checks_enabled);
+        assert!(settings.ui_font_family.contains("-apple-system"));
+        assert!(settings.code_font_family.contains("ui-monospace"));
+        assert_eq!(settings.code_font_size, 11);
+        assert!(settings.notification_sounds_enabled);
+        assert!(settings.system_notifications_enabled);
+        assert!(settings.subagent_system_notifications_enabled);
+        assert!(!settings.split_chat_diff_view);
+        assert!(settings.preload_git_diffs);
+        assert!(!settings.git_diff_ignore_whitespace_changes);
+        assert!(settings.commit_message_prompt.contains("{diff}"));
+        assert!(settings.collaboration_modes_enabled);
+        assert!(settings.steer_enabled);
+        assert_eq!(settings.follow_up_message_behavior, "queue");
+        assert!(settings.composer_follow_up_hint_enabled);
+        assert!(settings.pause_queued_messages_when_response_required);
+        assert!(settings.unified_exec_enabled);
+        assert_eq!(settings.personality, "friendly");
+        assert!(!settings.dictation_enabled);
+        assert_eq!(settings.dictation_model_id, "base");
+        assert!(settings.dictation_preferred_language.is_none());
+        assert_eq!(settings.dictation_hold_key, "alt");
+        assert_eq!(settings.composer_editor_preset, "default");
+        assert!(!settings.composer_fence_expand_on_space);
+        assert!(!settings.composer_fence_expand_on_enter);
+        assert!(!settings.composer_fence_language_tags);
+        assert!(!settings.composer_fence_wrap_selection);
+        assert!(!settings.composer_fence_auto_wrap_paste_multiline);
+        assert!(!settings.composer_fence_auto_wrap_paste_code_like);
+        assert!(!settings.composer_list_continuation);
+        assert!(!settings.composer_code_block_copy_use_modifier);
+        assert!(settings.workspace_groups.is_empty());
+        let expected_open_id = if cfg!(target_os = "windows") {
+            "finder"
+        } else {
+            "vscode"
+        };
+        assert_eq!(settings.selected_open_app_id, expected_open_id);
+        assert_eq!(settings.open_app_targets.len(), 6);
+        assert_eq!(settings.open_app_targets[0].id, "vscode");
+    }
+
+    #[test]
+    fn workspace_group_defaults_from_minimal_json() {
+        let group: WorkspaceGroup =
+            serde_json::from_str(r#"{"id":"g1","name":"Group"}"#).expect("group deserialize");
+        assert!(group.sort_order.is_none());
+        assert!(group.copies_folder.is_none());
+    }
+
+    #[test]
+    fn app_settings_round_trip_preserves_workspace_group_copies_folder() {
+        let mut settings = AppSettings::default();
+        settings.workspace_groups = vec![WorkspaceGroup {
+            id: "g1".to_string(),
+            name: "Group".to_string(),
+            sort_order: Some(2),
+            copies_folder: Some("/tmp/group-copies".to_string()),
+        }];
+
+        let json = serde_json::to_string(&settings).expect("serialize settings");
+        let decoded: AppSettings = serde_json::from_str(&json).expect("deserialize settings");
+        assert_eq!(decoded.workspace_groups.len(), 1);
+        assert_eq!(
+            decoded.workspace_groups[0].copies_folder.as_deref(),
+            Some("/tmp/group-copies")
+        );
+    }
+
+    #[test]
+    fn workspace_entry_defaults_from_minimal_json() {
+        let entry: WorkspaceEntry =
+            serde_json::from_str(r#"{"id":"1","name":"Test","path":"/tmp"}"#)
+                .expect("workspace deserialize");
+        assert!(matches!(entry.kind, WorkspaceKind::Main));
+        assert!(entry.parent_id.is_none());
+        assert!(entry.worktree.is_none());
+        assert!(entry.settings.sort_order.is_none());
+        assert!(entry.settings.group_id.is_none());
+    }
+
+    #[test]
+    fn workspace_settings_defaults() {
+        let settings = WorkspaceSettings::default();
+        assert!(!settings.sidebar_collapsed);
+        assert!(settings.sort_order.is_none());
+        assert!(settings.group_id.is_none());
+        assert!(settings.git_root.is_none());
+    }
+}
+// Registry and engine policy are owned by nucode, independent of engine config.
+pub(crate) type EngineKind = String;
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum EngineProtocol { PiRpc, CodexAppServer, Acp }
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct EngineDefinition {
+    pub id: String,
+    pub name: String,
+    pub protocol: EngineProtocol,
+    #[serde(default)] pub built_in: bool,
+    #[serde(default)] pub command: Option<String>,
+    #[serde(default)] pub args: Vec<String>,
+    #[serde(default)] pub env: std::collections::HashMap<String, String>,
+    #[serde(default)] pub config_dir_env: Option<String>,
+    #[serde(default = "feature_on")] pub enabled: bool,
+    #[serde(default)] pub description: Option<String>,
+}
+fn feature_on() -> bool { true }
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct Features {
+    pub git: bool,
+    pub worktrees: bool,
+    pub browser: bool,
+    pub computer_use: bool,
+    pub terminal: bool,
+    pub side_chats: bool,
+    pub subagents: bool,
+    pub checkpoints: bool,
+    pub chat_mode: bool,
+    pub work_mode: bool,
+    pub connectors: bool,
+    pub import_tools: bool,
+    pub dictation: bool,
+    pub reasoning_effects: bool,
+    pub diagnostics: bool,
+}
+impl Default for Features {
+    fn default() -> Self { Self {
+        git: true,
+        worktrees: true,
+        browser: true,
+        computer_use: true,
+        terminal: true,
+        side_chats: true,
+        subagents: true,
+        checkpoints: true,
+        chat_mode: true,
+        work_mode: true,
+        connectors: true,
+        import_tools: true,
+        dictation: true,
+        reasoning_effects: true,
+        diagnostics: false,
+    } }
+}
+impl AppSettings {
+    pub fn features(&self) -> Features {
+        let mut features = self.features.clone();
+        features.worktrees &= features.git;
+        features
+    }
+}
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ModelRef {
+    pub provider_id: String,
+    pub model_id: String,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ProviderKind {
+    Openai,
+    Anthropic,
+    Google,
+    Openrouter,
+    Groq,
+    Mistral,
+    Xai,
+    Deepseek,
+    Zai,
+    Ollama,
+    Lmstudio,
+    OpenaiCompatible,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ApiStyle {
+    #[default]
+    ChatCompletions,
+    Responses,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub(crate) enum ProviderAuth {
+    #[default]
+    None,
+    ApiKey,
+    Env {
+        var: String,
+    },
+    Command {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default, rename = "timeoutMs")]
+        timeout_ms: Option<u64>,
+    },
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProviderModel {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub enabled: bool,
+    pub context_window: Option<u64>,
+    pub supports_tools: Option<bool>,
+    pub supports_images: Option<bool>,
+    #[serde(default)]
+    pub supports_images_source: Option<ImageSupportSource>,
+    #[serde(default)]
+    pub detected_supports_images: Option<bool>,
+    pub reasoning: Option<ReasoningCapability>,
+    pub detected_reasoning: Option<ReasoningCapability>,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ImageSupportSource { User, Detected }
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReasoningCapability {
+    pub supported: bool,
+    pub levels: Vec<String>,
+    pub default: Option<String>,
+    pub control: String,
+    pub source: String,
+    pub detected_at: u64,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProviderEntry {
+    pub id: String,
+    pub name: String,
+    pub kind: ProviderKind,
+    #[serde(default)]
+    pub anthropic_compatible: bool,
+    pub base_url: Option<String>,
+    pub api_style: Option<ApiStyle>,
+    #[serde(default)]
+    pub auth: ProviderAuth,
+    #[serde(default)]
+    pub models: Vec<ProviderModel>,
+    pub models_fetched_at: Option<u64>,
+    pub enabled: bool,
+    #[serde(default)]
+    pub extra_headers: std::collections::BTreeMap<String, String>,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ToolAccess {
+    ReadOnly,
+    Full,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CommandRank { Colonel, Major, Enlisted }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentRole {
+    pub name: String,
+    pub description: String,
+    pub model: Option<ModelRef>,
+    pub tool_access: ToolAccess,
+    pub instructions: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_rank: Option<CommandRank>,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct SubagentPolicy {
+    pub enabled: bool,
+    pub mode: SubagentMode,
+    pub max_concurrent: u8,
+    pub max_per_turn: u8,
+    pub max_depth: u8,
+    pub max_run_minutes: u16,
+    pub daily_token_limit: u64,
+    pub allowed_models: Vec<ModelRef>,
+    pub default_model: Option<ModelRef>,
+    pub roles: Vec<AgentRole>,
+}
+impl Default for SubagentPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: SubagentMode::Custom,
+            max_concurrent: 4,
+            max_per_turn: 8,
+            max_depth: 1,
+            max_run_minutes: 0,
+            daily_token_limit: 0,
+            allowed_models: vec![],
+            default_model: None,
+            roles: [
+                ("scout", "Explore quickly", ToolAccess::ReadOnly),
+                ("planner", "Plan changes", ToolAccess::ReadOnly),
+                ("worker", "Implement changes", ToolAccess::Full),
+            ]
+            .into_iter()
+            .map(|(name, description, tool_access)| AgentRole {
+                name: name.into(),
+                description: description.into(),
+                tool_access,
+                model: None,
+                instructions: String::new(),
+                command_rank: None,
+            })
+            .collect(),
+        }
+    }
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SubagentMode {
+    #[default]
+    Custom,
+    ChainOfCommand,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct AgentPolicy {
+    pub default_model: Option<ModelRef>,
+    pub default_engine: EngineKind,
+    pub subagents: SubagentPolicy,
+}
+impl Default for AgentPolicy { fn default() -> Self { Self { default_model: None, default_engine: "pi".into(), subagents: SubagentPolicy::default() } } }
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct SubagentPolicyOverride {
+    pub enabled: Option<bool>,
+    pub mode: Option<SubagentMode>,
+    pub max_concurrent: Option<u8>,
+    pub max_per_turn: Option<u8>,
+    pub max_depth: Option<u8>,
+    pub max_run_minutes: Option<u16>,
+    pub daily_token_limit: Option<u64>,
+    pub allowed_models: Option<Vec<ModelRef>>,
+    pub default_model: Option<ModelRef>,
+    pub roles: Option<Vec<AgentRole>>,
+}
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct AgentPolicyOverride {
+    pub default_model: Option<ModelRef>,
+    pub default_engine: Option<EngineKind>,
+    pub subagents: Option<SubagentPolicyOverride>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged, deny_unknown_fields)]
+pub(crate) enum McpCredential {
+    Value { value: String },
+    Secret { secret: bool },
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub(crate) enum McpTransport {
+    Stdio {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        cwd: Option<String>,
+        #[serde(default)]
+        env: std::collections::BTreeMap<String, McpCredential>,
+    },
+    Http {
+        url: String,
+        #[serde(default)]
+        headers: std::collections::BTreeMap<String, McpCredential>,
+        bearer: Option<McpCredential>,
+    },
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum McpApproval {
+    #[default]
+    Auto,
+    Ask,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct McpServerEntry {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    pub enabled: bool,
+    pub transport: Option<McpTransport>,
+    pub tool_allowlist: Option<Vec<String>>,
+    pub tool_denylist: Option<Vec<String>>,
+    #[serde(default)]
+    pub approval: McpApproval,
+}
+
+pub(crate) fn default_mcp_servers() -> Vec<McpServerEntry> {
+    vec![
+        McpServerEntry {
+            id: "codegraph".into(),
+            name: "CodeGraph".into(),
+            enabled: true,
+            transport: None,
+            tool_allowlist: None,
+            tool_denylist: None,
+            approval: McpApproval::Auto,
+        },
+        McpServerEntry {
+            id: "nucode-computer".into(),
+            name: "Computer Use".into(),
+            enabled: true,
+            transport: None,
+            tool_allowlist: None,
+            tool_denylist: None,
+            approval: McpApproval::Auto,
+        },
+        McpServerEntry {
+            id: "nucode-browser".into(),
+            name: "Browser".into(),
+            enabled: true,
+            transport: None,
+            tool_allowlist: None,
+            tool_denylist: None,
+            approval: McpApproval::Ask,
+        },
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BrowserSettings {
+    pub engine: BrowserEngine,
+    pub private_browsing: bool,
+    pub keep_sessions: bool,
+    pub offer_to_save_passwords: bool,
+    pub require_auth_to_fill: bool,
+    pub binary: Option<String>,
+    pub allowed_origins: Vec<String>,
+    pub blocked_origins: Vec<String>,
+    pub approval: crate::types::McpApproval,
+    pub search_url: String,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum BrowserEngine { #[default] Native, Cdp }
+impl Default for BrowserSettings {
+    fn default() -> Self {
+        Self {
+            engine: BrowserEngine::Native,
+            private_browsing: false,
+            keep_sessions: true,
+            offer_to_save_passwords: true,
+            require_auth_to_fill: true,
+            binary: None,
+            allowed_origins: vec![],
+            blocked_origins: vec![],
+            approval: crate::types::McpApproval::Ask,
+            search_url: "https://www.google.com/search?q={query}".into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ComputerAccess {
+    #[default]
+    Full,
+    ReadOnly,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ConfirmTyping {
+    Always,
+    Sensitive,
+    // Like Codex desktop: approving an app covers ordinary typing and Return there.
+    #[default]
+    #[serde(rename = "risky-only")]
+    RiskyOnly,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", from = "ComputerAllowedAppInput")]
+pub(crate) struct ComputerAllowedApp {
+    pub bundle_id: String,
+    pub access: ComputerAccess,
+}
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ComputerAllowedAppInput {
+    Legacy(String),
+    Entry {
+        #[serde(rename = "bundleId")]
+        bundle_id: String,
+        access: ComputerAccess,
+    },
+}
+impl From<ComputerAllowedAppInput> for ComputerAllowedApp {
+    fn from(value: ComputerAllowedAppInput) -> Self {
+        let (bundle_id, access) = match value {
+            ComputerAllowedAppInput::Legacy(id) => (id, ComputerAccess::Full),
+            ComputerAllowedAppInput::Entry { bundle_id, access } => (bundle_id, access),
+        };
+        Self {
+            access: if bundle_id.eq_ignore_ascii_case("com.apple.systempreferences") {
+                ComputerAccess::ReadOnly
+            } else {
+                access
+            },
+            bundle_id,
+        }
+    }
+}
+impl From<&str> for ComputerAllowedApp {
+    fn from(id: &str) -> Self {
+        ComputerAllowedAppInput::Legacy(id.into()).into()
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct ComputerSettings {
+    pub mode: String,
+    pub allow_foreground_fallback: bool,
+    pub virtual_cursor: bool,
+    pub enabled: bool,
+    pub planner: Option<ModelRef>,
+    pub grounding: Option<ModelRef>,
+    pub grounding_mode: String,
+    pub grounding_width: u32,
+    pub grounding_height: u32,
+    pub allowed_apps: Vec<ComputerAllowedApp>,
+    pub confirm_typing: ConfirmTyping,
+    pub denied_apps: Vec<String>,
+    pub max_steps: u32,
+    pub max_seconds: u64,
+    /// Limit for one planning step, including provider retries.
+    pub planner_seconds: u64,
+    /// "ask": any installed app (approved first when `ask_approval` is on).
+    /// "listed": only `allowed_apps`.
+    pub app_access: String,
+    /// Ask before using a new app and before risky actions. Off: neither is asked.
+    pub ask_approval: bool,
+    pub shortcut: String,
+}
+impl ComputerSettings {
+    pub fn app_ids(&self) -> Vec<String> {
+        self.allowed_apps
+            .iter()
+            .map(|a| a.bundle_id.clone())
+            .collect()
+    }
+}
+impl Default for ComputerSettings {
+    fn default() -> Self {
+        Self {
+            mode: "background".into(),
+            allow_foreground_fallback: false,
+            virtual_cursor: true,
+            enabled: false,
+            planner: None,
+            grounding: None,
+            grounding_mode: "elements".into(),
+            grounding_width: 1920,
+            grounding_height: 1080,
+            allowed_apps: vec![],
+            confirm_typing: ConfirmTyping::RiskyOnly,
+            denied_apps: vec![],
+            max_steps: 30,
+            max_seconds: 300,
+            planner_seconds: 120,
+            app_access: "ask".into(),
+            ask_approval: false,
+            shortcut: "Control+Alt+Super+Period".into(),
+        }
+    }
+}

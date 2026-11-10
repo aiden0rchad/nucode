@@ -1,0 +1,120 @@
+use std::path::PathBuf;
+
+use tokio::sync::Mutex;
+
+use crate::codex::config as codex_config;
+use crate::storage::write_settings;
+use crate::types::AppSettings;
+use crate::utils::normalize_windows_namespace_path;
+
+fn normalize_personality(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "friendly" => Some("friendly"),
+        "pragmatic" => Some("pragmatic"),
+        _ => None,
+    }
+}
+
+pub(crate) async fn get_app_settings_core(app_settings: &Mutex<AppSettings>) -> AppSettings {
+    let mut settings = app_settings.lock().await.clone();
+    if let Ok(Some(collaboration_modes_enabled)) = codex_config::read_collaboration_modes_enabled()
+    {
+        settings.collaboration_modes_enabled = collaboration_modes_enabled;
+    }
+    if let Ok(Some(steer_enabled)) = codex_config::read_steer_enabled() {
+        settings.steer_enabled = steer_enabled;
+    }
+    if let Ok(Some(unified_exec_enabled)) = codex_config::read_unified_exec_enabled() {
+        settings.unified_exec_enabled = unified_exec_enabled;
+    }
+    if let Ok(personality) = codex_config::read_personality() {
+        settings.personality = personality
+            .as_deref()
+            .and_then(normalize_personality)
+            .unwrap_or("friendly")
+            .to_string();
+    }
+    settings
+}
+
+pub(crate) async fn update_app_settings_core(
+    mut settings: AppSettings,
+    app_settings: &Mutex<AppSettings>,
+    settings_path: &PathBuf,
+) -> Result<AppSettings, String> {
+    settings.diagnostics.validate()?;
+    super::engine_registry::validate_settings(&settings)?;
+    crate::shared::providers::validate(&settings.providers, &settings.agent_policy)?;
+    super::connectors::validate(&settings.mcp_servers, false)?;
+    super::browser::validate(&settings.browser)?;
+    super::computer::policy::validate(&settings.computer)?;
+    for entry in super::connectors::defaults() {
+        if !settings.mcp_servers.iter().any(|s| s.id == entry.id) {
+            settings.mcp_servers.push(entry);
+        }
+    }
+    let old_connectors = app_settings.lock().await.mcp_servers.clone();
+    if !matches!(settings.backend_mode, crate::types::BackendMode::Remote) {
+        let workspaces = crate::storage::read_workspaces(
+            &settings_path
+                .parent()
+                .ok_or("Missing settings directory")?
+                .join("workspaces.json"),
+        )?;
+        super::connectors::validate_workspaces(
+            &settings,
+            workspaces.values().map(|w| &w.settings),
+        )?;
+        crate::shared::providers::delete_removed_keys(
+            &app_settings.lock().await.providers,
+            &settings.providers,
+            &crate::shared::providers::Keychain,
+        )?;
+    }
+    settings.global_worktrees_folder = settings
+        .global_worktrees_folder
+        .map(|path| normalize_windows_namespace_path(&path));
+    let _ = codex_config::write_collaboration_modes_enabled(settings.collaboration_modes_enabled);
+    let _ = codex_config::write_steer_enabled(settings.steer_enabled);
+    let _ = codex_config::write_unified_exec_enabled(settings.unified_exec_enabled);
+
+    let _ = codex_config::write_personality(settings.personality.as_str());
+    let mut current = app_settings.lock().await;
+    settings.window_modes = current.window_modes.clone();
+    write_settings(settings_path, &settings)?;
+    if !matches!(settings.backend_mode, crate::types::BackendMode::Remote) {
+        let home = settings_path
+            .parent()
+            .ok_or("Missing settings directory")?
+            .join("pi/agent");
+        std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
+        super::pi::config::write_json(
+            &home.join("models.json"),
+            &super::pi::config::models(&settings.providers),
+        )?;
+        super::pi::config::sync_policies(
+            settings_path.parent().ok_or("Missing settings directory")?,
+            &settings,
+        )?;
+    }
+    *current = settings.clone();
+    drop(current);
+    if !matches!(settings.backend_mode, crate::types::BackendMode::Remote) {
+        super::connectors::delete_removed_secrets(
+            &old_connectors,
+            &settings.mcp_servers,
+            &super::providers::Keychain,
+        )?;
+    }
+    Ok(settings)
+}
+
+pub(crate) fn get_codex_config_path_core() -> Result<String, String> {
+    codex_config::config_toml_path()
+        .ok_or_else(|| "Unable to resolve CODEX_HOME".to_string())
+        .and_then(|path| {
+            path.to_str()
+                .map(|value| value.to_string())
+                .ok_or_else(|| "Unable to resolve CODEX_HOME".to_string())
+        })
+}

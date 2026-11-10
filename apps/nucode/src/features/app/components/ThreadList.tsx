@@ -1,0 +1,165 @@
+import { useSidebarReorder, type DropPosition } from "../hooks/useSidebarReorder";
+import { SidebarTree } from "./SidebarTree";
+import { useMemo, useState, type MouseEvent } from "react";
+
+import type { ThreadSummary } from "../../../types";
+import type { ThreadStatusById } from "../../../utils/threadStatus";
+import { ThreadRow } from "./ThreadRow";
+import { buildThreadRowVisibility } from "./threadRowVisibility";
+
+type ThreadListRow = {
+  thread: ThreadSummary;
+  depth: number;
+};
+
+type ThreadListProps = {
+  workspaceId: string;
+  pinnedRows: ThreadListRow[];
+  unpinnedRows: ThreadListRow[];
+  totalThreadRoots: number;
+  isExpanded: boolean;
+  showExpandToggle?: boolean;
+  nextCursor: string | null;
+  isPaging: boolean;
+  nested?: boolean;
+  showLoadOlder?: boolean;
+  activeWorkspaceId: string | null;
+  activeThreadId: string | null;
+  threadStatusById: ThreadStatusById;
+  pendingUserInputKeys?: Set<string>;
+  getThreadTime: (thread: ThreadSummary) => string | null;
+  getThreadArgsBadge?: (workspaceId: string, threadId: string) => string | null;
+  onReorderThread?: (workspaceId: string, id: string, targetId: string, position: DropPosition) => void;
+  onMoveThread?: (workspaceId: string, id: string, direction: "up" | "down") => void;
+  onTogglePin?: (workspaceId: string, threadId: string) => void;
+  isThreadPinned: (workspaceId: string, threadId: string) => boolean;
+  onToggleExpanded: (workspaceId: string) => void;
+  onLoadOlderThreads: (workspaceId: string) => void;
+  onSelectThread: (workspaceId: string, threadId: string) => void;
+  onShowThreadMenu: (
+    event: MouseEvent,
+    workspaceId: string,
+    threadId: string,
+    canPin: boolean,
+  ) => void;
+};
+
+export function ThreadList({
+  workspaceId,
+  pinnedRows,
+  unpinnedRows,
+  totalThreadRoots,
+  isExpanded,
+  showExpandToggle = true,
+  nextCursor,
+  isPaging,
+  nested,
+  showLoadOlder = true,
+  activeWorkspaceId,
+  activeThreadId,
+  threadStatusById,
+  pendingUserInputKeys,
+  getThreadTime,
+  getThreadArgsBadge,
+  onReorderThread,
+  onMoveThread,
+  onTogglePin,
+  isThreadPinned,
+  onToggleExpanded,
+  onLoadOlderThreads,
+  onSelectThread,
+  onShowThreadMenu,
+}: ThreadListProps) {
+  const reorderRow = useSidebarReorder(
+    onReorderThread && ((id, targetId, position) => onReorderThread(workspaceId, id, targetId, position)),
+    onMoveThread && ((id, direction) => onMoveThread(workspaceId, id, direction)),
+  );
+  const indentUnit = 14;
+  const [collapsedThreadKeys, setCollapsedThreadKeys] = useState<Set<string>>(new Set());
+
+  const toggleThreadSubagents = (threadId: string) => {
+    const threadKey = `${workspaceId}:${threadId}`;
+    setCollapsedThreadKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadKey)) {
+        next.delete(threadKey);
+      } else {
+        next.add(threadKey);
+      }
+      return next;
+    });
+  };
+
+  const pinnedVisibility = useMemo(
+    () =>
+      buildThreadRowVisibility(
+        pinnedRows,
+        (row) => collapsedThreadKeys.has(`${workspaceId}:${row.thread.id}`),
+      ),
+    [collapsedThreadKeys, pinnedRows, workspaceId],
+  );
+  const unpinnedVisibility = useMemo(
+    () =>
+      buildThreadRowVisibility(
+        unpinnedRows,
+        (row) => collapsedThreadKeys.has(`${workspaceId}:${row.thread.id}`),
+      ),
+    [collapsedThreadKeys, unpinnedRows, workspaceId],
+  );
+
+  return (
+    <div className={`thread-list${nested ? " thread-list-nested" : ""}`}>
+      <SidebarTree rows={[...pinnedVisibility.visibleRows, ...unpinnedVisibility.visibleRows]} rowKey={row => row.thread.id} selected={row => workspaceId === activeWorkspaceId && row.thread.id === activeThreadId}>{row => (
+        <ThreadRow
+          key={row.thread.id}
+          thread={row.thread}
+          depth={row.depth}
+          treeDepth={row.depth + 1}
+          workspaceId={workspaceId}
+          indentUnit={indentUnit}
+          activeWorkspaceId={activeWorkspaceId}
+          activeThreadId={activeThreadId}
+          threadStatusById={threadStatusById}
+          pendingUserInputKeys={pendingUserInputKeys}
+          getThreadTime={getThreadTime}
+          getThreadArgsBadge={getThreadArgsBadge}
+          reorderProps={reorderRow(row.thread.id, "unpinned", row.depth === 0 && !pinnedRows.includes(row))}
+          isThreadPinned={isThreadPinned}
+          onTogglePin={onTogglePin}
+          onSelectThread={onSelectThread}
+          onShowThreadMenu={onShowThreadMenu}
+          hasSubagentChildren={pinnedVisibility.rowsWithChildren.has(row) || unpinnedVisibility.rowsWithChildren.has(row)}
+          subagentsExpanded={!collapsedThreadKeys.has(`${workspaceId}:${row.thread.id}`)}
+          onToggleSubagents={(_, threadId) => toggleThreadSubagents(threadId)}
+        />
+      )}</SidebarTree>
+      {showExpandToggle && totalThreadRoots > 3 && (
+        <button
+          className="thread-more"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded(workspaceId);
+          }}
+        >
+          {isExpanded ? "Show less" : `Show ${totalThreadRoots - 3} more`}
+        </button>
+      )}
+      {showLoadOlder && nextCursor && (isExpanded || totalThreadRoots <= 3) && (
+        <button
+          className="thread-more"
+          onClick={(event) => {
+            event.stopPropagation();
+            onLoadOlderThreads(workspaceId);
+          }}
+          disabled={isPaging}
+        >
+          {isPaging
+            ? "Loading..."
+            : totalThreadRoots === 0
+              ? "Search older..."
+              : "Load older..."}
+        </button>
+      )}
+    </div>
+  );
+}

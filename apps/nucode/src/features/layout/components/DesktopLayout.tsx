@@ -1,0 +1,216 @@
+import { SidebarResizeHandle } from "./SidebarResizeHandle";
+import { useEffect, useRef, type PointerEvent, type ReactNode } from "react";
+import { MainTopbar } from "../../app/components/MainTopbar";
+import { ChatPane } from "./ChatPane";
+
+type CenterMode = "chat" | "diff";
+
+function shouldRenderDiffViewer({
+  splitChatDiffView,
+  preloadGitDiffs,
+  centerMode,
+}: {
+  splitChatDiffView: boolean;
+  preloadGitDiffs: boolean;
+  centerMode: CenterMode;
+}) {
+  return splitChatDiffView || preloadGitDiffs || centerMode === "diff";
+}
+
+function isActiveLayer(centerMode: CenterMode, layer: CenterMode) {
+  return centerMode === layer;
+}
+
+function layerClassName({
+  splitChatDiffView,
+  layer,
+  isActive,
+}: {
+  splitChatDiffView: boolean;
+  layer: CenterMode;
+  isActive: boolean;
+}) {
+  if (splitChatDiffView) {
+    return `content-layer content-layer-split content-layer-${layer}${
+      isActive ? " is-active" : ""
+    }`;
+  }
+  return `content-layer ${isActive ? "is-active" : "is-hidden"}`;
+}
+
+function setLayerInert(
+  layer: HTMLDivElement | null,
+  isActive: boolean,
+  splitChatDiffView: boolean,
+) {
+  if (!layer) {
+    return;
+  }
+
+  if (splitChatDiffView || isActive) {
+    layer.removeAttribute("inert");
+    return;
+  }
+
+  layer.setAttribute("inert", "");
+}
+
+type DesktopLayoutProps = {
+  sidebarNode: ReactNode;
+  updateToastNode: ReactNode;
+  approvalToastsNode: ReactNode;
+  errorToastsNode: ReactNode;
+  homeNode: ReactNode;
+  showHome: boolean;
+  showWorkspace: boolean;
+  topbarLeftNode: ReactNode;
+  topbarActionsNode?: ReactNode;
+  centerMode: "chat" | "diff";
+  preloadGitDiffs: boolean;
+  splitChatDiffView: boolean;
+  messagesNode: ReactNode;
+  gitDiffViewerNode: ReactNode;
+  gitDiffPanelNode: ReactNode;
+  planPanelNode: ReactNode;
+  composerNode: ReactNode;
+  terminalDockNode: ReactNode;
+  debugPanelNode: ReactNode;
+  hasActivePlan: boolean;
+  onSidebarResizeStart: (event: PointerEvent<HTMLDivElement>) => void;
+  onChatDiffSplitPositionResizeStart: (event: PointerEvent<HTMLDivElement>) => void;
+  onRightPanelResizeStart: (event: PointerEvent<HTMLDivElement>) => void;
+  onPlanPanelResizeStart: (event: PointerEvent<HTMLDivElement>) => void;
+};
+
+export function DesktopLayout({
+  sidebarNode,
+  updateToastNode,
+  approvalToastsNode,
+  errorToastsNode,
+  homeNode,
+  showHome,
+  showWorkspace,
+  topbarLeftNode,
+  topbarActionsNode,
+  centerMode,
+  preloadGitDiffs,
+  splitChatDiffView,
+  messagesNode,
+  gitDiffViewerNode,
+  composerNode,
+  debugPanelNode,
+  onSidebarResizeStart,
+  onChatDiffSplitPositionResizeStart,
+}: DesktopLayoutProps) {
+  const diffLayerRef = useRef<HTMLDivElement | null>(null);
+  const chatLayerRef = useRef<HTMLDivElement | null>(null);
+  const chatPaneNode = <ChatPane messagesNode={messagesNode} composerNode={composerNode} />;
+  const diffLayerActive = isActiveLayer(centerMode, "diff");
+  const chatLayerActive = isActiveLayer(centerMode, "chat");
+  const showDiffViewer = shouldRenderDiffViewer({
+    splitChatDiffView,
+    preloadGitDiffs,
+    centerMode,
+  });
+
+  useEffect(() => {
+    const diffLayer = diffLayerRef.current;
+    const chatLayer = chatLayerRef.current;
+    setLayerInert(diffLayer, diffLayerActive, splitChatDiffView);
+    setLayerInert(chatLayer, chatLayerActive, splitChatDiffView);
+
+    if (splitChatDiffView) {
+      return;
+    }
+
+    const hiddenLayer = diffLayerActive ? chatLayer : diffLayer;
+    const activeElement = document.activeElement;
+    if (
+      hiddenLayer &&
+      activeElement instanceof HTMLElement &&
+      hiddenLayer.contains(activeElement)
+    ) {
+      activeElement.blur();
+    }
+  }, [chatLayerActive, diffLayerActive, splitChatDiffView]);
+
+  return (
+    <>
+      {sidebarNode}
+      <SidebarResizeHandle onPointerDown={onSidebarResizeStart} />
+
+      <section className="main">
+        {updateToastNode}
+        {errorToastsNode}
+        {showHome && homeNode}
+
+        {showWorkspace && (
+          <>
+            <MainTopbar inTitlebar leftNode={topbarLeftNode} actionsNode={topbarActionsNode} />
+            {approvalToastsNode}
+            <div className={`content${splitChatDiffView ? " content-split" : ""}`}>
+              {splitChatDiffView ? (
+                <>
+                  <div
+                    className={layerClassName({
+                      splitChatDiffView,
+                      layer: "chat",
+                      isActive: chatLayerActive,
+                    })}
+                    ref={chatLayerRef}
+                  >
+                    {chatPaneNode}
+                  </div>
+                  <div
+                    className="content-split-resizer"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize chat/diff split"
+                    onPointerDown={onChatDiffSplitPositionResizeStart}
+                  />
+                  <div
+                    className={layerClassName({
+                      splitChatDiffView,
+                      layer: "diff",
+                      isActive: diffLayerActive,
+                    })}
+                    ref={diffLayerRef}
+                  >
+                    {showDiffViewer ? gitDiffViewerNode : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    className={layerClassName({
+                      splitChatDiffView,
+                      layer: "diff",
+                      isActive: diffLayerActive,
+                    })}
+                    aria-hidden={!splitChatDiffView ? !diffLayerActive : undefined}
+                    ref={diffLayerRef}
+                  >
+                    {showDiffViewer ? gitDiffViewerNode : null}
+                  </div>
+                  <div
+                    className={layerClassName({
+                      splitChatDiffView,
+                      layer: "chat",
+                      isActive: chatLayerActive,
+                    })}
+                    aria-hidden={!splitChatDiffView ? !chatLayerActive : undefined}
+                    ref={chatLayerRef}
+                  >
+                    {chatPaneNode}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {debugPanelNode}
+          </>
+        )}
+      </section>
+    </>
+  );
+}

@@ -1,0 +1,371 @@
+import { DigitalRain } from "@/features/themes/DigitalRain";
+import { useFeatures } from "@settings/features";
+import { useCheckpointWarnings } from "@/features/checkpoints/useCheckpointWarnings";
+import { RewindAction } from "@/features/checkpoints/Checkpoints";
+import { memo, useCallback } from "react";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import ListTree from "lucide-react/dist/esm/icons/list-tree";
+import type {
+  ConversationItem,
+  OpenAppTarget,
+  RequestUserInputRequest,
+  RequestUserInputResponse,
+} from "../../../types";
+import { PlanReadyFollowupMessage } from "../../app/components/PlanReadyFollowupMessage";
+import { RequestUserInputMessage } from "../../app/components/RequestUserInputMessage";
+import { useFileLinkOpener } from "../hooks/useFileLinkOpener";
+import { formatCount, parseReasoning, statusToneFromText, summarizeToolGroup } from "../utils/messageRenderUtils";
+import {
+  DiffRow,
+  ExploreRow,
+  MessageRow,
+  ReasoningRow,
+  ReviewRow,
+  ToolRow,
+  UserInputRow,
+  WorkingIndicator,
+} from "./MessageRows";
+import { useMessagesViewState } from "./useMessagesViewState";
+import { isTurnError, TurnErrorCard } from "./TurnErrorCard";
+
+type MessagesProps = {
+  items: ConversationItem[];
+  threadId: string | null;
+  workspaceId?: string | null;
+  isThinking: boolean;
+  lastTurnStatus?: string;
+  waitingForApproval?: boolean;
+  isLoadingMessages?: boolean;
+  hasOlderHistory?: boolean;
+  isLoadingHistory?: boolean;
+  historyError?: string | null;
+  onLoadOlderHistory?: () => Promise<void>;
+  processingStartedAt?: number | null;
+  /** Shown in place of the working label while the provider request is being retried. */
+  retryNotice?: string | null;
+  lastDurationMs?: number | null;
+  showPollingFetchStatus?: boolean;
+  pollingIntervalMs?: number;
+  workspacePath?: string | null;
+  openTargets: OpenAppTarget[];
+  selectedOpenAppId: string;
+  codeBlockCopyUseModifier?: boolean;
+  showMessageFilePath?: boolean;
+  userInputRequests?: RequestUserInputRequest[];
+  onUserInputSubmit?: (
+    request: RequestUserInputRequest,
+    response: RequestUserInputResponse,
+  ) => void;
+  onPlanAccept?: () => void;
+  onPlanSubmitChanges?: (changes: string) => void;
+  onOpenThreadLink?: (threadId: string, workspaceId?: string | null) => void;
+  onQuoteMessage?: (text: string) => void;
+  onSideChat?: (itemId: string) => void;
+  sideChatDisabledReason?: string;
+  onSendToMain?: (text: string) => void;
+  onRetryMessage?: (text: string, images: string[]) => Promise<boolean>;
+  onChangeModel?: () => void;
+};
+
+export const Messages = memo(function Messages({
+  items,
+  threadId,
+  workspaceId = null,
+  isThinking,
+  isLoadingMessages = false,
+  hasOlderHistory = false,
+  isLoadingHistory = false,
+  historyError,
+  onLoadOlderHistory,
+  processingStartedAt = null,
+  retryNotice = null,
+  lastDurationMs = null,
+  showPollingFetchStatus = false,
+  pollingIntervalMs = 12000,
+  workspacePath = null,
+  openTargets,
+  selectedOpenAppId,
+  codeBlockCopyUseModifier = false,
+  showMessageFilePath = true,
+  userInputRequests = [],
+  onUserInputSubmit,
+  onPlanAccept,
+  onPlanSubmitChanges,
+  onOpenThreadLink,
+  onQuoteMessage, onSideChat, sideChatDisabledReason, onSendToMain,
+  onRetryMessage, onChangeModel,
+  lastTurnStatus, waitingForApproval = false,
+}: MessagesProps) {
+  const features = useFeatures();
+  if (!features.sideChats) onSideChat = undefined;
+  const lastUserId = [...items].reverse().find((item) => item.kind === "message" && item.role === "user")?.id;
+  const latestItem = items[items.length - 1];
+  const latestFailed = isTurnError(latestItem);
+  const checkpointWarnings = useCheckpointWarnings(workspaceId, threadId, lastUserId);
+  const activeUserInputRequestId =
+    threadId && userInputRequests.length
+      ? (userInputRequests.find(
+          (request) =>
+            request.params.thread_id === threadId &&
+            (!workspaceId || request.workspace_id === workspaceId),
+        )?.request_id ?? null)
+      : null;
+  const { openFileLink, showFileLinkMenu } = useFileLinkOpener(
+    workspacePath,
+    openTargets,
+    selectedOpenAppId,
+  );
+  const handleOpenThreadLink = useCallback(
+    (threadId: string) => {
+      onOpenThreadLink?.(threadId, workspaceId ?? null);
+    },
+    [onOpenThreadLink, workspaceId],
+  );
+
+  const hasActiveUserInputRequest = activeUserInputRequestId !== null;
+  const hasVisibleUserInputRequest = hasActiveUserInputRequest && Boolean(onUserInputSubmit);
+  const userInputNode =
+    hasActiveUserInputRequest && onUserInputSubmit ? (
+      <RequestUserInputMessage
+        requests={userInputRequests}
+        activeThreadId={threadId}
+        activeWorkspaceId={workspaceId}
+        onSubmit={onUserInputSubmit}
+      />
+    ) : null;
+  const {
+    bottomRef,
+    containerRef,
+    updateAutoScroll,
+    loadOlderHistory,
+    requestAutoScroll,
+    expandedItems,
+    toggleExpanded,
+    collapsedToolGroups,
+    toggleToolGroup,
+    copiedMessageId,
+    handleCopyMessage,
+    handleQuoteMessage,
+    reasoningMetaById,
+    latestReasoningLabel,
+    groupedItems,
+    planFollowup,
+    dismissPlanFollowup,
+  } = useMessagesViewState({
+    items,
+    threadId,
+    hasOlderHistory,
+    isLoadingHistory,
+    onLoadOlderHistory,
+    isThinking,
+    activeUserInputRequestId,
+    hasVisibleUserInputRequest,
+    onPlanAccept,
+    onPlanSubmitChanges,
+    onQuoteMessage,
+  });
+
+  const planFollowupNode =
+    planFollowup.shouldShow && onPlanAccept && onPlanSubmitChanges ? (
+      <PlanReadyFollowupMessage
+        planText={(() => { const plan = items.find(item => item.id === planFollowup.planItemId); return plan && plan.kind === "tool" ? plan.output : undefined; })()}
+        onAccept={() => {
+          dismissPlanFollowup();
+          onPlanAccept();
+        }}
+        onSubmitChanges={(changes) => {
+          dismissPlanFollowup();
+          onPlanSubmitChanges(changes);
+        }}
+      />
+    ) : null;
+
+  const renderItem = (item: ConversationItem) => {
+    if (item.kind === "message") {
+      if (isTurnError(item)) {
+        const isLatest = item === latestItem;
+        const user = items.find(candidate => candidate.id === lastUserId);
+        const retryMessage = item.retryMessage !== undefined ? item.retryMessage : /^Turn failed[:.]/.test(item.text) && user?.kind === "message" ? user : null;
+        return <TurnErrorCard key={item.id} message={item.text} disabled={isThinking || isLoadingMessages}
+          onRetry={isLatest && retryMessage && onRetryMessage ? () => onRetryMessage(retryMessage.text, retryMessage.images ?? []) : undefined}
+          onChangeModel={isLatest ? onChangeModel : undefined} />;
+      }
+      const isCopied = copiedMessageId === item.id;
+      return (
+        <MessageRow
+          key={item.id}
+          item={item}
+          isCopied={isCopied}
+          diagnosticThreadId={threadId}
+          rewindAction={features.checkpoints && item.role === "user" && workspaceId && threadId ? <><RewindAction workspaceId={workspaceId} threadId={threadId} userItemId={item.id} running={isThinking} />{checkpointWarnings[item.id] && <span role="status">{checkpointWarnings[item.id]}</span>}</> : undefined}
+          onSideChat={onSideChat}
+          sideChatDisabledReason={sideChatDisabledReason}
+          onSendToMain={onSendToMain}
+          onCopy={handleCopyMessage}
+          onQuote={onQuoteMessage ? handleQuoteMessage : undefined}
+          codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+          showMessageFilePath={showMessageFilePath}
+          workspacePath={workspacePath}
+          onOpenFileLink={openFileLink}
+          onOpenFileLinkMenu={showFileLinkMenu}
+          onOpenThreadLink={handleOpenThreadLink}
+        />
+      );
+    }
+    if (item.kind === "reasoning") {
+      const isExpanded = expandedItems.has(item.id);
+      const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
+      return (
+        <ReasoningRow
+          key={item.id}
+          item={item}
+          parsed={parsed}
+          isExpanded={isExpanded}
+          onToggle={toggleExpanded}
+          showMessageFilePath={showMessageFilePath}
+          workspacePath={workspacePath}
+          onOpenFileLink={openFileLink}
+          onOpenFileLinkMenu={showFileLinkMenu}
+          onOpenThreadLink={handleOpenThreadLink}
+        />
+      );
+    }
+    if (item.kind === "review") {
+      return (
+        <ReviewRow
+          key={item.id}
+          item={item}
+          showMessageFilePath={showMessageFilePath}
+          workspacePath={workspacePath}
+          onOpenFileLink={openFileLink}
+          onOpenFileLinkMenu={showFileLinkMenu}
+          onOpenThreadLink={handleOpenThreadLink}
+        />
+      );
+    }
+    if (item.kind === "userInput") {
+      const isExpanded = expandedItems.has(item.id);
+      return (
+        <UserInputRow
+          key={item.id}
+          item={item}
+          isExpanded={isExpanded}
+          onToggle={toggleExpanded}
+        />
+      );
+    }
+    if (item.kind === "diff") {
+      return <DiffRow key={item.id} item={item} />;
+    }
+    if (item.kind === "tool") {
+      const isExpanded = expandedItems.has(item.id);
+      return (
+        <ToolRow
+          key={item.id}
+          item={item}
+          isExpanded={isExpanded}
+          onToggle={toggleExpanded}
+          showMessageFilePath={showMessageFilePath}
+          workspacePath={workspacePath}
+          onOpenFileLink={openFileLink}
+          onOpenFileLinkMenu={showFileLinkMenu}
+          onOpenThreadLink={handleOpenThreadLink}
+          onRequestAutoScroll={requestAutoScroll}
+        />
+      );
+    }
+    if (item.kind === "explore") {
+      return <ExploreRow key={item.id} item={item} />;
+    }
+    return null;
+  };
+
+  return (
+    <div
+      className="messages messages-full"
+      ref={containerRef}
+      onScroll={updateAutoScroll}
+    >
+      <div className="messages-inner">
+        {hasOlderHistory && (
+          <button type="button" className="ghost" disabled={isLoadingHistory} onClick={() => void loadOlderHistory()}>
+            {isLoadingHistory ? "Loading history…" : "Load older messages"}
+          </button>
+        )}
+        {historyError && <div role="alert">Could not load history: {historyError}</div>}
+        {groupedItems.map((entry) => {
+          if (entry.kind === "toolGroup") {
+            const { group } = entry;
+            // Finished groups start collapsed (like Claude/Codex desktop); the set holds user toggles.
+            const running = group.items.some((item) => item.kind === "tool" && statusToneFromText(item.status) === "processing");
+            const isCollapsed = collapsedToolGroups.has(group.id) !== !running;
+            const summaryText = summarizeToolGroup(group.items) || formatCount(group.toolCount, "tool call", "tool calls");
+            const groupBodyId = `tool-group-${group.id}`;
+            // The failure count leads in the error tone (as in Work); the rest of the summary stays neutral.
+            const summaryParts = summaryText.split(" · ");
+            const failedPart = summaryParts.find((part) => /^\d+ failed$/.test(part));
+            const summaryRest = summaryParts.filter((part) => part !== failedPart).join(" · ");
+            return (
+              <div
+                key={`tool-group-${group.id}`}
+                className={`tool-group ${isCollapsed ? "tool-group-collapsed" : ""}`}
+              >
+                <div className="tool-group-header">
+                  <button
+                    type="button"
+                    className="tool-group-toggle"
+                    onClick={() => toggleToolGroup(group.id)}
+                    aria-expanded={!isCollapsed}
+                    aria-controls={groupBodyId}
+                    aria-label={isCollapsed ? "Expand tool calls" : "Collapse tool calls"}
+                  >
+                    <ListTree className="tool-group-icon" size={14} aria-hidden />
+                    {failedPart && <span className="tool-group-failed">{failedPart}</span>}
+                    <span className="tool-group-summary">{summaryRest}</span>
+                    <ChevronRight className="tool-chevron" size={12} aria-hidden />
+                  </button>
+                </div>
+                {!isCollapsed && (
+                  <div className="tool-group-body" id={groupBodyId}>
+                    {group.items.map(renderItem)}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return renderItem(entry.item);
+        })}
+        {planFollowupNode}
+        {userInputNode}
+        {(userInputNode || waitingForApproval) && <p role="status" className="thread-recovery-state">Waiting for you — {waitingForApproval ? "review the approval request to continue." : "answer the question above to continue."}</p>}
+        {!isThinking && !isLoadingMessages && !userInputNode && !waitingForApproval && (lastTurnStatus === "interrupted" || (lastTurnStatus === "failed" && !latestFailed)) && <p role="status" className={`thread-recovery-state ${lastTurnStatus === "failed" ? "is-failed" : ""}`}>
+          <strong>{lastTurnStatus === "interrupted" ? "Stopped" : "Failed"}</strong> — Review the saved progress, then send a follow-up to continue. Nothing restarts automatically.
+        </p>}
+        <WorkingIndicator
+          isThinking={isThinking && !userInputNode && !waitingForApproval}
+          processingStartedAt={processingStartedAt}
+          lastDurationMs={latestFailed || lastTurnStatus === "failed" || lastTurnStatus === "interrupted" || userInputNode || waitingForApproval ? null : lastDurationMs}
+          hasItems={items.length > 0}
+          reasoningLabel={retryNotice || latestReasoningLabel}
+          showPollingFetchStatus={showPollingFetchStatus}
+          pollingIntervalMs={pollingIntervalMs}
+        />
+        {!items.length && !userInputNode && !isThinking && !isLoadingMessages && (
+          <div className="empty messages-empty">
+            <DigitalRain />
+            <h1>What should we build?</h1>
+          </div>
+        )}
+        {!items.length && !userInputNode && !isThinking && isLoadingMessages && (
+          <div className="empty messages-empty">
+            <div className="messages-loading-indicator" role="status" aria-live="polite">
+              <span className="working-spinner" aria-hidden />
+              <span className="messages-loading-label">Loading…</span>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+});

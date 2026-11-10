@@ -1,0 +1,89 @@
+use crate::state::AppState;
+use serde_json::{json, Value};
+use tauri::{AppHandle, Manager, State, Window};
+#[tauri::command]
+pub(crate) async fn computer_request_permissions(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Value, String> {
+    state
+        .computer
+        .request(app, json!({"action":"requestPermissions"}))
+        .await
+}
+#[tauri::command]
+pub(crate) async fn computer_request(
+    params: Value,
+    state: State<'_, AppState>,
+    app: AppHandle,
+    window: Window,
+) -> Result<Value, String> {
+    if params["action"] == "restart" {
+        state.computer.stop();
+        app.request_restart();
+        return Ok(Value::Null);
+    }
+    if params["action"] == "runLog" && crate::remote_backend::is_remote_mode(&state).await {
+        return crate::remote_backend::call_remote(
+            &state,
+            app,
+            "computer_request",
+            json!({"params":params}),
+        )
+        .await;
+    }
+    if params["action"] == "approve" {
+        require_main_window(&window)?;
+        state.computer.answer(
+            params["id"].as_str().ok_or("Missing approval ID")?,
+            match (params["accept"] == true, params["persist"].as_str()) {
+                (false, _) => crate::shared::computer::Answer::Decline,
+                (true, Some("always")) => crate::shared::computer::Answer::Always,
+                (true, _) => crate::shared::computer::Answer::Accept,
+            },
+        )?;
+        return Ok(Value::Null);
+    }
+    if params["action"] == "permissions" {
+        use tauri_plugin_opener::OpenerExt;
+        let pane = match params["pane"].as_str() {
+            Some("screen") => "Privacy_ScreenCapture",
+            Some("accessibility") => "Privacy_Accessibility",
+            _ => return Err("Unknown permission".into()),
+        };
+        app.opener()
+            .open_url(
+                format!("x-apple.systempreferences:com.apple.preference.security?{pane}"),
+                None::<String>,
+            )
+            .map_err(|e| e.to_string())?;
+        return Ok(json!({"ok":true}));
+    }
+    // Native control always belongs to the visible app on this Mac, with its HUD and kill switch.
+    let result=state.computer.request(app, params).await;
+    if result.is_err(){nucode_diag_mcp::writer::record(||nucode_diag_mcp::core::event("error","computer","computer.request_failed","Computer request failed"));}
+    result
+}
+fn require_main_window<R: tauri::Runtime>(window: &Window<R>) -> Result<(), String> {
+    if window.label() != "main" { return Err("Approve in the main app UI".into()); }
+    Ok(())
+}
+
+// The native computer service requires Wry/AppKit. Exercise its Window argument
+// and approval boundary through mock IPC without starting native control.
+#[cfg(test)]
+#[tauri::command]
+pub(crate) fn computer_window_probe(window: Window<tauri::test::MockRuntime>) -> Result<(), String> {
+    require_main_window(&window)
+}
+pub(crate) fn install(app: &AppHandle) -> Result<(), String> {
+    let computer = app.state::<AppState>().computer.clone();
+    tauri::async_runtime::block_on(computer.serve(app.clone()))
+}
+pub(crate) fn shortcut(app: &AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+        if let Some(state) = app.try_state::<AppState>() {
+            state.computer.stop();
+        }
+    }
+}

@@ -1,0 +1,29 @@
+:root[data-theme="dim"] {
+  --surface-app: #292c33;
+  color-scheme: dark;
+  --surface-sidebar: #292c33;
+  --tree-line: #565660;
+  --tree-line-active: #787884;
+  --surface-sidebar-opaque: rgb(41, 44, 51);
+  --surface-topbar: #25282f;
+  --surface-right-panel: #25282f;
+  --surface-composer: #25282f;
+  --surface-messages: #23262d;
+  --surface-card: #36393f;
+  --surface-card-strong: #474a50;
+  --surface-card-muted: #3a3d43;
+  --surface-item: #32343b;
+  --surface-control: #3e4147;
+  --surface-control-hover: #4b4e54;
+  --surface-control-disabled: #36393f;
+  --surface-hover: #36393f;
+  --surface-active: #374958;
+  --surface-approval: #22252c;
+  --surface-debug: #22252c;
+  --surface-command: #21242b;
+  --surface-diff-card: #24272e;
+  --surface-bubble: #474a50;
+  --surface-bubble-user: #3b6399;
+  --surface-context-core: #21242b;
+  --surface-popover: #20232a;
+}

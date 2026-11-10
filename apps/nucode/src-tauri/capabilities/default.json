@@ -1,0 +1,80 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "capabilities": [
+    {
+      "identifier": "desktop-default",
+      "description": "Capability for desktop windows",
+      "webviews": [
+        "main",
+        "about"
+      ],
+      "platforms": [
+        "macOS",
+        "windows",
+        "linux"
+      ],
+      "permissions": [
+        "core:default",
+        "core:webview:allow-set-webview-zoom",
+        "opener:default",
+        {
+          "identifier": "opener:allow-open-path",
+          "allow": [
+            {
+              "path": "$DOWNLOAD/nucode-update-*/*.dmg"
+            },
+            {
+              "path": "$DOWNLOAD/nucode-update-*/*.exe"
+            },
+            {
+              "path": "$DOWNLOAD/nucode-update-*/*.AppImage"
+            }
+          ]
+        },
+        "dialog:default",
+        "process:default",
+        "window-state:default",
+        "notification:default",
+        "core:window:allow-close",
+        "core:window:allow-is-maximized",
+        "core:window:allow-minimize",
+        "core:window:allow-toggle-maximize",
+        "core:window:allow-set-effects",
+        "core:window:allow-start-dragging",
+        "core:window:allow-start-resize-dragging",
+        "core:window:allow-set-size",
+        "core:window:allow-set-position",
+        {
+          "identifier": "opener:allow-open-url",
+          "allow": [
+            {
+              "url": "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            },
+            {
+              "url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "mobile-default",
+      "description": "Capability for mobile main window",
+      "webviews": [
+        "main"
+      ],
+      "platforms": [
+        "iOS",
+        "android"
+      ],
+      "permissions": [
+        "core:default",
+        "core:webview:allow-set-webview-zoom",
+        "opener:default",
+        "dialog:default",
+        "process:default",
+        "notification:default"
+      ]
+    }
+  ]
+}

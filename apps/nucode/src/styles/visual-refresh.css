@@ -1,0 +1,1283 @@
+/* Shared, opaque chrome for Code, Chat and Work. Existing token names stay public. */
+:root {
+  --app-height: 100dvh;
+  --border: var(--border-subtle);
+  --sidebar-row-height: 24px;
+  --chat-diff-split-position-percent: 50%;
+  --debug-panel-height: 180px;
+  --ds-toast-enter-y: -6px;
+  --file-preview-arrow-top: 24px;
+  --file-tree-row-height: 28px;
+  --home-scroll-offset: 0px;
+  --plan-panel-height: 220px;
+  --right-panel-top-padding: 12px;
+  --right-panel-width: 320px;
+  --side-panel-drag-strip-height: 0px;
+  --sidebar-top-padding: 36px;
+  --sidebar-width: 280px;
+  --terminal-panel-height: 220px;
+  --thread-subagent-pill-accent: 56%;
+  --thread-subagent-pill-hue: 228;
+  --thread-subagent-pill-saturation: 72%;
+  --window-caption-gap: 0px;
+  --window-caption-width: 0px;
+  --window-drag-hit-height: var(--titlebar-height);
+  --window-drag-strip-pointer-events: auto;
+  --accent-danger: var(--status-error);
+  --accent-warning-strong: var(--status-warning);
+  --ds-accent-border: var(--border-accent);
+  --ds-border: var(--border-subtle);
+  --ds-text: var(--text-primary);
+  --focus-ring: var(--border-accent);
+  --surface-1: var(--surface-card);
+  --surface-muted: var(--surface-card-muted);
+  --surface-quiet: var(--surface-card-muted);
+  --surface-raised: var(--surface-card);
+  --surface-secondary: var(--surface-sidebar);
+  --surface-strong: var(--surface-card-strong);
+  --surface-text-error: var(--status-error);
+  --surface-text-secondary: var(--text-subtle);
+  --surface-text-success: var(--status-success);
+  --text: var(--text-primary);
+  --text-danger: var(--status-error);
+  --text-error: var(--status-error);
+  --text-link: var(--message-link-color);
+  --text-secondary: var(--text-subtle);
+
+  --radius-chip: 6px;
+  --radius-row: 6px;
+  --radius-card: 10px;
+  --radius-window: 12px;
+  --radius-composer: var(--radius-window);
+  --conversation-column-width: 780px;
+  --composer-model-select-width: 16ch;
+  --context-free: 0;
+}
+body { font-family: var(--ui-font-family); font-weight: 400; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+button, input, select, textarea { font-family: inherit; }
+button { transition-duration: 120ms; }
+svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex-shrink: 0; }
+:focus-visible { outline: 2px solid var(--border-accent); outline-offset: 1px; }
+button:disabled, select:disabled { opacity: .4; }
+.app .sidebar, .chat-layout .sidebar { background: var(--surface-sidebar); border-right: 1px solid var(--border-subtle); }
+.sidebar .sidebar-section-title { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.sidebar-section-title svg { width: 12px; height: 12px; margin-right: 4px; }
+.sidebar .thread-row { border: 0; box-shadow: none; border-radius: var(--radius-row); min-height: 32px; background: transparent; }
+.sidebar .thread-row.has-secondary-line { min-height: 44px; }
+.sidebar .thread-row:hover { background: var(--surface-hover); }
+.sidebar .thread-row.active { background: var(--thread-selected-background, var(--surface-card-strong)); color: var(--text-strong); }
+.sidebar .thread-name { font-size: 13px; font-weight: 400; }
+.sidebar .thread-details { font-size: 12px; color: var(--text-subtle); }
+.sidebar .thread-status.ready { visibility: hidden; }
+.sidebar .thread-status.processing { background: var(--border-accent); box-shadow: none; animation: none; }
+.sidebar .thread-status.reviewing { background: var(--status-warning); box-shadow: none; }
+.sidebar .mode-new { width: 100%; min-height: 28px; justify-content: flex-start; }
+.sidebar-search { display: flex; align-items: center; gap: 8px; padding: 4px 8px; color: var(--text-subtle); }
+.chat-layout .sidebar-search input { width: 100%; padding: 4px 0; border: 0; background: transparent; }
+.sidebar-bottom-actions { width: 100%; }
+.sidebar-bottom-actions > :first-child { flex: 1; justify-content: flex-start; }
+/* Footer utilities read as sidebar rows, not outlined buttons; Trash sits beside Settings as a peer icon. */
+.sidebar-bottom-actions .sidebar-utility-button { border: 0; background: transparent; color: var(--text-muted); border-radius: var(--radius-row); font-weight: 500; }
+.sidebar-bottom-actions .sidebar-utility-button:hover:not(:disabled), .sidebar-bottom-actions .sidebar-utility-button[aria-pressed="true"] { background: var(--surface-hover); color: var(--text-strong); }
+.sidebar-bottom-actions .ds-icon-button.sidebar-utility-button { width: 32px; height: 32px; }
+.main-topbar, .chat-main .main-topbar { min-height: 44px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-messages); }
+.main-header .workspace-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main-header-action, button.icon-button, .chat-layout button.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-chip); color: var(--text-subtle); background: transparent; flex-shrink: 0; }
+button.icon-button:hover, .main-header-action:hover { background: var(--surface-hover); color: var(--text-strong); }
+.composer, .chat-layout .chat-composer, .chat-layout .work-composer { background: transparent; border: 0; box-shadow: none; padding: 0; }
+.composer { padding: 10px var(--main-panel-padding) 16px; }
+.composer .composer-input-area { background: transparent; padding: 0; border: 0; border-radius: var(--radius-composer); box-shadow: none; }
+.composer-shell { --radius-window: 18px; position: relative; background: var(--surface-composer); border: 1px solid var(--border-subtle); border-radius: 18px; box-shadow: 0 1px 2px #0000000f, 0 8px 24px #00000012; min-width: 0; }
+.composer-shell:focus-within { border-color: var(--border-accent); }
+.composer-shell textarea, .chat-layout .composer-shell textarea { display: block; width: 100%; min-height: 44px; max-height: 260px; resize: none; border: 0; border-radius: var(--radius-composer); outline: none; box-shadow: none; background: transparent; color: var(--text-primary); font-size: 15px; line-height: 1.55; padding: 14px 16px 6px; margin: 0; }
+.composer-shell .work-brief { margin: 0; }
+.composer-shell .composer-input-row { display: block; }
+.composer-shell-toolbar { display: flex; align-items: center; gap: 8px; height: 48px; padding: 4px 10px 10px 8px; box-sizing: border-box; }
+.composer-shell-left, .composer-shell-actions, .composer-shell .composer-input-actions { display: flex; position: static; align-items: center; gap: 4px; min-width: 0; }
+.composer-shell-left { flex: 1 1 auto; gap: 2px; overflow: hidden; }
+.composer-shell-actions { margin-left: auto; flex-shrink: 0; gap: 6px; }
+.composer-shell .composer-input-actions { margin-left: 0; }
+.composer-add { position: relative; flex-shrink: 0; }
+.composer-add-menu { padding: 4px; width: 220px; }
+.composer-add-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; text-align: left; border: 0; background: transparent; color: var(--text-primary); border-radius: var(--radius-chip); font-size: 12px; }
+.composer-add-menu button:hover { background: var(--surface-hover); }
+.composer-shell .composer-bar, .composer-shell .composer-meta, .composer-shell .work-fields { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; padding: 0; margin: 0; flex-wrap: wrap; }
+.composer-shell .composer-bar { flex: 1; }
+.composer-shell .composer-select-wrap { padding: 0 4px; border: 0; background: transparent; height: 28px; }
+.composer-shell .composer-access-chip { position: relative; }
+.composer-shell .composer-access-chip select, .chat-layout .composer-shell .composer-access-chip select { appearance: none; position: absolute; inset: 0; width: 100%; max-width: none; height: 100%; opacity: 0; cursor: pointer; }
+.composer-shell .composer-access-chip.is-fixed select { cursor: default; }
+.composer-access-label { font-weight: 500; color: var(--text-primary); white-space: nowrap; }
+.composer-shell .composer-access-chip.is-fixed:hover { background: transparent; color: var(--text-muted); }
+.composer-shell .composer-access-chip:has(select:focus-visible) { outline: 2px solid var(--border-accent); outline-offset: 1px; }
+.composer-access-chip svg { width: 16px; height: 16px; stroke-width: 1.75; flex-shrink: 0; }
+.composer-access-chip .composer-access-chevron { width: 14px; height: 14px; margin-left: -2px; color: var(--text-faint); pointer-events: none; }
+.composer-shell .composer-select-wrap--model { margin-left: auto; }
+.composer-shell-actions .composer-model-chip { margin: 0; }
+.composer-shell .composer-context { display: none; }
+.composer-shell .composer-plan-toggle-wrap { display: none; }
+.composer-shell .composer-select-wrap--effort { flex-shrink: 0; }
+.composer-chip, .composer-model-chip, .composer-shell .work-fields label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; height: 30px; padding: 0 8px; border-radius: 8px; font-size: 13px; color: var(--text-muted); }
+.composer-shell :is(.composer-access-chip, .work-fields label):hover { background: var(--surface-hover); color: var(--text-strong); }
+.composer-shell select, .chat-layout .composer-shell select { font-size: 13px; font-weight: 500; max-width: 180px; min-width: 0; width: auto; border: 0; border-radius: var(--radius-chip); height: 28px; padding: 0; background: transparent; color: inherit; text-overflow: ellipsis; cursor: pointer; }
+.composer-model-chip select { appearance: none; }
+.provider-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--surface-card-strong); color: var(--text-primary); font-size: 11px; flex-shrink: 0; }
+/* Composer actions: quiet round icon buttons; send is the one solid control, stop is unmistakably red. */
+.composer-shell-actions :is(.composer-action, .icon-button) { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); box-shadow: none; }
+.composer-shell-actions :is(.composer-action, .icon-button):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
+.composer-shell-actions :is(.composer-action, .icon-button) svg { width: 18px; height: 18px; }
+.composer-shell .chat-attachments, .composer-shell .composer-attachments { margin: 0; padding: 12px 16px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.composer-shell .chat-attachments:empty { display: none; }
+.composer-shell .chat-attachments li, .composer-shell .composer-attachment { border: 1px solid var(--border-subtle); background: var(--surface-card); border-radius: var(--radius-chip); padding: 4px; max-width: 240px; font-size: 12px; }
+.composer-shell .composer-attachment-thumb, .composer-shell .chat-attachments img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
+.chat-attachments button, .composer-attachment-remove { opacity: 0; }
+.chat-attachments li:hover button, .chat-attachments li:focus-within button, .composer-attachment:hover .composer-attachment-remove, .composer-attachment:focus-within .composer-attachment-remove { opacity: 1; }
+.composer-drop-overlay { position: absolute; inset: 0; z-index: var(--z-sticky); display: grid; place-items: center; background: var(--surface-composer); border: 2px dashed var(--border-accent); border-radius: var(--radius-composer); pointer-events: none; }
+.composer-followup-hint { display: none; }
+.chat-main.is-empty .chat-scroll { flex: 0 1 auto; overflow: visible; padding-bottom: 0; }
+.chat-main.is-empty { overflow-y: auto; }
+.chat-layout .chat-empty { text-align: center; padding: clamp(32px, 14vh, 140px) 0 24px; }
+.chat-layout .chat-empty h1, .messages-empty h1 { font-size: 28px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 12px; color: var(--text-strong); }
+.chat-layout .chat-eyebrow { display: none; }
+.chat-layout .chat-empty p { font-size: 13px; margin: 0; }
+.chat-main.is-empty .chat-composer { margin-bottom: 0; }
+.chat-layout .starter-pills, .starter-pills { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 20px auto 32px; max-width: 760px; padding: 0 16px; }
+.chat-layout .starter-pills button, .starter-pills button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; border-radius: 8px; border: 1px solid var(--border-subtle); padding: 6px 10px; font-size: 12px; background: transparent; color: var(--text-subtle); }
+.chat-layout .starter-pills button:hover, .starter-pills button:hover { background: var(--surface-hover); color: var(--text-primary); }
+.chat-layout .work-composer { margin-bottom: 0; }
+/* Empty Chat and Work: one inset column (hero, composer, starters), centered a little above middle. */
+.chat-layout .chat-main.is-empty { container-type: inline-size; padding: 32px 0 6vh; --empty-column: min(680px, calc(100% - 2 * clamp(24px, 8cqw, 96px))); }
+.chat-layout .chat-main.is-empty > .chat-scroll { flex: 0 0 auto; margin-top: auto; padding: 0; }
+.chat-layout .chat-main.is-empty :is(.chat-column, .starter-pills) { width: var(--empty-column); max-width: none; margin-inline: auto; }
+.chat-layout .chat-main.is-empty :is(.chat-empty, .work-empty) { padding: 0 0 24px; }
+.chat-layout .chat-main.is-empty .starter-pills { padding: 0; margin-top: 20px; margin-bottom: 0; }
+.chat-layout .chat-main.is-empty > :last-child { margin-bottom: auto; }
+.chat-layout .chat-message { font-size: 14.5px; line-height: 1.65; margin: 20px 0; padding: 0; }
+.chat-layout .chat-message.user { width: fit-content; max-width: 80%; margin-left: auto; border: 0; background: transparent; padding: 0; }
+.chat-message.user .chat-message-body, .work-layout .chat-message.user { background: var(--surface-bubble-user, var(--surface-card)); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 10px 14px; }
+.chat-message.user .message-hover-actions { justify-content: flex-end; }
+.chat-message > h2, .chat-message-body > h2 { display: none; }
+.message-hover-actions { display: flex; align-items: center; gap: 4px; opacity: 0; margin-top: 8px; transition: opacity 120ms; }
+.message:hover .message-hover-actions, .message:focus-within .message-hover-actions { opacity: 1; }
+.message-hover-actions .message-side-actions { display: flex; margin: 0; }
+.message-hover-actions .message-copy-button, .message-hover-actions .message-quote-button { position: relative; inset: auto; opacity: 1; width: 28px; height: 28px; }
+.message-hover-actions button { border: 0; box-shadow: none; }
+/* One toolbar, one button style: copy and quote drop their old floating round chips, and "⋯" is a plain icon button without WebKit's ▶ marker. */
+.message-hover-actions :is(.message-copy-button, .message-quote-button) { transform: none; padding: 0; border-radius: var(--radius-chip); background: transparent; color: var(--text-subtle); }
+.message-hover-actions details > summary { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-chip); color: var(--text-subtle); list-style: none; cursor: pointer; }
+.message-hover-actions details > summary::-webkit-details-marker { display: none; }
+.message-hover-actions :is(button, details > summary):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
+.chat-message .markdown > :first-child { margin-top: 0; }
+.chat-message .markdown > :last-child { margin-bottom: 0; }
+.message .markdown { font-size: 14.5px; line-height: 1.65; }
+.message.assistant .message-bubble { background: transparent; border: 0; box-shadow: none; padding: 0; width: 100%; }
+.message.user .message-bubble { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); max-width: 80%; }
+.markdown-codeblock { background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); overflow: hidden; }
+.markdown-codeblock-header { padding: 4px 12px; background: var(--surface-card); border-bottom: 1px solid var(--border-subtle); }
+.markdown-codeblock pre, code, pre { font-family: var(--code-font-family); }
+.work-progress-ring { width: 18px; height: 18px; fill: none; stroke: var(--border-subtle); stroke-width: 2; flex-shrink: 0; transform: rotate(-90deg); }
+.work-progress-ring circle + circle { stroke: var(--border-accent); stroke-linecap: round; }
+progress.plan-progress { display: block; appearance: none; width: 100%; height: 3px; border: 0; background: var(--surface-card-strong); margin: 12px 0 20px; accent-color: var(--border-accent); }
+progress.plan-progress::-webkit-progress-bar { background: var(--surface-card-strong); border-radius: 3px; }
+progress.plan-progress::-webkit-progress-value { background: var(--border-accent); border-radius: 3px; }
+.work-plan [aria-checked="true"] { color: var(--border-accent); }
+.work-inspector .work-output { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-card); background: var(--surface-card); }
+.work-output strong { flex: 1; min-width: 0; margin: 0; }
+.file-type-icon { width: 24px; height: 24px; }
+.work-output .work-actions { opacity: 0; }
+.work-output:hover .work-actions, .work-output:focus-within .work-actions { opacity: 1; }
+.work-tool summary { display: flex; align-items: center; gap: 8px; color: var(--text-subtle); cursor: pointer; }
+.work-tool summary svg:last-child { margin-left: auto; }
+.home-usage-card, .home-usage-chart-card, .home-latest-card { border-radius: var(--radius-card); border: 1px solid var(--border-subtle); background: var(--surface-card); box-shadow: none; }
+.home-usage-value, .home-usage-card, .composer-context, .working-timer { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .composer-shell-toolbar { flex-wrap: nowrap; }
+  .composer-shell-left { flex-wrap: wrap; }
+  .composer-shell .composer-bar { flex-basis: calc(100% - 40px); }
+  .composer-shell select, .chat-layout .composer-shell select { max-width: 140px; }
+  .chat-layout .chat-empty { padding-top: 40px; }
+  .chat-layout .chat-composer { width: calc(100% - 24px); }
+  .composer-shell .composer-action--mic { display: inline-flex; }
+}
+@media (hover: none) {
+  .message-hover-actions, .work-output .work-actions, .chat-attachments button, .composer-attachment-remove { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+.composer-context-row { display: flex; align-items: center; gap: 10px; flex-shrink: 1; min-width: 0; margin-left: 4px; padding-left: 10px; border-left: 1px solid var(--border-subtle); height: 16px; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; }
+.composer-context-row > span { display: inline-flex; align-items: center; gap: 4px; }
+.chat-pane:has(.messages-empty h1) { display: flex; flex-direction: column; overflow-y: auto; }
+.chat-pane:has(.messages-empty h1) .chat-pane-messages { flex: 0 0 auto; min-height: 0; }
+.chat-pane:has(.messages-empty h1) .messages-full { padding-bottom: 0; }
+.chat-pane:has(.messages-empty h1) .messages-inner { padding-bottom: 0; }
+.chat-pane:has(.messages-empty h1) .messages-empty { margin-top: clamp(32px, 12vh, 120px); padding: 0 0 12px; border: 0; background: transparent; text-align: center; }
+.chat-pane:has(.messages-empty h1) .chat-pane-composer { position: static; }
+.composer .starter-pills { margin-top: 12px; }
+.tool-inline-summary .tool-chevron { margin-left: auto; width: 12px; height: 12px; }
+.tool-inline-summary[aria-expanded="true"] .tool-chevron { transform: rotate(180deg); }
+.tool-inline-icon.error, .tool-inline:has(.tool-inline-icon.error) .tool-inline-value { color: var(--status-error); }
+.tool-spinner { animation: working-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tool-spinner { animation: none; } }
+.sidebar .thread-row::before, .sidebar .workspace-card::before { box-shadow: none; background: transparent; border: 0; }
+.sidebar-section-header .sidebar-title-add { opacity: 0; }
+.sidebar-section-header:hover .sidebar-title-add, .sidebar-section-header:focus-within .sidebar-title-add { opacity: 1; }
+.side-chat-composer .side-chat-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.side-chat-composer .side-chat-controls label { display: inline-flex; flex-direction: row; align-items: center; }
+.side-chat-composer .side-chat-prompt { margin: 0; }
+@media (hover: none) { .sidebar-section-header .sidebar-title-add { opacity: 1; } }
+.composer-shell .composer-plan-toggle-wrap:has(input:checked) { display: flex; }
+.composer:has(.composer-context-row) .engine-badge { display: none; }
+.work-inspector .work-output button { font-size: 12px; }
+.sidebar-new-row { display: flex; align-items: center; gap: 4px; width: 100%; }
+.sidebar-new-row .mode-new { flex: 1; min-width: 0; }
+.sidebar-new-row kbd { margin-left: auto; color: var(--text-faint); font-family: inherit; font-size: 12px; font-weight: 400; }
+.chat-attachments img[src*="material-icons"] { width: 20px; height: 20px; }
+.ds-popover { border-radius: var(--radius-card); }
+.sidebar .thread-status.processing { animation: status-pulse 1.4s ease-in-out infinite; }
+@keyframes status-pulse { 50% { background: var(--text-subtle); } }
+@media (prefers-reduced-motion: reduce) { .sidebar .thread-status.processing { animation: none; } }
+.work-tool.is-error summary { color: var(--status-error); }
+
+/* Transcript and composer share normal flow; prompts cannot bleed behind the card. */
+.chat-pane { flex-direction: column; }
+.chat-pane .chat-pane-composer { position: static; flex: 0 0 auto; pointer-events: auto; }
+.chat-pane .messages-full { padding-bottom: 18px; }
+.primary { background: var(--border-accent); color: var(--ink-on-fill, var(--surface-app)); box-shadow: none; }
+button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
+.main-topbar { container-type: inline-size; }
+.main-header button { white-space: nowrap; }
+.main-header .open-app-action { width: auto; padding-inline: 8px; }
+.open-app-label { white-space: nowrap; }
+@media (max-width: 1100px) { .open-app-text { display: none; } .main-header .open-app-action { width: 28px; padding-inline: 0; } }
+.chat-layout .work-space-toggle { display: flex; align-items: center; flex: 1; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; text-align: left; }
+.work-space-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.work-readonly-folders summary { display: flex; align-items: center; gap: 4px; padding: 4px 0; list-style: none; cursor: pointer; color: var(--text-subtle); font-size: 12px; }
+.work-readonly-folders summary::-webkit-details-marker { display: none; }
+.work-readonly-folders:not([open]) summary svg { transform: rotate(-90deg); }
+
+@container (max-width: 640px) { .open-app-text { display: none; } .main-header .open-app-action { width: 28px; padding-inline: 0; } }
+
+.composer-context-row select { appearance: none; background: transparent; border: 0; color: inherit; font: inherit; max-width: 160px; }
+
+:root[data-theme="light"] .sidebar .thread-row.active { --thread-selected-background: #dcdee4; }
+
+.composer-shell { container: composer / inline-size; }
+.composer-shell-toolbar { flex-wrap: nowrap; }
+.composer-shell-left { flex-shrink: 0; flex-wrap: nowrap; max-width: 100%; }
+.composer-add { flex: 0 0 auto; }
+.composer-shell-actions { min-width: 0; max-width: 100%; flex-wrap: nowrap; flex-shrink: 1; }
+.composer-shell-actions > :not(.reasoning-control) { flex-shrink: 0; }
+.composer-shell-actions .reasoning-control { flex: 0 1 auto; min-width: 0; }
+.composer-shell .reasoning-chip { max-width: 100%; }
+.reasoning-chip-dot { display: none; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--reasoning-color); }
+@container composer (max-width: 560px) {
+  .composer-shell .composer-access-chevron { display: none; }
+  .composer-shell .work-fields { flex-wrap: nowrap; }
+  .composer-shell .work-fields label { position: relative; flex: 0 0 28px; width: 28px; height: 28px; padding: 6px; }
+  .composer-shell .work-fields label select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+  .composer-shell .work-fields label > svg { width: 16px; height: 16px; }
+  .composer-shell .composer-access-chip { position: relative; flex: 0 0 28px; width: 28px; height: 28px; padding: 7px; }
+  .composer-shell .composer-access-chip select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+  .composer-access-chip:focus-within { outline: 2px solid var(--border-accent); outline-offset: 2px; border-radius: 4px; }
+  .composer-shell .reasoning-chip-label, .composer-shell .reasoning-chip > svg { display: none; }
+  .composer-shell .reasoning-chip-dot { display: inline-block; }
+  .composer-shell .reasoning-chip-model { max-width: min(150px, 38cqw); }
+  .composer-shell .composer-model-chip select { max-width: 38cqw; }
+}
+
+:root { --minimum-font-size: 11px; }
+
+/* Sidebar density and tree geometry are shared by all three modes. */
+:root[data-sidebar-density="comfortable"] { --sidebar-row-height: 44px; }
+.sidebar .thread-row, .sidebar .thread-row.has-secondary-line {
+  box-sizing: border-box; height: var(--sidebar-row-height); min-height: 0;
+  padding: 0 8px; gap: 6px; border-radius: 6px; margin: 0; width: 100%;
+}
+.sidebar .thread-content { gap: 0; overflow: hidden; }
+.sidebar .thread-name { line-height: 18px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar .thread-details { display: none; }
+[data-sidebar-density="comfortable"] .sidebar .thread-details { display: flex; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar .thread-details > :not(.thread-context-label) { display: none; }
+.sidebar .thread-context-label { padding: 0; border: 0; background: transparent; font-size: 11.5px; }
+.sidebar .thread-kind { position: relative; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex-shrink: 0; }
+.sidebar .thread-kind svg { width: 14px; height: 14px; }
+.sidebar .thread-status, .sidebar .thread-row.has-secondary-line .thread-status { align-self: center; margin: 0 3px; width: 8px; height: 8px; box-shadow: none; flex-shrink: 0; }
+.sidebar .thread-kind .thread-status { margin: 0; }
+/* Status glyphs only for live states (working, needs input, error); idle rows keep the slot for alignment. */
+.sidebar .thread-status.ready { visibility: hidden; }
+.sidebar .thread-status.processing { animation: pulse 1.2s ease-in-out infinite; }
+.sidebar .thread-status.reviewing { background: var(--status-warning); animation: none; }
+.sidebar .thread-meta { position: relative; display: flex; align-items: center; gap: 4px; margin: 0; align-self: center; }
+.sidebar .thread-time { color: var(--text-muted); font-size: 11.5px; white-space: nowrap; }
+.thread-engine-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-accent); }
+.thread-engine-dot.engine-pi { background: var(--status-warning); }
+.thread-engine-dot.engine-claude { background: var(--status-error); }
+.thread-menu-trigger { position: absolute; right: 0; top: 50%; translate: 0 -50%; opacity: 0; }
+.thread-row:hover .thread-menu-trigger, .thread-row:focus-within .thread-menu-trigger { opacity: 1; }
+.sidebar .thread-row:is(:hover, :focus-within, .is-pinned) .thread-meta:has(.thread-pin-trigger) { min-width: 52px; justify-content: flex-end; }
+.thread-pin-trigger { position: absolute; right: 26px; top: 50%; translate: 0 -50%; opacity: 0; pointer-events: none; }
+.thread-row:hover .thread-pin-trigger, .thread-row:focus-within .thread-pin-trigger,
+.thread-pin-trigger.is-pinned { opacity: 1; pointer-events: auto; }
+.thread-pin-trigger.is-pinned svg { color: var(--border-accent); fill: currentColor; }
+.thread-row:has(.thread-pin-trigger.is-pinned) .thread-time { visibility: hidden; }
+.sidebar :is(.thread-row, .workspace-row)[data-reorder-draggable="true"]:hover { cursor: grab; }
+.sidebar-reordering, .sidebar-reordering * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+.sidebar-reordering.sidebar-reorder-invalid, .sidebar-reordering.sidebar-reorder-invalid * { cursor: not-allowed !important; }
+.sidebar :is(.thread-row, .workspace-row)[data-dragging="true"] { opacity: .5; }
+.sidebar :is(.thread-row, .workspace-row)[data-drop-edge="before"] { box-shadow: inset 0 2px 0 var(--border-accent); }
+.sidebar :is(.thread-row, .workspace-row)[data-drop-edge="after"] { box-shadow: inset 0 -2px 0 var(--border-accent); }
+.thread-row:hover .thread-time, .thread-row:focus-within .thread-time,
+.mode-row:hover .thread-time, .mode-row:focus-within .thread-time { visibility: hidden; }
+.thread-tree-toggle { position: absolute; inset: -5px; border: 0; background: var(--surface-sidebar); color: var(--text-muted); padding: 0; opacity: 0; z-index: var(--z-sticky); }
+.thread-tree-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.thread-row:hover .thread-tree-toggle, .thread-row:focus-within .thread-tree-toggle { opacity: 1; }
+.sidebar .thread-list, .sidebar .thread-bucket, .sidebar .pinned-section { gap: 1px; }
+.sidebar .thread-list-nested { margin-left: 0; }
+.sidebar .thread-more { height: 24px; padding: 0 8px 0 44px; color: var(--text-subtle); font-size: 12px; font-weight: 400; }
+
+.sidebar .workspace-row { height: 26px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: var(--radius-row); }
+.sidebar .workspace-row::before { border-radius: var(--radius-row); background: transparent; border: 0; box-shadow: none; }
+.sidebar .workspace-row:hover::before { background: var(--surface-hover); }
+/* One selection signal: the active thread row. The project header only gets stronger text. */
+.sidebar .workspace-row.active::before { background: transparent; }
+.sidebar .workspace-row.active .workspace-name { color: var(--text-strong); }
+.sidebar .workspace-copy { flex: 1; padding: 0; }
+.sidebar .workspace-name { font-size: 13px; font-weight: 500; }
+.sidebar .workspace-actions { flex-direction: row; align-items: center; gap: 2px; padding: 0; }
+.sidebar .workspace-count { font-size: 11.5px; color: var(--text-muted); font-weight: 400; }
+.sidebar .workspace-card, .sidebar .workspace-card-content-inner { gap: 0; }
+.sidebar .sidebar-section-header, .sidebar .workspace-group-header, .sidebar .thread-bucket-header { margin-top: 6px; }
+.sidebar .sidebar-section-title, .sidebar .workspace-group-label, .sidebar .thread-bucket-label { font-size: 11.5px; color: var(--text-muted); font-weight: 500; }
+.sidebar .workspace-toggle { width: 20px; height: 24px; padding: 0; flex-shrink: 0; opacity: .6; }
+.sidebar .workspace-toggle-icon { width: 12px; height: 12px; }
+.sidebar .group-toggle { opacity: 0; }
+.sidebar .workspace-row:hover .workspace-toggle, .sidebar .workspace-row:focus-within .workspace-toggle,
+.sidebar .workspace-group-header:hover .group-toggle, .sidebar .workspace-group-header:focus-within .group-toggle { opacity: 1; }
+
+.sidebar-tree, .sidebar-tree-children { display: flex; flex-direction: column; gap: 1px; }
+/* Shallower nesting leaves room for thread titles; guides follow the glyphs. */
+.sidebar-tree-children { margin-left: 16px; }
+.sidebar-tree-node { position: relative; min-width: 0; }
+.sidebar-tree-node > .sidebar-tree-children { margin-top: 1px; }
+:root:not([data-sidebar-density="comfortable"]) .sidebar :is(.sidebar-tree, .sidebar-tree-children, .thread-list, .thread-bucket, .pinned-section) { gap: 0; }
+:root:not([data-sidebar-density="comfortable"]) .sidebar-tree-node > .sidebar-tree-children { margin-top: 0; }
+/* Guides are measured from glyph bounds, independent of row height and label width. */
+.sidebar-tree { position: relative; }
+.sidebar-tree-guides { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.tree-guide-normal { stroke: var(--tree-line); }
+.tree-guide-active { stroke: var(--tree-line-active); }
+.tree-guide-hover { stroke: color-mix(in srgb, var(--tree-line), var(--tree-line-active) 50%); }
+:root[data-neon-glow="true"] .tree-guide-active { filter: drop-shadow(0 0 4px var(--tree-line-active)); }
+.sidebar .workspace-card-content:not(.collapsed) { overflow: visible; }
+/* Selection is the row fill alone; no ring around the (often hidden) status glyph. */
+/* The elbow ends before this inset; selected paint never sits under a guide. */
+.sidebar .sidebar-tree-node .thread-row { --tree-row-highlight: 9px; }
+.sidebar .sidebar-tree-node .thread-row:has(.thread-kind > svg) { --tree-row-highlight: 6px; }
+.sidebar .sidebar-tree-node .thread-row:is(.active, :hover) { background: transparent; box-shadow: none; }
+.sidebar .sidebar-tree-node .thread-row::before { inset: 0 0 0 var(--tree-row-highlight); z-index: var(--z-behind); }
+.sidebar .sidebar-tree-node .thread-row { isolation: isolate; }
+.sidebar .sidebar-tree-node .thread-row.active::before { background: var(--thread-selected-background, var(--surface-card-strong)); }
+.sidebar .sidebar-tree-node .thread-row:hover:not(.active)::before { background: var(--surface-hover); }
+.sidebar .sidebar-tree-node > .thread-row, .sidebar .sidebar-tree-node > .mode-row .thread-row { padding-left: 8px; }
+.sidebar .mode-row { margin: 0 0 2px; }
+.sidebar .mode-row-menu-trigger { right: 8px; }
+.sidebar .work-space > .workspace-row .work-space-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0; color: inherit; font-size: 13px; }
+.sidebar .work-space-toggle > svg { width: 14px; height: 14px; margin: 0; transform: none; }
+.sidebar .work-space-toggle .work-space-chevron { opacity: 0; margin-left: auto; }
+.sidebar .workspace-row:hover .work-space-chevron, .sidebar .workspace-row:focus-within .work-space-chevron { opacity: 1; }
+.sidebar .workspace-row .sidebar-title-add { opacity: 0; }
+.sidebar .workspace-row:hover .sidebar-title-add, .sidebar .workspace-row:focus-within .sidebar-title-add { opacity: 1; }
+
+/* Padding is permanent; hover changes only paint, never content position. */
+.message.assistant .message-bubble,
+.message.assistant .message-bubble.message-bubble-table-only,
+.chat-layout .chat-message.assistant {
+  position: relative; box-sizing: border-box; padding: 10px 12px; margin: -10px -12px;
+  width: calc(100% + 24px); max-width: calc(100% + 24px); border-radius: 10px;
+  border: 0; background: transparent; box-shadow: none; min-width: 0;
+}
+.chat-layout .chat-message.assistant { margin-top: 10px; margin-bottom: 10px; }
+.message.assistant .message-bubble:hover, .message.assistant .message-bubble:focus-within,
+.message.assistant .message-bubble.is-hovered,
+.chat-layout .chat-message.assistant:hover, .chat-layout .chat-message.assistant:focus-within,
+.chat-layout .chat-message.assistant.is-hovered { background: color-mix(in srgb, var(--surface-hover) 35%, transparent); box-shadow: none; }
+.message-hover-actions {
+  position: absolute; right: 8px; bottom: -14px; margin: 0; padding: 2px; gap: 2px;
+  border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-raised);
+  box-shadow: 0 2px 6px #00000018; z-index: var(--z-sticky); pointer-events: none;
+}
+.message:hover .message-hover-actions, .message:focus-within .message-hover-actions { pointer-events: auto; }
+.chat-layout .chat-message.user { position: relative; }
+.message.user .message-bubble, .chat-message.user .chat-message-body, .work-layout .chat-message.user { padding: 10px 14px; min-height: 0; height: auto; }
+.message .markdown > :first-child { margin-top: 0; }
+.message .markdown > :last-child { margin-bottom: 0; }
+.message .markdown, .message .markdown-codeblock { min-width: 0; max-width: 100%; }
+@media (hover: none) {
+  .message-hover-actions { pointer-events: auto; }
+  .thread-menu-trigger, .thread-tree-toggle { opacity: 1; }
+  .thread-row .thread-time { visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar .thread-status.processing { animation: none; } }
+
+.thread-header-model { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11.5px; }
+.sidebar .workspace-card-content-inner { padding-top: 0; }
+.sidebar .work-space > .workspace-row { margin: 6px 0 2px; }
+/* Zero counts are noise; an empty count shows nothing. */
+
+.sidebar .thread-row[data-needs-input] .thread-status { background: var(--status-warning); animation: none; }
+
+.sidebar .workspace-card-content.collapsed { display: none; }
+.sidebar .workspace-card-content-inner { overflow: visible; }
+/* Collapsible grids need an explicit shrinkable track; an implicit auto column sizes to
+   the nowrap titles' min-content and pushes rows past the card when the sidebar narrows. */
+.sidebar .workspace-card-content,
+.sidebar .worktree-card-content,
+.sidebar .workspace-group-list { grid-template-columns: minmax(0, 1fr); }
+.sidebar .workspace-card-content-inner,
+.sidebar .worktree-card-content-inner,
+.sidebar .workspace-group-content,
+.sidebar .sidebar-tree,
+.sidebar .thread-list { min-width: 0; }
+
+.messages-inner { gap: 28px; }
+
+/* Header and tree share the padded origin, preserving guide alignment. */
+.sidebar .project-group-card {
+  --radius-window: 8px;
+  /* Projects are grouped by indentation and tree lines, not boxes. */
+  --squircle-background: transparent;
+  --squircle-border: transparent;
+  --squircle-border-active: transparent;
+  padding: 5px;
+  overflow: visible;
+  margin: 0;
+}
+.sidebar .project-group-card.is-selected { --squircle-border: transparent; }
+.sidebar .workspace-group-content { gap: 4px; }
+.sidebar .work-space { margin-bottom: 4px; }
+.sidebar .work-space > .workspace-row { margin: 0; }
+.composer-shell.squircle { --squircle-border-active: var(--border-accent); --squircle-background: var(--surface-composer); padding: 1px; }
+.composer-shell.squircle:focus-within { --squircle-border: var(--border-accent); }
+.settings-window.squircle { --squircle-background: var(--surface-app); padding: 1px; }
+.side-panel-tools .squircle:hover { --squircle-background: var(--surface-hover); background: transparent; }
+
+/* Chat always shows a title and model, independent of Code density. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list { margin-inline: calc(-1 * var(--sidebar-padding)); padding-inline: 0; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .sidebar-section-header { margin-inline: var(--sidebar-padding); }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .mode-row { margin: 0 4px 2px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { width: 100%; min-width: 0; padding: 6px 10px; height: 44px; min-height: 44px; border-radius: var(--radius-md, 8px); align-items: center; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-content { gap: 2px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-name { font-size: 13px; font-weight: 400; line-height: 16px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-time { margin-left: auto; color: var(--text-subtle); font-weight: 400; align-self: center; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row .thread-details { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row .thread-details { color: var(--text-muted); font-size: 11.5px; font-weight: 400; line-height: 14px; }
+/* Compact tool rows: one line, muted verb + truncated target (Claude/Codex desktop style). */
+.tool-inline-summary { flex-wrap: nowrap; gap: 6px; }
+.tool-inline-verb { flex-shrink: 0; color: var(--text-muted); }
+.tool-inline-summary .tool-inline-value, .tool-inline-summary .tool-inline-value:not(.tool-inline-command) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; word-break: normal; font-weight: 500; }
+.tool-inline-summary .tool-inline-command { font-family: var(--code-font-family); font-size: 11.5px; }
+.tool-inline-summary .tool-inline-command-full { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-group-summary { color: var(--text-muted); }
+
+/* Polish pass: placeholder one step brighter; the Settings window lifts clearly off its backdrop. */
+.composer-shell textarea::placeholder { color: var(--text-subtle); opacity: 1; }
+.settings-window.squircle { box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25); }
+/* Glass themes: Settings is a reading surface, so it stays solid instead of showing the thread behind it. */
+:root[data-translucent="true"] .settings-window { --surface-app: var(--surface-popover); --surface-messages: var(--surface-popover); --surface-topbar: var(--surface-popover); --surface-sidebar: var(--surface-sidebar-opaque); }
+/* Titlebar: panel toggles form one segmented switcher, separate from the thread's own menu. */
+.workspace-titlebar .dock-toolbar { gap: 2px; margin-left: 8px; padding: 2px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--surface-card-muted); }
+.workspace-titlebar .dock-toolbar button.ds-icon-button { width: 26px; height: 26px; border-radius: 7px; }
+.workspace-title-line > .workspace-separator:first-child { display: none; }
+.composer-shell .composer-access-chip.is-disabled { opacity: .4; }
+/* Pressed panel toggles read the same in dark and light. */
+.workspace-titlebar .dock-toolbar button.ds-icon-button[aria-pressed="true"] { background: var(--surface-card-strong); color: var(--text-strong); }
+/* Content scrolled under the thread toolbar fades instead of being sliced. */
+.messages.messages-full { mask-image: linear-gradient(to bottom, transparent 0, #000 18px); }
+/* Starter prompts are real actions: readable text and a visible outline. */
+.starter-pills button { color: var(--text-primary); border-color: var(--border-subtle); }
+.starter-pills button svg { color: var(--text-muted); }
+/* Trash is a labelled view toggle beside Settings, not an unexplained destructive icon. */
+.sidebar-bottom-actions .sidebar-trash-button.sidebar-utility-button { flex: 0 0 auto; }
+/* Settings: long lists fade at the bottom edge so clipping reads as "scroll for more". */
+.settings-nav, .settings-content { mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); }
+:root[data-theme="light"] .chat-layout .sidebar .thread-row.active { background: #dcdee4; }
+/* Code thread tools (branch, run, open in editor, copy) live in the titlebar: one chrome row. */
+.titlebar-thread-tools { display: flex; align-items: center; flex: 0 0 auto; margin-left: 8px; }
+.workspace-titlebar .titlebar-title { min-width: 0; }
+.titlebar-thread-tools:empty { display: none; }
+.main-topbar.is-in-titlebar { container-type: normal; position: static; width: auto; min-height: 0; height: 32px; padding: 0; border: 0; background: transparent; gap: 4px; }
+.main-topbar.is-in-titlebar .main-header { height: 32px; padding: 0; }
+.main-topbar.is-in-titlebar .actions:empty { display: none; }
+/* Settings navigation shows selection with a fill, like every other list. */
+.ds-panel-nav-item.settings-nav, .ds-panel-nav-item.settings-nav:hover:not(:disabled), .ds-panel-nav-item.settings-nav.is-active { border-color: transparent; }
+.ds-panel-nav-item.settings-nav.is-active { background: var(--surface-card-strong); }
+/* Composer pickers that are temporarily locked stay readable. */
+.composer-shell .reasoning-chip:disabled, .composer-shell .composer-access-chip.is-disabled { opacity: .55; }
+/* Selection: one fill plus a 2px accent edge in every list, so it never depends on a faint tint. */
+.chat-layout .chat-sidebar.sidebar .chat-list .thread-row.active { background: var(--surface-card-strong); box-shadow: none; }
+.work-layout .sidebar .work-task-row.active { background: var(--surface-card-strong); box-shadow: none; }
+:root[data-theme="light"] .chat-layout .chat-sidebar.sidebar .chat-list .thread-row.active, :root[data-theme="light"] .work-layout .sidebar .work-task-row.active { background: #dcdee4; }
+.sidebar .sidebar-tree-node .thread-row.active::before { box-shadow: inset 2px 0 0 var(--border-accent); }
+.sidebar .thread-row.active .thread-name { font-weight: 500; }
+/* Titlebar groups: thread tools | thread menu | panels. Every control shares one chrome. */
+.titlebar-thread-tools:not(:empty) { position: relative; padding-right: 9px; }
+.titlebar-thread-tools:not(:empty)::after { content: ""; position: absolute; right: 0; top: 50%; width: 1px; height: 16px; transform: translateY(-50%); background: var(--border-subtle); }
+.main-topbar.is-in-titlebar .open-app-action, .main-topbar.is-in-titlebar .open-app-menu, .main-topbar.is-in-titlebar .open-app-button { border-color: transparent; background: transparent; }
+/* Chat and Work: the composer shows the model, so the header does not repeat it. */
+.workspace-titlebar .thread-header-model, .main-header .thread-header-model, .work-layout .work-actions + .thread-header-model { display: none; }
+/* Static composer metadata reads as text, not as pickers. */
+.composer-context-row, .composer-context-row > span { cursor: default; }
+/* Titles never touch their timestamp. */
+.sidebar .thread-row .thread-time { margin-left: 8px; }
+/* Location and engine are status, not pickers: plain muted text, no icons. */
+.composer-context-row > span > svg { display: none; }
+.composer-context-row > span + span::before { content: "·"; margin-right: 10px; color: var(--text-faint); }
+.composer-context-row { gap: 10px; }
+/* Work: the needs-input dot drops its halo ring, which read as a second bracket beside the tree elbow. */
+.work-layout .sidebar .thread-status.work-status-needs-input { box-shadow: none; animation: none; }
+/* Chat rows share the inset geometry of Code and Work rows. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { width: calc(100% - 16px); margin-inline: 8px; }
+/* Settings nav selection: the same flat fill, no gloss or shadow. */
+.ds-panel-nav-item.settings-nav.is-active { background-image: none; box-shadow: none; }
+.settings-sidebar, .settings-nav-list { mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); }
+/* Pressed panel toggles carry the accent so the active panel is obvious. */
+.workspace-titlebar .dock-toolbar button.ds-icon-button[aria-pressed="true"] { background: color-mix(in srgb, var(--border-accent) 22%, transparent); color: var(--text-strong); }
+.workspace-titlebar .dock-toolbar:not(:has(> :nth-child(3))) { border-color: transparent; background: transparent; }
+/* User turns are distinct filled bubbles in every mode, without an input-field outline. */
+.message.user .bubble, .chat-message.user .chat-message-body, .work-layout .chat-message.user { background: var(--surface-bubble-user, var(--surface-card)); border-color: transparent; }
+/* Assistant markdown headings step up from body text. */
+.message .markdown :is(h1, h2, h3), .chat-message .markdown :is(h1, h2, h3) { font-weight: 600; color: var(--text-strong); margin: 18px 0 6px; line-height: 1.3; }
+.message .markdown h1, .chat-message .markdown h1 { font-size: 20px; }
+.message .markdown h2, .chat-message .markdown h2 { font-size: 17px; }
+.message .markdown h3, .chat-message .markdown h3 { font-size: 15.5px; }
+.message .markdown > :first-child, .chat-message .markdown > :first-child { margin-top: 0; }
+/* Work reuses the chat list classes; its tree rows keep only the tree-node accent (as in Code), never a second one on the row. */
+.work-layout.chat-layout .chat-sidebar.sidebar .chat-list .thread-row.active, .work-layout .chat-sidebar.sidebar .thread-row.active { box-shadow: none; }
+/* The inspector toggle is the rightmost panel control, as in Chat and Work. */
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { order: 2; }
+/* Titles read clearly above their metadata. */
+.sidebar .thread-name { color: var(--text-primary); }
+.sidebar .thread-time, .sidebar .workspace-count { color: var(--text-subtle); }
+/* Sidebar density: reclaim the left gutter so thread titles get the width.
+   Titles align under their project's name (the chevron hangs in the gutter), and the
+   status slot is only as wide as the dot instead of a fixed 14px + margins. */
+.sidebar .project-group-card { padding: 2px 0; }
+.sidebar .project-group-card > .squircle-content > .workspace-row, .sidebar .project-group-card .workspace-row { padding-left: 0; padding-right: 2px; }
+.sidebar .workspace-row .workspace-toggle { width: 20px; min-width: 20px; }
+.sidebar .workspace-card-content .sidebar-tree:not(.sidebar-tree-children) { margin-left: 8px; }
+.sidebar .sidebar-tree-children { margin-left: 14px; }
+.sidebar .sidebar-tree-node > .thread-row, .sidebar .sidebar-tree-node > .mode-row .thread-row { padding-left: 6px; padding-right: 6px; }
+.sidebar .thread-kind:not(:has(> svg)) { width: 8px; }
+.sidebar .thread-kind:not(:has(> svg)) .thread-status { margin: 0; }
+.sidebar .thread-more { padding-left: 34px; }
+.sidebar .thread-row .thread-kind:has(> .thread-tree-toggle) { position: relative; width: 8px; min-width: 8px; overflow: visible; }
+.sidebar .thread-row .thread-kind > .thread-tree-toggle { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 18px; height: 18px; min-width: 18px; }
+/* Group labels sit right above their projects. */
+.sidebar .workspace-group-list { margin-top: 2px; }
+/* Tree rows: icon children share one 16px slot so sibling titles align; selection is the fill alone,
+   so the accent never sits on the tree guide line (Chat rows keep their edge). */
+.sidebar .thread-kind:has(> svg) { width: 16px; min-width: 16px; justify-content: center; }
+.sidebar .sidebar-tree-node .thread-row.active::before { box-shadow: none; }
+/* Chat rows: only a working row shows a status dot; idle rows don't reserve its gutter. */
+/* Split button: the editor picker is visibly part of "VS Code". */
+.main-header .main-header-action[aria-label="Select editor"] { border-left: 1px solid var(--border-subtle); border-radius: 0 6px 6px 0; margin-left: -2px; }
+/* Weight hierarchy: semibold for page and card titles; the activity summary and inspector
+   section headers are medium weight so they don't compete with them. */
+.tool-group-toggle { font-size: 12.5px; letter-spacing: 0; }
+.tool-group-toggle .tool-group-summary { font-weight: 500; color: var(--text-muted); }
+.tool-group-toggle:hover .tool-group-summary { color: var(--text-strong); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong); }
+.code-session-card-toggle { font-weight: 500; font-size: 12.5px; color: var(--text-primary); }
+.sidebar .thread-time, .sidebar .workspace-count, .sidebar .workspace-group-label, .sidebar .thread-bucket-label { color: var(--text-muted); }
+/* Chat selection edge: a straight 2px bar inside the row padding (no curved crescent on the rounded row). */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { position: relative; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row.active::after { content: ""; position: absolute; left: 3px; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--border-accent); }
+/* Chat rows reserve the status-dot slot so every title starts on the same edge. */
+/* Chat rows: the status dot sits in the row's left padding, so titles share one edge close to their
+   section label and a working row's dot never pushes its title. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { padding-left: 18px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row .thread-status { position: absolute; left: 6px; top: 50%; width: 6px; height: 6px; margin: -3px 0 0; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row .thread-status.ready { visibility: hidden; }
+.settings-nav-search input::placeholder { color: var(--text-subtle); opacity: 1; }
+/* Single-line chat rows (a second line only when a chat used a different model). */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row:not(.has-secondary-line) { height: 32px; min-height: 32px; padding-block: 4px; }
+/* Projects are never boxed, in every theme: glass/gradient themes stroke the card through the
+   squircle's border layer (not --squircle-border), so hide that layer and the native border too. */
+.sidebar .project-group-card > .squircle-border { display: none; }
+.sidebar .project-group-card > .squircle-background { border-color: transparent; background: transparent; }
+:root[data-translucent="true"] .sidebar .project-group-card { --squircle-background: transparent; }
+/* Narrow composer (inspector or browser open): keep the effort level and drop its "Effort" word, show access as its icon only,
+   and drop the Local · engine context, which otherwise runs under the access chip. */
+@container composer (max-width: 560px) {
+  .composer-shell .reasoning-chip-effort-segment .reasoning-chip-label { display: grid; }
+  .composer-shell .reasoning-chip-prefix, .composer-shell .composer-access-label, .composer-shell .composer-context-row { display: none; }
+}
+/* Attach, mic and send never leave the composer: the settings group shrinks instead, the space picker truncating first. */
+.composer-shell .composer-shell-left { flex: 1 1 auto; min-width: 0; }
+.composer-shell .composer-shell-actions { flex-shrink: 0; margin-left: auto; }
+.composer-shell .work-fields { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; }
+.composer-shell .work-fields label, .composer-shell .work-fields label select { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container composer (max-width: 720px) { .composer-shell .reasoning-chip-prefix { display: none; } }
+/* Settings labels use sentence case like every other label in the app. */
+.settings-subsection-title, .settings-project-group-label { text-transform: none; letter-spacing: 0; }
+.settings-project-group-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+/* "Local · engine" is reference information: it leaves before it would be cut mid-word. */
+@container composer (max-width: 660px) { .composer-shell .composer-context-row { display: none; } }
+/* Text and glyphs on solid fills (primary buttons, send, stop) need an opaque ink; Glass themes make --surface-app translucent. */
+:root[data-translucent="true"] { --ink-on-fill: var(--surface-sidebar-opaque); }
+.settings-nav-list { padding-bottom: 24px; box-sizing: border-box; }
+/* One selection treatment in every sidebar (Code, Chat, Work): the fill plus a short accent edge. */
+.sidebar .thread-row { position: relative; }
+.sidebar .thread-row.active::after { content: ""; position: absolute; left: 3px; top: 50%; width: 2px; height: 14px; margin-top: -7px; border-radius: 2px; background: var(--border-accent); pointer-events: none; }
+.sidebar .sidebar-tree-node .thread-row.active::before { box-shadow: none; }
+/* A failed tool keeps its red icon; the tool name stays readable text, not an error-coloured link. */
+.tool-inline:has(.tool-inline-icon.error) .tool-inline-value { color: var(--text-primary); }
+/* Settings nav: inactive labels read as available (primary text, muted icon); the active item adds the fill and strong text. */
+.ds-panel-nav-item.settings-nav { color: var(--text-primary); }
+.ds-panel-nav-item.settings-nav svg { color: var(--text-muted); }
+.ds-panel-nav-item.settings-nav.is-active, .ds-panel-nav-item.settings-nav.is-active svg { color: var(--text-strong); }
+/* One reading column for conversations in Chat and Code: about 75–80 characters of 15px prose. */
+.chat-layout .chat-main:not(.is-empty) .chat-column, .workspace-main .chat-column { max-width: 720px; }
+/* Titlebar groups: launch tools (run, open in editor) | thread tools (copy, idea, more) | the panel switcher. */
+.titlebar-thread-tools .main-header-actions-content > .open-app-menu { position: relative; margin-right: 9px; }
+.titlebar-thread-tools .main-header-actions-content > .open-app-menu:not(:last-child)::after { content: ""; position: absolute; right: -5px; top: 7px; bottom: 7px; width: 1px; background: var(--border-subtle); pointer-events: none; }
+/* Work outputs: compact one-line rows; open / reveal / preview overlay the row end on hover instead of claiming a second line. */
+.work-inspector .work-output { position: relative; flex-wrap: nowrap; gap: 10px; margin: 0 0 6px; padding: 8px 10px; }
+.work-inspector .work-output .file-type-icon { width: 20px; height: 20px; flex-shrink: 0; }
+.work-inspector .work-output strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.work-inspector .work-output .work-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding-left: 8px; background: var(--surface-card); }
+/* Composer shrink order: the space picker first, then the model name; access never shrinks below its content.
+   The effort chip sizes to its visible level (the stable-width sizers stay in the DOM for measurement only). */
+.composer-shell .composer-shell-left { gap: 4px; }
+.composer-shell .composer-access-chip { flex-shrink: 0; }
+.composer-shell .reasoning-control { flex: 0 1 auto; min-width: 0; }
+.composer-shell .reasoning-chip-effort-segment .reasoning-chip-label { min-width: 0 !important; display: inline-flex; }
+.composer-shell .reasoning-chip-effort-segment .reasoning-chip-sizer { display: none; }
+.composer-shell .work-fields { flex: 0 1 auto; min-width: 72px; }
+/* Work rows hang off visible tree connectors, which already mark the row's left edge: the accent bar would cross them. */
+/* Work rows start with a status glyph right at the fill edge and hang off visible tree connectors, which already
+   mark the row edge; an accent bar there would cut through the glyph. Work keeps the fill alone. */
+.work-layout .sidebar .work-task-row.active::after { display: none; }
+/* Selection edge sits inside the fill: tree rows paint their fill from --tree-row-highlight, so the edge follows it.
+   Chat's flat list has no guides, so its fill spans the row. Glass gets a fill strong enough to read on the material. */
+.sidebar .sidebar-tree-node .thread-row.active::after { left: calc(var(--tree-row-highlight, 0px) + 3px); }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { --tree-row-highlight: 0px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row.active::after { top: 50%; bottom: auto; height: 14px; margin-top: -7px; }
+:root[data-translucent="true"] .sidebar .thread-row.active.active { --thread-selected-background: color-mix(in srgb, var(--surface-card-strong) 80%, transparent); }
+/* Work composer: the destination (space) keeps its label; the model name truncates first. */
+@container composer (min-width: 561px) { .composer-shell .work-fields { flex-shrink: 0; } }
+.composer-shell .reasoning-chip { min-width: 0; }
+.composer-shell .reasoning-chip-model-segment { min-width: 0; flex-shrink: 1; }
+.composer-shell .reasoning-chip-effort-segment { flex-shrink: 0; }
+.composer-shell .reasoning-chip-model { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Settings: "Add group" is a real secondary button, dimmed only while the name field is empty. */
+.settings-add-group, .settings-add-group:hover:not(:disabled) { height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-card); color: var(--text-strong); }
+.settings-add-group:disabled { opacity: .5; }
+/* Sidebar times read without effort on the Glass material. */
+.sidebar .thread-row .thread-time { color: var(--text-muted); }
+.work-inspector .work-output .file-kind-icon { flex-shrink: 0; }
+.file-kind-icon[data-kind="file"] { color: var(--text-muted); }
+/* Sidebar hierarchy: group labels sit a tier below rows (Glass makes "muted" nearly white); project names are medium primary text. */
+.sidebar .sidebar-section-title, .sidebar .workspace-group-label, .sidebar .thread-bucket-label { color: var(--text-faint); }
+.sidebar .workspace-name { color: var(--text-primary); }
+/* Chat rows start at the label edge; only a row with a live status (running, unread) reserves the dot column. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { padding-left: 10px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row:has(.thread-status:not(.ready)) { padding-left: 18px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row .thread-status.ready { display: none; }
+/* Glass forces sidebar spans to strong text for legibility on the material; labels and times still need their own tiers. */
+:root[data-translucent="true"] .sidebar :is(.sidebar-section-title, .workspace-group-label, .thread-bucket-label) { color: var(--text-faint); }
+:root[data-translucent="true"] .sidebar .thread-row .thread-time { color: var(--text-muted); }
+/* Very narrow composer (a side panel open on a small window): tighten padding and gaps before any name truncates. */
+@container composer (max-width: 480px) {
+  .composer-shell .composer-shell-toolbar { padding-left: 6px; padding-right: 6px; gap: 4px; }
+  .composer-shell .composer-shell-left { gap: 2px; }
+  .composer-shell .reasoning-chip-segment { padding: 0 6px; gap: 4px; }
+  .composer-shell .reasoning-chip-value { gap: 4px; }
+}
+/* Reasoning steps in Work read like tool steps: icon, muted label, chevron. */
+.work-thinking > summary { list-style: none; }
+.work-thinking > summary::-webkit-details-marker { display: none; }
+/* Starter chips inside the empty column span that column (--empty-column resolved against the column itself
+   subtracted the gutters twice, leaving 488px and a 2-2-1 wrap). */
+.chat-layout .chat-main.is-empty .chat-column .starter-pills { width: 100%; }
+/* Work's composer carries four settings: a little less chip padding keeps the model name whole at 680px. */
+@container composer (max-width: 720px) {
+  .composer-shell .reasoning-chip-segment { padding-inline: 6px; }
+  .composer-shell :is(.composer-access-chip, .work-fields label) { padding-inline: 6px; }
+}
+/* Work transcript: a run of agent steps is one quiet line; expanding it lists each step, indented under the run. */
+.work-step-group { border-bottom: 0; padding: 8px 0; }
+.work-step-group > summary .work-tool-label { color: var(--text-muted); }
+.work-step-group .work-step-failed { color: var(--status-error); font-size: 11.5px; flex-shrink: 0; }
+.work-step-group > .work-step-list { margin: 6px 0 0 7px; padding-left: 14px; border-left: 1px solid var(--border-subtle); }
+.work-step-group > .work-step-list > .work-tool { padding: 8px 0; }
+.work-step-group > .work-step-list > .work-tool:last-child { border-bottom: 0; }
+/* One dropdown glyph everywhere: ⌄. The space picker drops WebKit's native up-down arrows. */
+.composer-shell .work-fields label select { appearance: none; -webkit-appearance: none; padding-right: 0; }
+.composer-shell .work-fields label .composer-access-chevron { width: 14px; height: 14px; margin-left: -2px; color: var(--text-faint); pointer-events: none; flex-shrink: 0; }
+.home-usage-select-wrap { position: relative; }
+.home-usage-select { background-image: none; }
+.home-usage-select-wrap::after { content: ""; position: absolute; right: 10px; top: 50%; width: 12px; height: 12px; margin-top: -6px; pointer-events: none; background: var(--text-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat; }
+/* Effort reads the same in every composer: gauge, level, chevron. */
+.composer-shell .reasoning-chip-prefix { display: none; }
+/* Browser address: the focus ring appears for keyboard focus, not when the page autofocuses the field. */
+.browser-address:focus-within:not(:has(input:focus-visible)) { border-color: var(--ds-border-subtle); box-shadow: none; }
+/* Inline code that wraps keeps its chip shape on each line. */
+.markdown :not(pre) > code { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* Code sidebar: project names are medium primary text (Glass forced them to strong white), and each project's
+   "+" appears on hover or keyboard focus instead of forming a permanent column of plus signs. */
+:root .sidebar .workspace-name, :root[data-translucent="true"] .sidebar .workspace-name { color: var(--text-primary); font-weight: 500; }
+.sidebar .workspace-row .workspace-add { opacity: 0; }
+.sidebar .workspace-row:is(:hover, :focus-within) .workspace-add, .sidebar .workspace-add:focus-visible { opacity: 1; }
+@media (hover: none) { .sidebar .workspace-row .workspace-add { opacity: .6; } }
+/* Settings › Projects › Order: one bordered list with dividers (not cards in a card), and each row shows its
+   move up / move down / delete controls on hover or keyboard focus, without expanding it. */
+.settings-page .settings-project-group { border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; background: var(--surface-card); padding: 0; gap: 0; }
+.settings-page .settings-project-group-label { padding: 10px 12px 8px; margin: 0; }
+.settings-page .settings-project-row { border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; background: transparent; }
+.settings-project-row summary { grid-template-columns: 12px minmax(0, 1fr) auto; }
+.settings-project-row summary .settings-project-actions { grid-column: 3; grid-row: 1 / 3; display: flex; gap: 2px; opacity: 0; transition: opacity 120ms; }
+.settings-project-row summary:is(:hover, :focus-within) .settings-project-actions, .settings-project-row[open] summary .settings-project-actions { opacity: 1; }
+@media (hover: none) { .settings-project-row summary .settings-project-actions { opacity: 1; } }
+/* Per-project agent policy overrides read as rows of the same list style, not bare disclosure triangles. */
+.settings-agent-policy { border-top: 1px solid var(--border-subtle); }
+.settings-agent-policy > summary { list-style: none; }
+.settings-agent-policy > summary::-webkit-details-marker { display: none; }
+.settings-agent-policy > summary strong { font-weight: 500; }
+/* Settings nav scrolls quietly: the bottom fade signals more, and no permanent scrollbar sits beside the active row. */
+.settings-nav-list { scrollbar-width: none; }
+.settings-nav-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
+/* Single-line output blocks never drop below 12px, whatever the code font size. */
+.message .markdown-codeblock-single { font-size: max(12px, var(--code-font-size, 13px)); line-height: 1.5; }
+.sidebar-bottom-actions .sidebar-feedback-button { margin-left: auto; width: auto; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-muted); border-radius: 7px; }
+.sidebar-bottom-actions .sidebar-feedback-button:hover { background: var(--surface-hover); color: var(--text-strong); }
+/* Footer rows size to their labels so the feedback icon fits at the end in every mode. */
+.sidebar-bottom-actions > .sidebar-utility-button { flex: 0 0 auto; width: auto; min-width: 0; }
+.sidebar-bottom-actions > .sidebar-feedback-button { flex: 0 0 auto; width: auto; }
+/* The inspector toggle ends the panel switcher behind a hairline, with the same panel icon Chat and Work use. */
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { position: relative; margin-left: 7px; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"]::before { content: ""; position: absolute; left: -5px; top: 6px; bottom: 6px; width: 1px; background: var(--border-subtle); pointer-events: none; }
+/* Titlebar panel toggles as in Claude Code: bare icons in one row (inspector first), the open ones filled. */
+.workspace-titlebar .dock-toolbar { gap: 2px; padding: 0; border: 0; background: transparent; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { order: 0; margin-left: 0; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"]::before { content: none; }
+.workspace-titlebar .dock-toolbar button.ds-icon-button { width: 28px; height: 28px; border-radius: 7px; color: var(--text-muted); }
+.workspace-titlebar .dock-toolbar button.ds-icon-button:hover { background: var(--surface-hover); color: var(--text-strong); }
+.workspace-titlebar .dock-toolbar button.ds-icon-button[aria-pressed="true"] { background: color-mix(in srgb, var(--text-strong) 12%, transparent); color: var(--text-strong); }
+.work-inspector h2 small { font-weight: 400; color: var(--text-subtle); }
+/* Starter prompts are suggestions, not actions: medium weight, like the reference apps. */
+.chat-layout .starter-pills button, .starter-pills button { font-weight: 500; }
+/* Inspector rows share one icon slot (16px) and gap (6px), so every label starts on the same left edge. */
+.code-session-row > span:first-child { gap: 6px; }
+.code-session-row > span:first-child > svg:first-child,
+.code-session-nested > summary > svg,
+.code-session-connector > summary > svg { width: 14px; height: 14px; margin-inline: 1px; flex-shrink: 0; color: var(--text-muted); }
+.code-session-field > svg { justify-self: center; }
+label.code-session-field { column-gap: 0; } /* the select's own 6px inset is the gap, so its text lines up with the other rows */
+/* "Add group" keeps a visible button frame while it waits for a name (Glass had reduced it to dim text). */
+.settings-page .settings-button.settings-add-group { border-color: color-mix(in srgb, var(--text-strong) 16%, transparent); background: color-mix(in srgb, var(--text-strong) 5%, transparent); }
+/* Selection is the fill alone, as in the reference apps: a 2px accent bar beside the label read as a text caret.
+   The fill is solid enough to read on Glass, and the selected label is full strength. */
+.sidebar .thread-row.active::after, .chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row.active::after { display: none; }
+.sidebar .sidebar-tree-node .thread-row.active::before { box-shadow: none; }
+:root[data-translucent="true"] .sidebar .thread-row.active.active { --thread-selected-background: var(--surface-card-strong); }
+:root[data-translucent="true"] .sidebar .thread-row.active .thread-name { color: var(--text-strong); }
+/* Project and space counts share the thread times' right edge; the row's hover actions take the count's place
+   instead of reserving a blank slot beside it. */
+.sidebar .workspace-row { position: relative; }
+.sidebar .workspace-row > .workspace-actions { position: absolute; right: 4px; top: 0; bottom: 0; }
+.sidebar .workspace-row > .workspace-count { margin-left: auto; }
+.sidebar .workspace-row:is(:hover, :focus-within) > .workspace-count:has(+ .workspace-actions > *) { visibility: hidden; }
+.sidebar .workspace-row > .workspace-count { margin-right: 4px; }
+.sidebar .work-space > .workspace-row > .sidebar-title-add { position: absolute; right: 4px; top: 50%; translate: 0 -50%; }
+.sidebar .work-space > .workspace-row:is(:hover, :focus-within) > .workspace-count { visibility: hidden; }
+/* Reordering stays discoverable: a project's up/down arrows rest at low strength, delete appears on hover. */
+.settings-project-row summary .settings-project-actions { opacity: 1; }
+.settings-project-row summary .settings-project-actions > * { opacity: .7; transition: opacity 120ms; }
+.settings-project-row summary .settings-project-actions > [aria-label="Delete project"] { opacity: 0; }
+.settings-project-row summary:is(:hover, :focus-within) .settings-project-actions > *, .settings-project-row[open] summary .settings-project-actions > * { opacity: 1; }
+@media (hover: none) { .settings-project-row summary .settings-project-actions > * { opacity: 1; } }
+/* Settings › Projects › Order is one container: project groups inside it are sections divided by a hairline,
+   not cards nested in a card. */
+.settings-group-card .settings-project-group { border: 0; background: transparent; border-radius: 0; box-shadow: none; }
+.settings-group-card .settings-project-group + .settings-project-group { border-top: 1px solid var(--border-subtle); }
+/* Code in the transcript is read, not scanned like a diff: it keeps a reading line-height instead of the dense
+   1.28 the dark theme sets for diffs and the file tree. */
+:is(.message, .chat-message) .markdown pre, :is(.message, .chat-message) .markdown pre code { line-height: 1.55; }
+/* Work activity rows read like the Code transcript: the chevron follows the summary text, and no full-width
+   rule cuts the transcript under each row. */
+.chat-layout .work-tool, .chat-layout .work-step-group { border-bottom: 0; padding: 6px 0; }
+.work-tool > summary > svg:last-child { margin-left: 0; }
+/* Panel tabs use the room the strip has before truncating. */
+.tabbed-side-panel .side-panel-tab [role="tab"] { max-width: 240px; }
+/* A reorder arrow that cannot move (first row up, last row down) reads as off, not merely quiet. */
+.settings-project-row summary .settings-project-actions > :disabled { opacity: .18; }
+
+/* ── Color where it means something ─────────────────────────────────────────────────────────────
+   After Theo's T3 Code pass: the dark canvas is near-black so cards, the composer and popovers lift, and color
+   marks actions, identity and state instead of decorating. Themes with their own palette (Claude, neon, matrix)
+   keep theirs. */
+:root { --accent-fill: #5b63f0; --accent-fill-hover: #6a72ff; --accent-fill-ink: #ffffff;
+  --hue-blue: #5b9dff; --hue-green: #3ecf8e; --hue-amber: #f5a524; --hue-pink: #f472b6; --hue-violet: #a78bfa;
+  --hue-teal: #2dd4bf; --hue-orange: #fb923c; --hue-sky: #38bdf8; }
+:root[data-theme="light"] { --accent-fill: #4f57e6; --accent-fill-hover: #5d65f0;
+  --hue-blue: #2563eb; --hue-green: #16a34a; --hue-amber: #c27c0e; --hue-pink: #db2777; --hue-violet: #7c3aed;
+  --hue-teal: #0d9488; --hue-orange: #ea580c; --hue-sky: #0284c7; }
+
+/* Primary actions are a solid accent with white ink (Merge in T3 Code), not a pastel fill. */
+:root:not([data-neon-palette="true"]):not([data-theme-id^="claude-"]):not([data-theme-id="matrix"]) :is(.primary, .home-actions .home-button.primary) {
+  background: var(--accent-fill); color: var(--accent-fill-ink); border-color: transparent; }
+:root:not([data-neon-palette="true"]):not([data-theme-id^="claude-"]):not([data-theme-id="matrix"]) :is(.primary, .home-actions .home-button.primary):hover:not(:disabled) {
+  background: var(--accent-fill-hover); opacity: 1; }
+:root:not([data-neon-palette="true"]):not([data-theme-id^="claude-"]):not([data-theme-id="matrix"]) :is(.primary, .home-actions .home-button.primary) svg { color: currentColor; }
+
+/* Switches that are on are the accent, with a white knob. */
+:root:not([data-neon-palette="true"]):not([data-theme-id="matrix"]) .settings-toggle.on { background: var(--accent-fill); border-color: transparent; }
+:root:not([data-neon-palette="true"]):not([data-theme-id="matrix"]) .settings-toggle.on .settings-toggle-knob { background: #ffffff; }
+
+/* Projects and spaces carry an identity color: a tinted initial square. */
+.project-avatar { display: inline-grid; place-items: center; width: 17px; height: 17px; flex-shrink: 0; border-radius: 5px;
+  font-size: 11px; font-weight: 650; line-height: 1; letter-spacing: 0; color: var(--project-hue);
+  background: color-mix(in srgb, var(--project-hue) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--project-hue) 38%, transparent); }
+:root[data-theme="light"] .project-avatar { color: color-mix(in srgb, var(--project-hue) 70%, #000); }
+.sidebar .workspace-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sidebar .work-space-toggle .project-avatar { margin-right: 1px; }
+
+/* Agent and fork glyphs in the thread tree are violet, like agent icons in T3 Code. */
+.sidebar .thread-kind > svg { color: var(--hue-violet); }
+
+/* The browser's Tools grid: neutral icons at rest; a tool shows its identity color when pointed at or focused,
+   so color answers "which tool is this" instead of decorating the grid. */
+.browser-tool[data-tool] > svg { color: var(--text-muted); transition: color 120ms; }
+.browser-tool[data-tool]:is(:hover, :focus-visible) > svg { color: var(--tool-hue, var(--text-muted)); }
+.browser-tool[data-tool="git"] { --tool-hue: var(--hue-green); }
+.browser-tool[data-tool="terminal"] { --tool-hue: var(--hue-teal); }
+.browser-tool[data-tool="sidechat"] { --tool-hue: var(--hue-blue); }
+.browser-tool[data-tool="files"] { --tool-hue: var(--hue-amber); }
+.browser-tool[data-tool="agents"] { --tool-hue: var(--hue-violet); }
+.browser-tool[data-tool="prompts"] { --tool-hue: var(--hue-pink); }
+.browser-tool[data-tool="background"] { --tool-hue: var(--hue-sky); }
+.browser-tool[data-tool]:not([data-tool="git"]):not([data-tool="terminal"]):not([data-tool="sidechat"]):not([data-tool="files"]):not([data-tool="agents"]):not([data-tool="prompts"]):not([data-tool="background"]) { --tool-hue: var(--hue-orange); }
+
+/* Files show their kind in color. */
+.file-kind-icon[data-kind="image"] { color: var(--hue-pink); }
+.file-kind-icon[data-kind="sheet"] { color: var(--hue-green); }
+.file-kind-icon[data-kind="slides"] { color: var(--hue-orange); }
+.file-kind-icon[data-kind="archive"] { color: var(--hue-amber); }
+.file-kind-icon[data-kind="code"] { color: var(--hue-blue); }
+.file-kind-icon[data-kind="text"] { color: var(--hue-sky); }
+
+/* Inspector icons read: near-white line icons, with meaning colored (connected = green, connectors = blue). */
+.code-session-row > span:first-child > svg:first-child,
+.code-session-field > svg,
+.code-session-nested > summary > svg { color: var(--text-primary); }
+.code-session-connector > summary > svg { color: var(--text-primary); }
+.home-latest-project { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.home-latest-project .project-avatar { width: 16px; height: 16px; border-radius: 4px; }
+.home-project-picker .project-avatar { width: 16px; height: 16px; border-radius: 4px; }
+.settings-project-row summary > strong { display: inline-flex; align-items: center; gap: 8px; min-width: 0; } .settings-project-row summary > strong .project-avatar { width: 16px; height: 16px; border-radius: 4px; }
+.settings-project-row summary > strong + span { padding-left: 24px; } /* the path lines up with the name, past the avatar */
+/* The floating inspector is as tall as its content (scrolling past the available height), so it covers as little
+   of the conversation as it needs. */
+.dock-workspace .dock-session-rail.ds-popover { height: auto; max-height: max(80px, calc(var(--dock-conversation-height) - var(--dock-composer-height, 0px) - 16px)); }
+.dock-workspace .dock-session-rail.ds-popover > .dock-pane-content { flex: 0 1 auto; overflow-y: auto; }
+.dock-workspace .dock-session-rail.ds-popover .code-session-rail { height: auto; }
+
+/* An open panel's titlebar toggle carries the accent, so the active view reads at a glance. */
+:root:not([data-neon-palette="true"]):not([data-theme-id="matrix"]) .workspace-titlebar .dock-toolbar button.ds-icon-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent-fill) 22%, transparent); color: color-mix(in srgb, var(--accent-fill) 45%, #ffffff); }
+:root[data-theme="light"]:not([data-neon-palette="true"]) .workspace-titlebar .dock-toolbar button.ds-icon-button[aria-pressed="true"] { color: var(--accent-fill); }
+/* The floating inspector is a lifted card: a real shadow separates it from the conversation under it. */
+.dock-workspace .dock-session-rail.ds-popover { box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35); border: 1px solid var(--border-strong); }
+/* In a finished Work task, unchecked items left in earlier plan snapshots read as history, not open work. */
+.work-progress[data-task-status="done"] .markdown li:has(> input[type="checkbox"]:not(:checked)) { color: var(--text-faint); }
+.work-progress[data-task-status="done"] .markdown li > input[type="checkbox"]:not(:checked) { opacity: .5; }
+/* A floating inspector has room for names and section controls. */
+.dock-workspace .dock-session-rail.ds-popover { --session-rail-width: min(320px, calc(var(--session-space-width) - 16px)); }
+/* A page that failed to load sits on the browser canvas, like a blank tab, instead of a lighter slab. */
+.browser-surface:has(.browser-error) { background: transparent; border-radius: 0; }
+.browser-surface:has(.browser-error) .browser-native-slot { background: transparent; }
+/* Inline code is a quiet tint that keeps the line's rhythm: no border, a ~7% white fill, a small radius and
+   padding; file links keep their accent text on the same tint. */
+.message .markdown :not(pre) > code:not([class*="language-"]) { border: 0; background: color-mix(in srgb, var(--text-strong) 7%, transparent); border-radius: 4px; padding: 0.06em 0.32em; line-height: inherit; }
+.message .markdown .message-file-link { background: color-mix(in srgb, var(--text-strong) 7%, transparent); border-color: transparent; border-radius: 4px; padding: 0.06em 0.32em; }
+:root[data-theme="light"] .message .markdown :not(pre) > code:not([class*="language-"]),
+:root[data-theme="light"] .message .markdown .message-file-link { background: color-mix(in srgb, #000 6%, transparent); }
+.panel-tab-list > span > svg:last-child { width: 11px; height: 11px; opacity: .7; }
+.code-session-empty-summary { margin: 0; padding: 12px 3px; font-size: 12px; color: var(--text-faint); border-top: 1px solid var(--border-subtle); }
+
+/* ── Round 30 ── */
+/* Settings: a short fade and real end padding, so the last section scrolls fully clear of the sheet's edge. */
+.settings-window .settings-content, .settings-overlay .settings-content { mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent); padding-bottom: 40px; }
+/* Reorder arrows read as buttons: a bounded 24px target at full secondary contrast; arrows that cannot move are off. */
+.settings-project-row summary .settings-project-actions > button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--text-strong) 4%, transparent); color: var(--text-primary); }
+.settings-project-row summary .settings-project-actions > button:not(:disabled):not([aria-label="Delete project"]) { opacity: 1; }
+.settings-project-row summary .settings-project-actions > button:disabled { opacity: .28; border-color: transparent; background: transparent; }
+.settings-project-row summary .settings-project-actions > button:hover:not(:disabled) { background: var(--surface-hover); }
+/* Supporting text in Settings (help lines, project paths) is readable secondary text. */
+.settings-page .settings-help, .settings-project-row summary > span { color: var(--text-subtle); }
+/* Home: recent work leads; usage is context. Flat stat cards, a shorter chart, readable labels. */
+.home .home-usage-card { background: color-mix(in srgb, var(--text-strong) 3%, transparent); box-shadow: none; }
+.home .home-usage-chart { height: 84px; }
+.home .home-usage-more > summary { color: var(--text-subtle); }
+/* Home action row: "New thread in <project>" is one group; adding projects is a separate group after a divider. */
+.home-actions .home-new-thread { position: relative; margin-right: 13px; }
+.home-actions .home-new-thread::after { content: ""; position: absolute; right: -7px; top: 6px; bottom: 6px; width: 1px; background: var(--border-subtle); }
+/* Titlebar: the run action and the panel toggles are separate groups. */
+.workspace-titlebar [aria-label="Set launch script"] { margin-right: 6px; }
+
+/* Mode menu, as in Codex: the current mode is the sidebar title ("Code ⌄"), search sits at the right of that row,
+   and the menu lists each mode with what it is for and a check on the current one. */
+.sidebar .mode-menu-header { position: relative; display: flex; align-items: center; gap: 4px; height: 32px; margin: 0 0 2px; }
+.sidebar .mode-menu-header .mode-switcher { position: static; flex: 1; min-width: 0; display: flex; padding: 0; margin: 0; border: 0; background: none; }
+.sidebar .mode-menu-header .mode-menu-search { margin-left: auto; }
+.sidebar .mode-menu-header .mode-menu-trigger { display: inline-flex; align-items: center; gap: 4px; height: 28px; max-width: 100%; padding: 0 8px; border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--text-strong); font: inherit; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; cursor: pointer; }
+.sidebar .mode-menu-header span.mode-menu-trigger { cursor: default; }
+.sidebar .mode-menu-header button.mode-menu-trigger:hover, .sidebar .mode-menu-header .mode-menu-trigger[aria-expanded="true"] { background: var(--surface-hover); }
+.sidebar .mode-menu-header .mode-menu-trigger svg { width: 14px; height: 14px; color: var(--text-faint); transition: transform var(--ds-dur-fast) var(--ds-ease-out-soft); }
+.sidebar .mode-menu-header .mode-menu-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.sidebar .mode-menu-header .mode-menu-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: var(--z-popover); padding: 4px; display: grid; gap: 2px; }
+.sidebar .mode-menu-header .mode-menu-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; }
+.sidebar .mode-menu-header .mode-menu-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.sidebar .mode-menu-header .mode-menu-name { color: var(--text-strong); font-size: 13px; font-weight: 500; }
+.sidebar .mode-menu-header .mode-menu-description { color: var(--text-subtle); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar .mode-menu-header .mode-menu-check { flex: 0 0 auto; width: 16px; height: 16px; color: var(--text-strong); }
+
+/* Home usage: day labels and bar values readable at 11px; the value sits on top of its bar. */
+.home .home-usage-bar-label, .home .home-usage-bar-value { font-size: 11px; color: color-mix(in srgb, var(--text-strong) 62%, transparent); font-variant-numeric: tabular-nums; }
+.home .home-usage-bar-value { line-height: 1; }
+.home .home-usage-bar { gap: 4px; }
+/* Work titlebar Rewind: icon and word, quiet like the other header actions. */
+.workspace-titlebar .main-header-action.rewind-action { display: inline-flex; align-items: center; gap: 6px; width: auto; height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.workspace-titlebar .main-header-action.rewind-action:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
+.workspace-titlebar .main-header-action.rewind-action svg { width: 14px; height: 14px; }
+/* Floating inspector: no scroll fade or tail padding, so the space under the last line matches the space above the first. */
+.dock-workspace .dock-session-rail.ds-popover .code-session-rail { padding-bottom: 4px; mask-image: none; -webkit-mask-image: none; }
+/* File links read as code, not as blue links: neutral text on the same tint as inline code, an accent underline
+   on hover. Chips keep tight side padding so punctuation sits right after them. */
+.message .markdown .message-file-link, .message .markdown .message-file-link .message-file-link-name, .message .markdown a code { color: var(--text-strong); }
+.message .markdown .message-file-link .message-file-link-path { color: var(--text-muted); }
+.message .markdown .message-file-link:hover { color: var(--text-stronger); text-decoration: underline; text-decoration-color: var(--accent-fill, var(--border-accent)); text-underline-offset: 3px; }
+.message .markdown .message-file-link:hover .message-file-link-name { text-decoration: inherit; }
+.message .markdown :not(pre) > code:not([class*="language-"]), .message .markdown .message-file-link { padding-inline: 0.24em; }
+/* Work Task panel: plan and outputs share one list style at 13px. Output rows are borderless, centred, with the
+   file type and folder under the name; the row fills on hover and shows its actions. */
+.work-inspector .work-plan li { font-size: 13px; }
+.work-inspector .work-output { min-height: 40px; margin: 0 -8px 2px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; }
+.work-inspector .work-output:hover, .work-inspector .work-output:focus-within { background: var(--surface-hover); }
+.work-inspector .work-output .work-output-text { display: grid; flex: 1; min-width: 0; gap: 1px; }
+.work-inspector .work-output .work-output-text strong { display: block; margin: 0; font-size: 13px; font-weight: 500; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-inspector .work-output .work-output-meta { color: var(--text-subtle); font-size: 11.5px; line-height: 1.3; }
+.work-inspector .work-output .work-output-meta:empty { display: none; }
+/* Recent thread titles get a third line before they are cut. */
+.home .home-latest-card .home-latest-message { -webkit-line-clamp: 3; }
+/* A narrow footer with three actions keeps Feedback as its icon (the tooltip names it) instead of cutting the word. */
+.sidebar-bottom-actions { container: sidebar-footer / inline-size; }
+@container sidebar-footer (max-width: 236px) {
+  .sidebar-bottom-actions > .sidebar-utility-button ~ .sidebar-utility-button ~ .sidebar-feedback-button { width: 28px; padding: 0; }
+  .sidebar-bottom-actions > .sidebar-utility-button ~ .sidebar-utility-button ~ .sidebar-feedback-button > span { display: none; }
+}
+
+/* ── Round 31 ── */
+/* Settings: no fade at the sheet's edge, and a resting scroll thumb, so a page that continues says so. */
+.settings-window .settings-content, .settings-overlay .settings-content { mask-image: none; }
+.settings-window .settings-content::-webkit-scrollbar-thumb, .settings-overlay .settings-content::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); }
+/* Work outputs: a resting row surface and a visible Open action, so a file reads as something to open; Reveal and Quick Look join on hover. */
+.work-inspector .work-output { margin: 0 0 4px; padding: 6px 6px 6px 8px; background: color-mix(in srgb, var(--text-strong) 3.5%, transparent); }
+.work-inspector .work-output:hover, .work-inspector .work-output:focus-within { background: var(--surface-hover); }
+.work-inspector .work-output .work-actions { position: static; transform: none; flex-shrink: 0; padding-left: 0; background: transparent; opacity: 1; }
+.work-inspector .work-output:not(:hover):not(:focus-within) .work-actions > :not(:first-child) { display: none; }
+.work-inspector .work-output:not(:hover):not(:focus-within) .work-actions > :first-child { color: var(--text-subtle); }
+/* Secondary text that carries information (project paths, chart days, the usage details link) sits one step brighter and larger than incidental text. */
+.settings-project-row summary > span:not(.settings-project-actions) { font-size: 12px; color: var(--text-muted); }
+.home .home-usage-bar-label, .home .home-usage-bar-value { font-size: 11.5px; color: color-mix(in srgb, var(--text-strong) 70%, transparent); }
+.home .home-usage-more > summary { font-size: 12.5px; color: var(--text-muted); }
+/* Titlebar: run and open-in controls form one group, the panel toggles another, split by a hairline. */
+.workspace-titlebar .titlebar-thread-tools:has(button) + .dock-toolbar:has(> button) { position: relative; margin-left: 13px; }
+.workspace-titlebar .titlebar-thread-tools:has(button) + .dock-toolbar:has(> button)::before { content: ""; position: absolute; left: -8px; top: 7px; bottom: 7px; width: 1px; background: var(--border-subtle); pointer-events: none; }
+.workspace-titlebar [aria-label="Set launch script"], .workspace-titlebar [aria-label="Run launch script"] { margin-right: 0; }
+/* Mode menu: the chevron reads at secondary contrast, as in Codex, so the other modes are discoverable. */
+.sidebar .mode-menu-header button.mode-menu-trigger svg { color: var(--text-muted); }
+/* Home: when every recent thread is from one project, the header names it once. */
+.home .home-latest-scope { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); font-size: 12.5px; }
+.home .home-latest-scope > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Settings › Projects: the reorder pair sits at the row's right edge (Delete, shown on hover, goes before it), and an arrow that cannot move keeps a faint frame so the column holds. */
+.settings-project-row summary .settings-project-actions > [aria-label="Delete project"] { order: -1; }
+.settings-project-row summary .settings-project-actions > button:disabled { opacity: .4; border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent); background: transparent; }
+/* Inspector: the empty-state line starts on the section labels' text edge. */
+.code-session-empty-summary { padding-left: 7px; padding-right: 7px; }
+/* The launch-script control says what it does: "▷ Run", like Rewind beside it in Work. */
+.workspace-titlebar .main-header-action.launch-script-run { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 26px; padding: 0 8px 0 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.workspace-titlebar .main-header-action.launch-script-run:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
+.workspace-titlebar .main-header-action.launch-script-run svg { width: 13px; height: 13px; }
+/* One sidebar section header in every mode: a muted label on the left, its actions (+ first) on the right. */
+.sidebar .sidebar-header .sidebar-header-title, .sidebar .sidebar-header .sidebar-title-group { display: contents; }
+.sidebar .sidebar-header { gap: 2px; }
+.sidebar .sidebar-header .sidebar-title-button { order: 0; margin: 0 auto 0 -2px; padding: 4px 6px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+.sidebar .sidebar-header .sidebar-title-add { order: 1; }
+.sidebar .sidebar-header .sidebar-header-actions { order: 2; margin-left: 0; gap: 2px; }
+.sidebar :is(.sidebar-header, .sidebar-section-header) button.sidebar-title-add { width: 24px; height: 24px; border-radius: 7px; opacity: 1; color: var(--text-muted); }
+.sidebar :is(.sidebar-header, .sidebar-section-header) button.sidebar-title-add svg { width: 14px; height: 14px; }
+/* One nesting rule: rows sit on an indent; connector lines are kept for forks, as in Code. */
+.work-layout .sidebar .sidebar-tree-guides { display: none; }
+
+.home .home-usage-chart-note { margin: 4px 0 2px; color: var(--text-muted); font-size: 12.5px; }
+
+/* ── Round 33 ── */
+/* Side panel header follows the Code browser pane: tabs · + · spacer · tab list · expand · hide. The hide control
+   (the same panel glyph as the titlebar toggle) sits at the far right, where the toggle sits while the panel is closed,
+   so the titlebar copy steps aside while the panel is docked open. */
+.side-panel-tabbar > .side-panel-tabs { flex: 0 1 auto; }
+.side-panel-tabbar > [aria-label="New panel tab"] { order: 1; margin-right: auto; }
+.side-panel-tabbar > .panel-tab-list { order: 2; }
+.side-panel-tabbar > [aria-label$="side panel"]:not(.side-panel-hide) { order: 3; }
+.side-panel-tabbar > .side-panel-hide { order: 4; }
+.workspace-titlebar:has(+ .workspace-body > .tabbed-side-panel:not([hidden]):not(.is-overlay)) > [aria-label="Toggle side panel"] { display: none; }
+/* One sidebar row model. Section labels share one token in every mode (the toolbar button rule used to win here). */
+:root .sidebar .sidebar-header button.sidebar-title-button.subtitle-button.subtitle { height: 24px; min-height: 24px; margin: 0 auto 0 -3px; padding: 0 6px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+.sidebar .sidebar-section-title { font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+/* Child rows start on their parent's name: thread and task text align with the project or space name. */
+.sidebar .workspace-card-content .thread-list > .sidebar-tree-children { margin-left: 28px; }
+.sidebar .workspace-card-content .thread-list > .sidebar-tree-children > .sidebar-tree-node > .thread-row { --tree-row-highlight: 12px; }
+/* Work spaces use Code's parent row: chevron, badge, name. Tasks start on the space name, with their status dot in the gutter. */
+.work-layout .sidebar .work-space-toggle .work-space-chevron { display: block; order: -1; flex-shrink: 0; width: 12px; height: 12px; opacity: .7; margin: 0; transition: transform 120ms; }
+.work-layout .sidebar .work-space-toggle[aria-expanded="false"] .work-space-chevron { transform: rotate(-90deg); }
+.sidebar .workspace-row:hover .work-space-toggle .work-space-chevron { opacity: 1; }
+.work-layout .sidebar .work-task-row { position: relative; --tree-row-highlight: 12px; }
+.work-layout .sidebar .work-task-row > .thread-status.thread-status { position: absolute; left: 4px; top: 50%; translate: 0 -50%; margin: 0; }
+.work-layout .sidebar .work-space .sidebar-tree-children { margin-left: 22px; }
+.work-layout .sidebar .sidebar-tree-node > .work-task-row, .work-layout .sidebar .sidebar-tree-node > .mode-row .work-task-row { padding-left: 20px; }
+/* One failure treatment, as in the Code transcript: a red leading icon, the failed count first, then the neutral summary
+   (which truncates at its end). */
+.work-step-group.has-error > summary > svg:first-child { color: var(--status-error); }
+.work-step-group > summary > .work-step-failed { order: 0; flex-shrink: 0; margin: 0 2px 0 0; color: var(--status-error); }
+.work-step-group > summary > .work-step-failed::after { content: " ·"; color: var(--text-faint); }
+/* Mode menu reads as a control at rest: a faint pill and a chevron at secondary contrast. */
+.sidebar .mode-menu-header button.mode-menu-trigger { background: color-mix(in srgb, var(--text-strong) 5%, transparent); padding: 0 8px 0 9px; }
+.sidebar .mode-menu-header button.mode-menu-trigger svg { width: 16px; height: 16px; color: color-mix(in srgb, var(--text-strong) 68%, transparent); }
+/* Settings › Projects: an arrow that cannot move keeps its frame and fill, dimmed, so each row shows the pair. */
+.settings-project-row summary .settings-project-actions > button:disabled { opacity: .4; border-color: var(--border-subtle); background: color-mix(in srgb, var(--text-strong) 4%, transparent); }
+/* Task panel: Plan and Outputs share one icon column and one text column. */
+.work-inspector .work-plan { padding-left: 8px; }
+/* Home: the project the new thread starts in is its own context line; the action row below is New thread, then the
+   secondary Add project and Add from URL. */
+.home .home-actions { display: grid; grid-template-columns: repeat(3, auto) 1fr; justify-items: start; align-items: center; column-gap: 8px; row-gap: 10px; }
+.home .home-actions .home-new-thread { display: contents; }
+.home .home-actions .home-new-thread::after { content: none; }
+.home .home-actions .home-project-picker { grid-row: 1; grid-column: 1 / -1; }
+.home .home-actions .home-new-thread-button { grid-row: 2; grid-column: 1; margin-right: 12px; }
+.home .home-actions .home-add-workspaces-button { grid-row: 2; grid-column: 2; }
+.home .home-actions .home-add-workspace-from-url-button { grid-row: 2; grid-column: 3; }
+/* Activity (Codex's bell): beside search; its list spans the sidebar header like the mode menu. */
+.sidebar .mode-menu-header .sidebar-activity { margin-left: auto; }
+.sidebar .mode-menu-header .sidebar-activity + .mode-menu-search { margin-left: 0; }
+.sidebar .sidebar-activity-toggle { position: relative; }
+.sidebar .sidebar-activity-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--border-accent); box-shadow: 0 0 0 2px var(--surface-sidebar, var(--surface-app)); }
+.sidebar .sidebar-activity-popover { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: var(--z-popover); padding: 4px; }
+.sidebar .sidebar-activity-title { padding: 6px 10px 4px; color: var(--text-muted); font-size: 11.5px; font-weight: 500; }
+.sidebar .sidebar-activity-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.sidebar .sidebar-activity-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 8px; text-align: left; }
+.sidebar .sidebar-activity-text { display: grid; flex: 1; min-width: 0; gap: 1px; }
+.sidebar .sidebar-activity-name { overflow: hidden; color: var(--text-strong); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .sidebar-activity-meta { overflow: hidden; color: var(--text-subtle); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .sidebar-activity-state { flex-shrink: 0; color: var(--text-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.sidebar .sidebar-activity-state.is-processing, .sidebar .sidebar-activity-state.is-reviewing { color: var(--border-accent); }
+.sidebar .sidebar-activity-state.is-unread { color: var(--status-warning, #e8a33d); }
+.sidebar .sidebar-activity-state.is-failed { color: var(--status-error); }
+.sidebar .sidebar-activity-empty { margin: 0; padding: 8px 10px 10px; color: var(--text-subtle); font-size: 12px; }
+/* Round 33 council: secondary text that carries information reads at 12–12.5px and secondary contrast. */
+.settings-page .settings-section-subtitle, .settings-page .settings-help { font-size: 12.5px; color: var(--text-muted); }
+.home .home-usage-caption { font-size: 12px; color: var(--text-muted); }
+.home .home-usage-more > summary { color: var(--text-primary, var(--text-strong)); }
+.home .home-usage-more > summary:hover { text-decoration: underline; text-decoration-color: var(--border-accent); text-underline-offset: 3px; }
+/* Titlebar: the session rail (environment) sits apart from the pane toggles. */
+/* The panel (inspector) toggle ends the bar, as in Chat and Work, set off from the pane toggles by a hairline. */
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { order: 10; position: relative; margin: 0 0 0 9px; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"]::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 1px; background: var(--border-subtle); pointer-events: none; }
+/* Settings: a short footer fade plus the resting thumb, so content below reads as continuing, not cropped. */
+.settings-window .settings-content, .settings-overlay .settings-content { mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+/* Settings › Projects: larger, separated reorder buttons; enabled arrows at full contrast. */
+.settings-project-row summary .settings-project-actions { gap: 6px; }
+.settings-project-row summary .settings-project-actions > button { width: 26px; height: 26px; }
+.settings-project-row summary .settings-project-actions > button:not(:disabled) { color: var(--text-strong); }
+.settings-project-row summary .settings-project-actions > button:disabled { opacity: .3; }
+/* Round 34 (Opus consensus). */
+/* "Show N more" starts on its threads' text. */
+.sidebar .workspace-card-content .thread-list > .thread-more { padding-left: 48px; }
+/* One selected row: Work's active task paints through the same ::before fill as Code (8px before the text), not
+   the whole row, and Work and Chat rows reach the same right edge and meta column as Code. */
+.work-layout .sidebar .sidebar-tree-node .work-task-row.thread-row.active { background: transparent; }
+.work-layout .sidebar .work-task-row.active::before { background: var(--thread-selected-background, var(--surface-card-strong)); }
+.work-layout .sidebar .work-task-row { margin-right: -6px; }
+/* Home: the new thread's project reads as its scope, not a fourth button; one 8px gap between the buttons. */
+.home .home-actions .home-project-picker { border-color: transparent; background: transparent; padding-left: 2px; }
+.home .home-actions .home-project-picker:hover { background: var(--surface-hover); }
+.home .home-actions .home-new-thread-button { margin-right: 0; }
+/* A week with no chart is a plain caption under the stat cards, pager inline. */
+.home .home-usage-chart-card:has(.home-usage-chart-note) { display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-nav { order: 2; margin-left: auto; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-range { display: none; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-note { order: 1; margin: 0; }
+/* A disconnected project keeps its "connect" chip in the row's flow, so the name truncates instead of running
+   under it (seen while projects connect at startup). */
+.sidebar .workspace-row > .workspace-actions:has(> .connect) { position: static; flex-shrink: 0; margin-left: 4px; }
+.sidebar .workspace-row:has(> .workspace-actions > .connect) > .workspace-count { display: none; }
+.sidebar .workspace-row:has(> .workspace-actions > .connect) .workspace-copy { min-width: 0; overflow: hidden; }
+.sidebar .workspace-row .connect { padding: 1px 7px; font-size: 11.5px; }
+/* The caption-only week keeps its date range beside the pager, so the browsed period stays named. */
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-range { display: block; color: var(--text-subtle); font-size: 12px; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-nav { display: flex; align-items: center; gap: 10px; }
+.settings-project-row summary > span:not(.settings-project-actions) { font-size: 12.5px; }
+.home .home-usage-caption { font-size: 12.5px; }
+
+/* ── Round 35 ── */
+/* A tab count that repeats the visible tabs stays out of the pane header until tabs overflow. */
+.panel-tab-list.is-few { display: none; }
+/* Work rows reach the same right edge and meta column as Code. */
+.work-layout .sidebar .sidebar-tree-node .work-task-row.thread-row { margin-right: -6px; width: calc(100% + 6px); }
+/* Recent thread cards: two-line medium titles at secondary-strong ink, the age on the left of the footer. */
+.home .home-latest-message { -webkit-line-clamp: 2; line-clamp: 2; font-weight: 500; color: color-mix(in srgb, var(--text-strong) 85%, transparent); }
+.home .home-latest-card-header { justify-content: flex-start; }
+/* Usage week caption: the range and the pager sit right after the sentence, with the app's rounded-rect icon buttons. */
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-nav { margin-left: 4px; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) { justify-content: flex-start; }
+.home .home-usage-chart-button { border-radius: 7px; }
+.home .home-usage-chart-button:disabled { opacity: .35; }
+/* Any footer whose Feedback is the third action (Settings · Log or Trash · Feedback) keeps it as an icon when narrow. */
+@container sidebar-footer (max-width: 236px) {
+  .sidebar-bottom-actions > * + * + .sidebar-feedback-button { width: 28px; padding: 0; justify-content: center; }
+  .sidebar-bottom-actions > * + * + .sidebar-feedback-button > span { display: none; }
+}
+.home .home-latest-card .home-latest-message { -webkit-line-clamp: 2; line-clamp: 2; }
+
+/* ── Round 36 (Opus round-35 recommendations) ── */
+/* Chat rows use the shared sidebar row: one line, Code's height, right inset and meta column. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row:not(.has-secondary-line) { height: var(--sidebar-row-height); min-height: var(--sidebar-row-height); padding: 0 6px 0 8px; }
+/* Feedback is an icon with a tooltip in every footer, on the same right inset as the rows. */
+.sidebar-bottom-actions .sidebar-feedback-button { width: 28px; min-width: 28px; padding: 0; justify-content: center; margin-left: auto; margin-right: 2px; }
+/* One failure treatment in Code and Work: a neutral leading glyph, the red status word, then the neutral summary. */
+.tool-inline-verb.is-failed ~ .tool-inline-value { color: var(--text-muted); font-weight: 400; }
+/* Home: the new thread's project is a ghost control right after New thread; Add project and Add from URL follow a hairline. */
+.home .home-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.home .home-actions .home-new-thread { display: inline-flex; align-items: center; gap: 4px; }
+.home .home-actions .home-project-picker { grid-row: auto; grid-column: auto; height: 30px; }
+.home .home-actions .home-add-workspaces-button { position: relative; margin-left: 9px; }
+.home .home-actions .home-add-workspaces-button::before { content: ""; position: absolute; left: -9px; top: 7px; bottom: 7px; width: 1px; background: var(--border-subtle); pointer-events: none; }
+/* Usage week: the range is the pager control ("‹ Nov 2 to Nov 8 ›"), the sentence follows it. */
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-nav { order: 0; margin: 0; display: flex; align-items: center; gap: 6px; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-note { order: 1; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-actions { display: contents; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-actions > button:first-child { order: 0; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-range { order: 1; color: var(--text-primary, var(--text-strong)); font-size: 12.5px; }
+.home .home-usage-chart-card:has(.home-usage-chart-note) .home-usage-chart-actions > button:last-child { order: 2; }
+/* Recent cards: the age starts on the title's left edge. */
+.home .home-latest-card-header > span:empty { display: none; }
+/* Settings › Projects: the expand chevron sits on the name line, like the badge. */
+.settings-project-row summary::before { grid-row: 1; align-self: center; }
+/* Pane headers end the same way: overflow, expand, then close. */
+.dock-pane-header > .mode-row { display: inline-flex; align-items: center; }
+.dock-pane-header > .mode-row > [aria-label^="Expand"], .dock-pane-header > .mode-row > [aria-label^="Restore"] { order: 2; }
+
+/* ── Round 38 (round-37 council) ── */
+/* Titlebar: thread actions (branch, Run, ⋯) are one group, the pane toggles the next, the panel toggle the last; the same hairline splits each. */
+:root { --titlebar-divider: color-mix(in srgb, var(--text-strong) 16%, transparent); }
+.titlebar-thread-tools:not(:empty) { padding-right: 0; }
+.titlebar-thread-tools:not(:empty)::after { content: none; }
+.workspace-titlebar > .titlebar-thread-tools:not(:empty) + .mode-row { margin-left: -3px; }
+.workspace-titlebar > :is(.titlebar-thread-tools:not(:empty), .mode-row) ~ .dock-toolbar:has(> button) { margin-left: 2px; padding-left: 11px; background: linear-gradient(var(--titlebar-divider), var(--titlebar-divider)) left center / 1px 14px no-repeat; }
+.workspace-titlebar > .titlebar-thread-tools:has(button) + .dock-toolbar:has(> button)::before { content: none; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { margin-left: 11px; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"]::before { left: -7px; background: var(--titlebar-divider); }
+.workspace-titlebar .main-header-action.launch-script-run { height: 28px; }
+/* Secondary text that carries information is 12.5–13px on the quiet tone in Settings and Home; the faintest tones are for timestamps and disabled controls only. */
+.settings-page .settings-section-subtitle, .settings-overlay .settings-section-subtitle { font-size: 13px; color: var(--text-quiet); }
+.settings-overlay :is(.settings-group-description, .settings-subsection-subtitle, .settings-toggle-subtitle, .settings-help), .settings-page :is(.settings-group-description, .settings-subsection-subtitle, .settings-toggle-subtitle, .settings-help) { font-size: 12.5px; color: var(--text-muted); }
+.settings-project-row summary > span:not(.settings-project-actions), .settings-project-row .settings-project-path { font-size: 12.5px; color: var(--text-quiet); }
+.settings-group-copies-label, .settings-group-copies-path { font-size: 12px; color: var(--text-muted); }
+.settings-group-copies-path.empty { color: var(--text-subtle); }
+.settings-project-group-label { font-size: 12.5px; color: var(--text-quiet); }
+.home .home-usage-label, .home .home-usage-control-label { font-size: 12.5px; color: var(--text-quiet); }
+.home .home-usage-suffix { font-size: 12px; color: var(--text-muted); }
+.home .home-usage-caption, .home .home-section-meta, .home .home-latest-time, .home .home-latest-card .home-latest-group, .home .home-usage-chart-note { font-size: 12.5px; color: var(--text-muted); }
+.home .home-usage-toggle-button { font-size: 12px; }
+.home .home-usage-bar-label, .home .home-usage-bar-value { font-size: 12px; }
+/* A lone group name in a recent card needs no leading separator. */
+.home .home-latest-card-header > .home-latest-group:first-child::before { content: none; }
+/* Home actions: New thread and its project start the row, Add project and Add from URL end it on the grid's right edge. */
+.home .home-actions { flex-wrap: nowrap; }
+.home .home-actions .home-project-picker { padding-right: 6px; }
+.home .home-actions .home-add-workspaces-button { margin-left: auto; }
+.home .home-actions .home-new-thread ~ .home-add-workspaces-button::before { content: none; }
+/* Sidebar: Chat rows end on Code's inset with the age in the same column; Work's space counts sit in Code's numeral column. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .thread-row { width: calc(100% - 12px); margin-right: 4px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .mode-row-menu-trigger { right: 6px; }
+.work-layout .sidebar .work-space > .workspace-row { margin-right: -6px; }
+/* The first sidebar header sits on the same line in every mode, with the same 28px actions. */
+.work-layout .sidebar > .sidebar-section-header { margin-top: 0; min-height: 32px; }
+.work-layout .sidebar > .sidebar-section-header .mode-section-actions { gap: 2px; }
+.work-layout .sidebar > .sidebar-section-header .mode-section-actions button { width: 28px; height: 28px; }
+.chat-layout:not(.work-layout) .chat-sidebar .chat-list > section:first-of-type > .sidebar-section-header { margin-top: 8px; }
+/* Work: the transcript column is as wide as the composer under it, as in Code and Chat. */
+.work-layout .chat-main:not(.is-empty) .chat-column { max-width: 780px; }
+/* One disclosure row in every transcript (Code's tool groups and tool rows, Work's step groups and steps): a neutral 14px glyph, the summary, then a chevron that points right when closed and down when open. Only the failure count takes the error tone. */
+.tool-group-toggle { gap: 8px; width: auto; max-width: 100%; }
+.tool-group-toggle .tool-group-icon { flex-shrink: 0; width: 14px; height: 14px; color: var(--text-subtle); }
+.tool-group-toggle .tool-group-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-group-toggle .tool-group-failed { flex-shrink: 0; margin-right: -2px; color: var(--status-error); font-weight: 500; }
+.tool-group-toggle .tool-group-failed::after { content: " ·"; color: var(--text-faint); }
+.tool-group-toggle .tool-chevron, .tool-inline-summary .tool-chevron, .work-tool > summary > svg:last-child { flex-shrink: 0; width: 12px; height: 12px; margin-left: 0; color: var(--text-faint); transition: transform .12s ease; }
+.tool-group-toggle[aria-expanded="true"] .tool-chevron, .tool-inline-summary[aria-expanded="true"] .tool-chevron { transform: rotate(90deg); }
+.work-tool:not([open]) > summary > svg:last-child { transform: rotate(-90deg); }
+.tool-inline-icon.completed, .work-tool > summary > svg:first-child, .work-step-group.has-error > summary > svg:first-child { color: var(--text-subtle); }
+/* The rows share metrics too: the glyph starts on the text column, 12.5px medium text, a quiet verb before a brighter target, commands in a mono chip, and grouped rows hang off one hairline. */
+.tool-group-header { padding: 0; }
+.tool-group-toggle, .work-step-group > summary { font-size: 12.5px; font-weight: 500; line-height: 16px; }
+.tool-group-toggle .tool-group-summary, .work-step-group > summary .work-tool-label { color: var(--text-muted); font-weight: 500; }
+.tool-group-toggle .tool-group-failed, .work-step-group > summary > .work-step-failed { font-size: 12.5px; font-weight: 500; }
+.work-tool > summary > svg:first-child { width: 14px; height: 14px; }
+.tool-group-body { margin: 0 0 0 7px; padding-left: 14px; border-left: 1px solid var(--border-subtle); }
+.messages .tool-inline, .tool-group-body .tool-inline { padding: 7px 0; }
+.messages .tool-inline .tool-inline-summary, .tool-group-body .tool-inline-summary { gap: 8px; font-size: 12.5px; font-weight: 500; line-height: 16px; }
+.messages .tool-inline .tool-inline-icon, .tool-group-body .tool-inline-icon { width: 14px; height: 14px; }
+.tool-inline-summary .tool-inline-verb, .work-tool > summary > .work-tool-verb { flex-shrink: 0; color: var(--text-muted); font-weight: 500; }
+.tool-inline-summary .tool-inline-value:not(.tool-inline-command), .work-tool > summary > .work-tool-verb + .work-tool-label { color: var(--text-stronger); font-weight: 500; }
+.tool-inline-summary .tool-inline-verb.is-failed, .work-tool > summary > .work-tool-verb.is-failed { color: var(--status-error); }
+.tool-inline-summary .tool-inline-command, .work-tool > summary > .work-tool-label.is-command { padding: 1px 6px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-card); color: var(--text-muted); font-family: var(--code-font-family); font-size: 11.5px; font-weight: 400; line-height: 1.2; }
+.work-tool.is-error > summary { color: var(--text-subtle); }
+.work-step-group > summary > .work-step-failed { margin: 0 -2px 0 0; }
+.messages .tool-inline .tool-inline-icon:not(.processing):not(.tool-spinner) { color: var(--text-subtle); }
+.work-step-group > .work-step-list > .work-tool, .chat-layout .work-step-list > .work-tool { padding: 7px 0; font-size: 12.5px; line-height: 16px; }
+/* Right pane: one overflow menu per pane (the browser's page menu also lists the pane actions), and every pane ends with expand then close. */
+.dock-pane-header:has(> .dock-browser-tabs) > .mode-row > .mode-row-menu-trigger { display: none; }
+.browser-address > .browser-address-error { color: var(--status-error); }
+/* Work: the selected fill encloses a task's status glyph instead of cutting through it. */
+.work-layout .sidebar .work-task-row { --tree-row-highlight: 0px; }
+/* Panel section headers use one recipe in Code's Session rail and Work's Task panel: a medium label, then its count in the quiet tone. */
+.work-inspector h2 { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+.work-inspector h2 small { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+/* Work titlebar: Stop is a text button like Rewind (its rule was scoped to the layout the titlebar sits outside of, so the label overflowed a 28px icon button). */
+.workspace-titlebar .main-header-action.work-stop-task { display: inline-flex; align-items: center; gap: 6px; width: auto; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-primary); font-size: 12px; font-weight: 500; }
+.workspace-titlebar .main-header-action.work-stop-task:hover:not(:disabled) { background: var(--surface-hover); color: var(--status-error); }
+.workspace-titlebar .main-header-action.work-stop-task svg { width: 14px; height: 14px; }
+.workspace-titlebar .main-header-action.rewind-action { height: 28px; }
+.code-session-empty-summary { font-size: 12.5px; color: var(--text-subtle); line-height: 1.45; }
+.code-session-empty-summary > span { display: block; margin-top: 2px; }
+/* Small text floor: labels, counts and ages that carry information are 12px; group labels use the subtle tone, not the faint one. */
+.sidebar .sidebar-section-title, .sidebar .subtitle-button.sidebar-title-button, .sidebar .workspace-group-label, .sidebar .work-task-group > h3 { font-size: 12px; }
+.sidebar .workspace-group-label { color: var(--text-subtle); }
+.sidebar .workspace-count, .sidebar .thread-time, .work-layout .sidebar .work-task-row .thread-time { font-size: 12px; }
+.code-session-rail .code-session-file small, .work-inspector .work-output-meta, .markdown-codeblock-language { font-size: 12px; }
+.work-inspector section > h2 small { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+.settings-overlay .settings-nav-group, .settings-page .settings-nav-group { font-size: 12px; }
+/* Work task ages sit in Code's age column. */
+.work-layout .sidebar .work-task-row { padding-right: 6px; }
+/* Home project picker: the chip hugs the selected name; the native select sits invisibly over it. */
+.home .home-project-picker .home-project-picker-value { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: 500; }
+.home .home-project-picker select { position: absolute; inset: 0; width: 100%; max-width: none; height: 100%; opacity: 0; cursor: pointer; }
+/* The folded line follows the last section's own hairline; a second rule above it doubled the line. */
+.code-session-card + .code-session-empty-summary { border-top: 0; }
+/* Chat's list runs to the sidebar edge, so its rows give the scrollbar lane back. */
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .mode-row { margin-right: -4px; }
+.chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .sidebar-section-header { margin-inline-end: 0; }

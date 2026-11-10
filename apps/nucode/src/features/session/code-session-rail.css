@@ -1,0 +1,136 @@
+.code-session-rail { height: 100%; overflow: auto; min-width: 0; padding: 8px 10px 24px; box-sizing: border-box; color: var(--text-primary); font-size: 12.5px; scrollbar-gutter: stable; mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+/* One continuous panel: sections separated by hairlines, not a stack of bordered cards. */
+.code-session-card { border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; margin: 0; background: transparent; }
+.code-session-card:last-child { border-bottom: 0; }
+.code-session-card-header { display: flex; align-items: center; min-height: 38px; gap: 2px; padding: 0 6px; position: relative; }
+.code-session-card-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px 3px; border: 0; background: none; color: var(--text-strong); text-align: left; font: inherit; font-weight: 500; cursor: pointer; }
+.code-session-card-toggle > span { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-session-card-toggle > svg:last-child { transform: none; color: var(--text-muted); transition: transform 120ms; }
+.code-session-card-toggle > svg.is-open { transform: rotate(180deg); }
+.code-session-grip { flex: 0 0 24px; opacity: 0; cursor: grab; color: var(--text-muted); }
+.code-session-card[data-dragging="true"] { opacity: .5; }
+.code-session-card[data-drop-edge="before"] { box-shadow: inset 0 2px 0 var(--border-accent); }
+.code-session-card[data-drop-edge="after"] { box-shadow: inset 0 -2px 0 var(--border-accent); }
+.code-session-card-header:hover .code-session-grip, .code-session-card-header:focus-within .code-session-grip { opacity: 1; }
+.code-session-grip:active { cursor: grabbing; }
+@media (hover: none) { .code-session-grip { opacity: 1; } }
+.code-session-card-body { padding: 0 10px 12px; }
+.code-session-card-body[hidden] { display: none; }
+.code-session-rail p { margin: 5px 0 8px; line-height: 1.5; }
+.code-session-muted, .code-session-row small { color: var(--text-muted); font-size: 12px; }
+.code-session-field { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; align-items: center; margin-block: 4px; color: var(--text-muted); }
+.code-session-field select { min-width: 0; width: 100%; font: inherit; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-row); height: 27px; padding-inline: 5px; }
+.code-session-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+.code-session-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 27px; min-width: 0; }
+.code-session-row > span { min-width: 0; overflow-wrap: anywhere; }
+.code-session-row > span:first-child { display: flex; align-items: center; gap: 5px; }
+.code-session-row > span > svg { width: 13px; height: 13px; flex-shrink: 0; }
+.code-session-row > .code-session-muted { white-space: nowrap; }
+.code-session-links { display: flex; flex-wrap: wrap; column-gap: 12px; row-gap: 3px; margin-top: 7px; }
+/* Text actions are small outlined chips: clearly clickable, but quieter than primary actions. */
+.code-session-links button, .code-session-link { display: inline-flex; align-items: center; width: fit-content; font: inherit; font-size: 12px; font-weight: 500; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-primary); padding: 2px 8px; margin-top: 4px; text-align: left; cursor: pointer; }
+.code-session-links button:hover, .code-session-link:hover { background: var(--surface-hover); color: var(--text-strong); }
+.code-session-rail button:disabled { opacity: .45; cursor: default; }
+.code-session-remote { border-top: 1px solid var(--border-subtle); margin-top: 8px; padding-top: 7px; }
+.code-session-remote > span:first-child { display: block; }
+.code-session-remote small, .code-session-file small { display: block; font-size: 11px; }
+.code-context-bar { display: flex; height: 7px; border-radius: 3px; overflow: hidden; background: var(--surface-card-strong); margin-block: 6px; }
+.code-context-bar span { height: 100%; }
+.code-session-rail [data-kind="input"] { background: var(--text-accent); }
+.code-session-rail [data-kind="cache"] { background: var(--status-success); }
+.code-session-rail [data-kind="output"] { background: var(--status-warning); }
+.code-context-breakdown { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; margin: 8px 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+.code-context-breakdown dt { display: flex; gap: 6px; align-items: center; color: var(--text-muted); }
+.code-context-breakdown dd { margin: 0; }
+.code-context-breakdown i { width: 6px; height: 6px; border-radius: 2px; }
+.code-session-nested { margin-top: 8px; font-size: 12px; }
+.code-session-nested > summary, .code-session-connector > summary { list-style: none; }
+.code-session-nested > summary::-webkit-details-marker, .code-session-connector > summary::-webkit-details-marker { display: none; }
+/* Same chevron disclosure as the section headers, instead of native triangles. */
+.code-session-nested > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-primary); padding-block: 3px; }
+.code-session-nested > summary::before { content: ""; width: 5px; height: 5px; margin: 0 3px 0 1px; border-right: 1.5px solid var(--text-muted); border-bottom: 1.5px solid var(--text-muted); transform: rotate(-45deg); transition: transform 120ms; }
+.code-session-nested[open] > summary::before { transform: rotate(45deg); }
+.code-session-nested > summary:hover { color: var(--text-strong); }
+.code-session-nested > summary span { color: var(--text-muted); margin-left: 0; }
+.code-session-connector { font-size: 12px; }
+.code-session-connector > summary { display: flex; align-items: center; gap: 6px; min-height: 28px; cursor: pointer; }
+.code-session-connector > summary span { flex: 1; }
+.code-session-connector > summary small, .code-session-connector-detail small { color: var(--text-muted); font-size: 11px; }
+.code-session-connector-detail { display: flex; flex-direction: column; gap: 4px; padding: 3px 0 7px 18px; }
+.code-session-file { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; border: 0; background: transparent; padding: 5px 0; text-align: left; font: inherit; font-size: 12px; color: var(--text-primary); cursor: pointer; }
+.code-session-file small { width: 100%; color: var(--text-muted); }
+.code-session-file:hover { color: var(--text-strong); text-decoration: underline; }
+.code-session-changes { display: flex; justify-content: space-between; gap: 6px; width: 100%; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: 12px; padding: 7px 0; text-align: left; cursor: pointer; }
+.code-session-added { color: var(--status-success); font-weight: 500; }
+.code-session-deleted { color: var(--status-error); font-weight: 500; }
+.code-session-commit { width: 100%; min-height: 30px; font-size: 12px; margin-top: 4px; }
+.code-session-stop { color: var(--text-muted); }
+.code-session-stop:hover:not(:disabled) { color: var(--status-error); }
+.code-session-status { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--status-success); }
+.code-environment-dialog { width: min(460px, calc(100vw - 32px)); padding: 20px; border-radius: var(--radius-card, 10px); box-sizing: border-box; }
+.code-environment-dialog form { display: flex; flex-direction: column; gap: 12px; }
+.code-environment-dialog input:not([type="checkbox"]) { width: 100%; margin-top: 6px; }
+.code-environment-dialog fieldset { max-height: 260px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 8px 12px; }
+.code-environment-folder { display: flex; align-items: flex-start; gap: 8px; padding-block: 7px; font-size: 12px; }
+.code-environment-folder input { margin-top: 3px; }
+.code-environment-folder small { display: block; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.code-environment-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.code-session-rail [data-kind="other"] { background: var(--text-subtle); }
+
+.dock-workspace .request-user-input-card[aria-label="Plan ready"] { width: 100%; border-radius: 12px; padding: 14px 16px; gap: 8px; }
+.dock-workspace .request-user-input-card[aria-label="Plan ready"] .request-user-input-notes { border-radius: 6px; min-height: 60px; font-size: 12px; }
+.dock-workspace .request-user-input-card[aria-label="Plan ready"] .request-user-input-actions { flex-wrap: wrap; gap: 6px; }
+
+.code-session-field select:hover, .code-session-field select:focus-visible { background: var(--surface-hover); border-color: var(--border-subtle); }
+
+.code-session-connection { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--status-warning); }
+.code-session-connection[data-connected="true"] { background: var(--status-success); }
+.code-session-row > .code-session-link { margin-top: 0; }
+.code-session-card-toggle > svg:last-child { margin-left: auto; }
+/* One secondary button size in the inspector. */
+.code-session-links button, .code-session-link { min-height: 24px; }
+/* Commit is a secondary action like the others: compact chip, not a full-width slab. */
+.code-session-commit.ghost { width: fit-content; min-height: 24px; height: 24px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--text-primary); background: transparent; }
+.code-session-changes .code-session-added { margin-right: 4px; }
+/* Inspector selects use the same thin chevron as section headers, not the native filled caret. */
+.code-session-field { position: relative; }
+.code-session-field select { appearance: none; padding-right: 24px; }
+.code-session-field:has(select)::after { content: ""; position: absolute; right: 10px; top: 50%; width: 5px; height: 5px; border-right: 1.5px solid var(--text-muted); border-bottom: 1.5px solid var(--text-muted); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+/* Nested disclosures put their chevron at the right edge, like every other collapsible row. */
+.code-session-nested > summary::before { order: 99; margin: 0 4px 0 auto; }
+/* The reorder grip lives in the left padding (on hover), so every row shares one right edge. */
+.code-session-card-header { position: relative; padding-right: 0; }
+.code-session-grip { position: absolute; left: -9px; top: 50%; translate: 0 -50%; width: 16px; height: 22px; flex: none; }
+.code-session-card-toggle { padding-right: 0; }
+.code-session-card-toggle > svg:last-child { margin-right: 4px; }
+/* Helper text sits with the list it explains, above the action. */
+.code-session-card-body > .code-session-muted:last-child { margin-top: 2px; }
+/* Trailing controls share the section chevrons' right edge. */
+.code-session-field:has(select)::after { right: 6px; }
+.code-session-row > .ds-icon-button:last-child { margin-right: -4px; }
+/* Section disclosure follows the sidebar: › when closed, ⌄ when open. Pickers use an up-down mark. */
+.code-session-card-toggle > svg:last-child { transform: rotate(-90deg); }
+.code-session-card-toggle > svg.is-open { transform: none; }
+.code-session-field:has(select)::after { width: 10px; height: 14px; border: 0; transform: translateY(-50%); background: var(--text-muted); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 14'%3E%3Cpath d='M2 5l3-3 3 3M2 9l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px 14px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 14'%3E%3Cpath d='M2 5l3-3 3 3M2 9l3 3 3-3' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px 14px no-repeat; }
+/* Connection state follows the label instead of crowding the icon. */
+.code-session-row > span:first-child > .code-session-connection { order: 2; margin-left: 2px; }
+/* Collapsed sections preview their size: a muted count beside the title. */
+.code-session-card-toggle > span[data-count]::after { content: attr(data-count); margin-left: 6px; color: var(--text-subtle); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.code-session-stop.ds-icon-button { width: auto; padding: 0 8px; gap: 4px; border: 1px solid var(--border-subtle); border-radius: 6px; height: 24px; font-size: 12px; font-weight: 500; }
+.code-session-stop-label { line-height: 1; }
+/* A picker that cannot change (no Git branch, a locked folder) drops its up-down glyph and reads as plain text. */
+.code-session-field:has(select:disabled)::after { display: none; }
+.code-session-field select:disabled { opacity: 1; color: var(--text-muted); cursor: default; }
+.code-session-field select:disabled:hover { background: transparent; border-color: transparent; }
+/* Section header actions: quiet icons beside the title, visible on hover/focus (always on touch). */
+.code-session-header-action { width: 22px; height: 22px; padding: 0; color: var(--text-muted); opacity: 0; transition: opacity 120ms; }
+.code-session-card:is(:hover, :focus-within) .code-session-header-action { opacity: 1; }
+.code-session-header-action:hover { color: var(--text-strong); background: var(--surface-hover); }
+@media (hover: none) { .code-session-header-action { opacity: 1; } }
+/* Header actions overlay the header just left of its chevron, so hidden actions never push chevrons out of line. */
+.code-session-card-header { position: relative; }
+.code-session-header-actions { position: absolute; right: 28px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding-left: 6px; background: var(--surface-sidebar-opaque, var(--surface-app)); opacity: 0; transition: opacity 120ms; pointer-events: none; }
+.code-session-card:is(:hover, :focus-within) .code-session-header-actions { opacity: 1; pointer-events: auto; }
+.code-session-header-actions .code-session-header-action { opacity: 1; }
+@media (hover: none) { .code-session-header-actions { opacity: 1; pointer-events: auto; } }

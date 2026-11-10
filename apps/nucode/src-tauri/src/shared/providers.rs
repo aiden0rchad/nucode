@@ -1,0 +1,1314 @@
+use crate::types::*;
+use serde_json::{json, Value};
+use std::{
+    collections::{BTreeMap, HashSet},
+    future::Future,
+    pin::Pin,
+    time::{Duration, Instant},
+};
+use tokio::sync::Mutex;
+
+pub(crate) type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+pub(crate) fn kind_info(kind: ProviderKind) -> (&'static str, &'static str) {
+    use ProviderKind::*;
+    match kind {
+        Openai => ("https://api.openai.com/v1", "authorization"),
+        Anthropic => ("https://api.anthropic.com/v1", "x-api-key"),
+        Google => (
+            "https://generativelanguage.googleapis.com/v1beta",
+            "x-goog-api-key",
+        ),
+        Openrouter => ("https://openrouter.ai/api/v1", "authorization"),
+        Groq => ("https://api.groq.com/openai/v1", "authorization"),
+        Mistral => ("https://api.mistral.ai/v1", "authorization"),
+        Xai => ("https://api.x.ai/v1", "authorization"),
+        Deepseek => ("https://api.deepseek.com", "authorization"),
+        Zai => ("https://api.z.ai/api/paas/v4", "authorization"),
+        Ollama => ("http://localhost:11434/v1", ""),
+        Lmstudio => ("http://localhost:1234/v1", ""),
+        OpenaiCompatible => ("", "authorization"),
+    }
+}
+pub(crate) fn base_url(p: &ProviderEntry) -> &str {
+    p.base_url
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(kind_info(p.kind).0)
+}
+pub(crate) fn codex_usable(p: &ProviderEntry) -> bool {
+    matches!(
+        p.kind,
+        ProviderKind::Openai | ProviderKind::Openrouter | ProviderKind::Ollama
+    ) || (p.kind == ProviderKind::OpenaiCompatible && p.api_style == Some(ApiStyle::Responses))
+}
+pub(crate) fn claude_usable(p: &ProviderEntry) -> bool {
+    p.kind == ProviderKind::Anthropic || p.anthropic_compatible
+}
+pub(crate) fn valid_slug(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 32
+        && id
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_' || c == b'-')
+}
+pub(crate) fn validate(providers: &[ProviderEntry], policy: &AgentPolicy) -> Result<(), String> {
+    let mut ids = HashSet::new();
+    let mut env_names = HashSet::new();
+    for p in providers {
+        if !valid_slug(&p.id) || !ids.insert(&p.id) {
+            return Err(
+                "Provider IDs must be unique slugs of 1–32 lowercase letters, digits, _ or -"
+                    .into(),
+            );
+        }
+        if !env_names.insert(crate::shared::engines::key_env(&p.id)) {
+            return Err("Provider IDs must have distinct credential environment names (hyphens and underscores collide)".into());
+        }
+        let url = reqwest::Url::parse(base_url(p))
+            .map_err(|_| format!("Enter a valid base URL for {}", p.name))?;
+        if !matches!(url.scheme(), "http" | "https")
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err("Base URLs must be HTTP(S), without credentials, query or fragment".into());
+        }
+        if p.kind != ProviderKind::OpenaiCompatible && p.api_style.is_some() {
+            return Err("API style applies only to openai-compatible providers".into());
+        }
+        for (name, value) in &p.extra_headers {
+            let lower = name.to_ascii_lowercase();
+            if lower.contains("auth")
+                || lower.contains("key")
+                || lower.contains("token")
+                || lower == "cookie"
+            {
+                return Err("Store credentials using provider auth, not extra headers".into());
+            }
+            reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| "Invalid header name")?;
+            reqwest::header::HeaderValue::from_str(value).map_err(|_| "Invalid header value")?;
+        }
+        if let ProviderAuth::Env { var } = &p.auth {
+            if matches!(
+                var.as_str(),
+                "CODEX_HOME" | "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE"
+            ) {
+                return Err(
+                    "Use a credential environment variable, not a Codex configuration variable"
+                        .into(),
+                );
+            }
+            if var.is_empty()
+                || !var.bytes().enumerate().all(|(i, c)| {
+                    c == b'_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit())
+                })
+            {
+                return Err("Enter a valid environment variable name".into());
+            }
+        }
+        if let ProviderAuth::Command { command, timeout_ms, .. } = &p.auth {
+            if command.trim().is_empty() {
+                return Err("Enter a token command".into());
+            }
+            if *timeout_ms == Some(0) {
+                return Err("Auth command timeout must be greater than zero".into());
+            }
+        }
+        for model in &p.models {
+            for cap in [&model.reasoning, &model.detected_reasoning].into_iter().flatten() {
+                if !["effort", "thinking-toggle", "budget", "adaptive", "unknown"].contains(&cap.control.as_str())
+                    || !["api", "probe", "heuristic", "user"].contains(&cap.source.as_str())
+                    || cap.levels.iter().any(|l| !super::reasoning::LEVELS.contains(&l.as_str()))
+                    || cap.levels.windows(2).any(|w| super::reasoning::LEVELS.iter().position(|l| l == &w[0]) >= super::reasoning::LEVELS.iter().position(|l| l == &w[1]))
+                    || !cap.supported && !cap.levels.is_empty()
+                    || cap.default.as_ref().is_some_and(|d| !cap.levels.contains(d))
+                { return Err("Invalid reasoning capability".into()); }
+            }
+        }
+        let mut models = HashSet::new();
+        if p.models
+            .iter()
+            .any(|m| m.id.trim().is_empty() || !models.insert(&m.id))
+        {
+            return Err("Model IDs must be non-empty and unique within a provider".into());
+        }
+    }
+    let s = &policy.subagents;
+    if s.max_run_minutes > 1440 || s.daily_token_limit > 1_000_000_000 {
+        return Err("Execution limits: run time 0–1440 minutes, daily tokens 0–1,000,000,000; zero disables the limit".into());
+    }
+    if s.enabled && s.mode == SubagentMode::ChainOfCommand {
+        if s.max_depth < 2 || s.max_per_turn < 3 {
+            return Err("Chain of Command requires depth at least 2 and at least 3 agents per turn".into());
+        }
+        if ["colonel", "major", "enlisted"].iter().any(|name| !s.roles.iter().any(|r| r.name == *name)) {
+            return Err("Chain of Command requires colonel, major and enlisted roles".into());
+        }
+    }
+    if !(1..=16).contains(&s.max_concurrent)
+        || !(1..=32).contains(&s.max_per_turn)
+        || !(1..=3).contains(&s.max_depth)
+    {
+        return Err("Subagent limits: concurrent 1–16, per turn 1–32, depth 1–3".into());
+    }
+    let check_model = |m: &ModelRef| {
+        providers.iter().any(|p| {
+            p.id == m.provider_id
+                && p.enabled
+                && p.models.iter().any(|v| v.id == m.model_id && v.enabled)
+        })
+    };
+    for m in policy
+        .default_model
+        .iter()
+        .chain(s.default_model.iter())
+        .chain(s.allowed_models.iter())
+        .chain(s.roles.iter().filter_map(|r| r.model.as_ref()))
+    {
+        if !check_model(m) {
+            return Err(format!(
+                "Enable provider and model {}/{}",
+                m.provider_id, m.model_id
+            ));
+        }
+    }
+    let mut names = HashSet::new();
+    for role in &s.roles {
+        if role.command_rank.is_some_and(|rank| match role.name.as_str() {
+            "commander" => true,
+            "colonel" => rank != CommandRank::Colonel,
+            "major" => rank != CommandRank::Major,
+            "enlisted" => rank != CommandRank::Enlisted,
+            _ => false,
+        }) {
+            return Err("Core command ranks cannot be changed".into());
+        }
+        if !valid_slug(&role.name) || !names.insert(&role.name) {
+            return Err("Role names must be unique slugs".into());
+        }
+        if role
+            .model
+            .as_ref()
+            .is_some_and(|m| !s.allowed_models.is_empty() && !s.allowed_models.contains(m))
+        {
+            return Err(format!("Role {} model is not in allowed models", role.name));
+        }
+    }
+    if s.default_model
+        .as_ref()
+        .is_some_and(|m| !s.allowed_models.is_empty() && !s.allowed_models.contains(m))
+    {
+        return Err("Default subagent model is not in allowed models".into());
+    }
+    Ok(())
+}
+pub(crate) fn effective_policy(
+    base: &AgentPolicy,
+    over: Option<&AgentPolicyOverride>,
+) -> AgentPolicy {
+    let mut p = base.clone();
+    if let Some(o) = over {
+        if let Some(m) = &o.default_model {
+            p.default_model = Some(m.clone());
+        }
+        if let Some(e) = &o.default_engine {
+            p.default_engine = e.clone();
+        }
+        if let Some(s) = &o.subagents {
+            macro_rules! merge { ($($field:ident),*) => { $(if let Some(v) = &s.$field { p.subagents.$field = v.clone(); })* }; }
+            merge!(
+                enabled,
+                mode,
+                max_concurrent,
+                max_per_turn,
+                max_depth,
+                max_run_minutes,
+                daily_token_limit,
+                allowed_models,
+                roles
+            );
+            if let Some(m) = &s.default_model {
+                p.subagents.default_model = Some(m.clone());
+            }
+        }
+    }
+    p
+}
+pub(crate) fn catalog(providers: &[ProviderEntry]) -> Value {
+    json!({ "result": { "data": providers.iter().filter(|p| p.enabled).flat_map(|p| p.models.iter().filter(|m| m.enabled).map(move |m| json!({
+        "id": format!("{}/{}",p.id,m.id), "model": format!("{}/{}",p.id,m.id),
+        "providerId": p.id, "providerName": p.name, "modelId": m.id,
+        "displayName": m.display_name.as_ref().unwrap_or(&m.id), "description": p.name,
+        "engines": ([Some("pi"), codex_usable(p).then_some("codex"), claude_usable(p).then_some("claude")].into_iter().flatten().collect::<Vec<_>>()),
+        "reasoning": m.reasoning,
+        "supportedReasoningEfforts": m.reasoning.as_ref().filter(|r| r.supported).map(|r| r.levels.iter().map(|l| json!({"reasoningEffort":l,"description":l})).collect::<Vec<_>>()).unwrap_or_default(),
+        "defaultReasoningEffort": m.reasoning.as_ref().and_then(|r| r.default.as_ref()), "isDefault": false,
+        "contextWindow": m.context_window
+    }))).collect::<Vec<_>>() } })
+}
+// The client falls back to the first model when nothing is flagged; flag the user's
+// policy default so new threads start on it.
+pub(crate) fn mark_default(catalog: &mut Value, default: Option<&crate::types::ModelRef>) {
+    let Some(d) = default else { return };
+    let id = format!("{}/{}", d.provider_id, d.model_id);
+    if let Some(data) = catalog["result"]["data"].as_array_mut() {
+        for entry in data { entry["isDefault"] = json!(entry["id"] == id.as_str()); }
+    }
+}
+pub(crate) trait KeyStore: Send + Sync {
+    fn get(&self, id: &str) -> Result<Option<String>, String>;
+    fn set(&self, id: &str, key: &str) -> Result<(), String>;
+    fn delete(&self, id: &str) -> Result<(), String>;
+}
+pub(crate) struct Keychain;
+fn key_entry(id: &str) -> Result<keyring::Entry, String> {
+    let account = if let Some(rest) = id.strip_prefix("mcp:") {
+        let (server, name) = rest.split_once(':').ok_or("Invalid connector credential")?;
+        super::connectors::account(server, name)?
+    } else {
+        if !valid_slug(id) {
+            return Err("Invalid provider ID".into());
+        }
+        format!("provider:{id}")
+    };
+    keyring::Entry::new("dev.nucode.desktop", &account)
+        .map_err(|_| "Cannot access provider Keychain".into())
+}
+// One Keychain read per credential per launch: every read can raise a macOS access
+// prompt (each read, when the user picks Allow instead of Always Allow).
+static KEY_CACHE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>> =
+    std::sync::LazyLock::new(Default::default);
+fn cached_key(cache: &std::sync::Mutex<std::collections::HashMap<String, Option<String>>>, id: &str, read: impl FnOnce() -> Result<Option<String>, String>) -> Result<Option<String>, String> {
+    // Hold the lock during the OS read: concurrent engine starts must share one prompt.
+    let mut cache = cache.lock().map_err(|_| "Provider key cache unavailable")?;
+    if let Some(value) = cache.get(id) { return Ok(value.clone()); }
+    let value = read()?;
+    cache.insert(id.into(), value.clone());
+    Ok(value)
+}
+impl KeyStore for Keychain {
+    fn get(&self, id: &str) -> Result<Option<String>, String> {
+        cached_key(&KEY_CACHE, id, || match key_entry(id)?.get_password() {
+            Ok(v) => { nucode_diag_mcp::writer::remember_secret(&v); Ok(Some(v)) },
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err("Cannot read provider Keychain".into()),
+        })
+    }
+    fn set(&self, id: &str, key: &str) -> Result<(), String> {
+        let mut cache = KEY_CACHE.lock().map_err(|_| "Provider key cache unavailable")?;
+        nucode_diag_mcp::writer::remember_secret(key);
+        key_entry(id)?
+            .set_password(key)
+            .map_err(|_| "Cannot save provider key")?;
+        cache.insert(id.into(), Some(key.into()));
+        Ok(())
+    }
+    fn delete(&self, id: &str) -> Result<(), String> {
+        let mut cache = KEY_CACHE.lock().map_err(|_| "Provider key cache unavailable")?;
+        match key_entry(id)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) => return Err("Cannot delete provider key".into()),
+        }
+        cache.insert(id.into(), None);
+        Ok(())
+    }
+}
+pub(crate) fn delete_removed_keys(
+    old: &[ProviderEntry],
+    new: &[ProviderEntry],
+    keys: &dyn KeyStore,
+) -> Result<(), String> {
+    for p in old {
+        if !new.iter().any(|v| v.id == p.id) {
+            keys.delete(&p.id)?;
+        }
+    }
+    Ok(())
+}
+pub(crate) async fn token(
+    p: &ProviderEntry,
+    keys: &dyn KeyStore,
+) -> Result<Option<String>, String> {
+    match &p.auth {
+        ProviderAuth::None => Ok(None),
+        ProviderAuth::ApiKey => keys
+            .get(&p.id)?
+            .map(Some)
+            .ok_or_else(|| "Save an API key first".into()),
+        ProviderAuth::Env { var } => std::env::var(var)
+            .map(Some)
+            .map_err(|_| format!("Set environment variable {var}")),
+        ProviderAuth::Command { command, args, timeout_ms } => {
+            let duration = Duration::from_millis(timeout_ms.unwrap_or(15_000));
+            if duration.is_zero() { return Err("Auth command timeout must be greater than zero".into()); }
+            let mut child = tokio::process::Command::new(command);
+            child.args(args).stdin(std::process::Stdio::null()).kill_on_drop(true);
+            let output = tokio::time::timeout(duration, child.output())
+                .await
+                .map_err(|_| format!("The auth command took longer than {} s. If the script lives in an iCloud-synced folder (Desktop/Documents), move it or read the key file directly.", duration.as_secs_f64()))?
+                .map_err(|_| "Cannot run token command")?;
+            if !output.status.success() {
+                return Err("Token command failed".into());
+            }
+            let text =
+                String::from_utf8(output.stdout).map_err(|_| "Token command must return UTF-8")?;
+            if text.trim().is_empty() {
+                return Err("Token command returned no token".into());
+            }
+            nucode_diag_mcp::writer::remember_secret(text.trim());
+            Ok(Some(text.trim().into()))
+        }
+    }
+}
+pub(crate) struct ModelRequest {
+    pub url: String,
+    pub headers: BTreeMap<String, String>,
+}
+pub(crate) trait ModelHttp: Send + Sync {
+    fn get(&self, request: ModelRequest) -> BoxFuture<'_, Result<(u16, Value), String>>;
+    fn post(&self, _request: ModelRequest, _body: Value) -> BoxFuture<'_, Result<(u16, Value), String>> {
+        Box::pin(async { Err("POST unavailable".into()) })
+    }
+}
+pub(crate) struct Http;
+impl ModelHttp for Http {
+    fn get(&self, request: ModelRequest) -> BoxFuture<'_, Result<(u16, Value), String>> {
+        http_request(request, None)
+    }
+    fn post(&self, request: ModelRequest, body: Value) -> BoxFuture<'_, Result<(u16, Value), String>> {
+        http_request(request, Some(body))
+    }
+}
+fn http_request(request: ModelRequest, body: Option<Value>) -> BoxFuture<'static, Result<(u16, Value), String>> {
+        Box::pin(async move {
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(15))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| "Cannot create HTTP client")?;
+            let mut req = if let Some(body) = body { client.post(&request.url).header("content-type", "application/json").body(body.to_string()) } else { client.get(&request.url) };
+            for (k, v) in request.headers {
+                req = req.header(k, v);
+            }
+            let response = req.send().await.map_err(|e| {
+                if e.is_connect() {
+                    format!("Is the server running at {}?", request.url)
+                } else {
+                    "Request failed or timed out; check the endpoint".into()
+                }
+            })?;
+            let status = response.status().as_u16();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|_| "Cannot read model list")?;
+            Ok((
+                status,
+                serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+            ))
+        })
+}
+pub(crate) fn merge_models(existing: &mut Vec<ProviderModel>, fetched: Vec<ProviderModel>) {
+    for mut model in fetched {
+        if let Some(old) = existing.iter_mut().find(|m| m.id == model.id) {
+            model.enabled = old.enabled;
+            model.detected_reasoning = model.reasoning.clone();
+            if old.reasoning.as_ref().is_some_and(|r| r.source == "user") {
+                model.reasoning = old.reasoning.clone();
+            }
+            if old.supports_images_source == Some(ImageSupportSource::User) {
+                model.supports_images = old.supports_images;
+                model.supports_images_source = old.supports_images_source;
+            }
+            *old = model;
+        } else {
+            existing.push(model);
+        }
+    }
+}
+fn image_support(kind: ProviderKind, id: &str, entry: &Value) -> Option<bool> {
+    let (modalities, image) = match kind {
+        ProviderKind::Openrouter => (&entry["architecture"]["input_modalities"], "image"),
+        ProviderKind::Ollama => (&entry["capabilities"], "vision"),
+        ProviderKind::Google => (entry.get("inputModalities").or_else(|| entry.get("input_modalities"))?, "image"),
+        ProviderKind::Anthropic => return id.starts_with("claude-").then_some(true),
+        _ => return None,
+    };
+    modalities.as_array().map(|values| values.iter().any(|v| v.as_str().is_some_and(|v| v.eq_ignore_ascii_case(image))))
+}
+/// Image support a provider did not report, for models a proxy (LiteLLM, a gateway) lists under its own names.
+/// Engines treat unknown as text-only and replace every screenshot with "[image omitted]", so a well-known
+/// multimodal family counts as image-capable; anything else stays unknown.
+pub(crate) fn likely_vision(id: &str) -> Option<bool> {
+    let id = id.to_ascii_lowercase().replace([' ', '_'], "-");
+    let id = id.rsplit('/').next().unwrap_or(&id);
+    ["gpt-4o", "gpt-4.1", "gpt-5", "gpt-6", "claude-", "gemini-"].iter().any(|family| id.starts_with(family)).then_some(true)
+}
+pub(crate) async fn fetch(
+    p: &ProviderEntry,
+    keys: &dyn KeyStore,
+    http: &dyn ModelHttp,
+) -> Result<Vec<ProviderModel>, String> {
+    let mut headers = p.extra_headers.clone();
+    let (_, auth_header) = kind_info(p.kind);
+    if let Some(token) = token(p, keys).await? {
+        if !auth_header.is_empty() {
+            headers.insert(
+                auth_header.into(),
+                if auth_header == "authorization" {
+                    format!("Bearer {token}")
+                } else {
+                    token
+                },
+            );
+        }
+    }
+    if p.kind == ProviderKind::Anthropic {
+        headers.insert("anthropic-version".into(), "2023-06-01".into());
+    }
+    let mut models = vec![];
+    let mut page: Option<String> = None;
+    let mut seen = HashSet::new();
+    loop {
+        let mut url = reqwest::Url::parse(&format!("{}/models", base_url(p).trim_end_matches('/')))
+            .map_err(|_| "Invalid provider URL")?;
+        if let Some(page) = &page {
+            url.query_pairs_mut().append_pair("pageToken", page);
+        }
+        let (status, body) = http
+            .get(ModelRequest {
+                url: url.into(),
+                headers: headers.clone(),
+            })
+            .await?;
+        if status>=400 {nucode_diag_mcp::writer::record(||{let mut e=nucode_diag_mcp::core::event("error","provider",&format!("provider.http_{status}"),"Provider HTTP error");e.context=json!({"providerKind":p.kind});e.detail=json!({"status":status});e});}
+        match status {
+            200..=299 => (),
+            401 | 403 => return Err("API key rejected".into()),
+            404 => return Err("This endpoint doesn't list models; add model IDs manually".into()),
+            _ => {
+                return Err(format!(
+                    "Model listing failed (HTTP {status}); check the endpoint and credentials"
+                ))
+            }
+        }
+        let entries = body
+            .get(if p.kind == ProviderKind::Google {
+                "models"
+            } else {
+                "data"
+            })
+            .and_then(Value::as_array)
+            .ok_or("Invalid model list; add model IDs manually")?;
+        for entry in entries {
+            if let Some(id) = entry
+                .get("id")
+                .or_else(|| entry.get("name"))
+                .and_then(Value::as_str)
+            {
+                let id = if p.kind == ProviderKind::Google {
+                    id.strip_prefix("models/").unwrap_or(id)
+                } else {
+                    id
+                };
+                models.push(ProviderModel {
+                    id: id.into(),
+                    display_name: entry
+                        .get("displayName")
+                        .or_else(|| entry.get("display_name"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                    enabled: true,
+                    context_window: entry
+                        .get("context_length")
+                        .or_else(|| entry.get("inputTokenLimit"))
+                        .and_then(Value::as_u64),
+                    supports_tools: None,
+                    supports_images: image_support(p.kind, id, entry),
+                    supports_images_source: None,
+                    detected_supports_images: None,
+                    reasoning: if p.base_url.as_deref().is_none_or(|url| url.trim_end_matches('/') == kind_info(p.kind).0) || matches!(p.kind, ProviderKind::Openrouter | ProviderKind::Google) { super::reasoning::detect(p.kind, id, entry) } else { None },
+                    detected_reasoning: None,
+                });
+            }
+        }
+        page = if p.kind == ProviderKind::Google {
+            body.get("nextPageToken")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        } else {
+            None
+        };
+        if let Some(next) = &page {
+            if !seen.insert(next.clone()) {
+                return Err("Model listing repeated a page token".into());
+            }
+        } else {
+            break;
+        }
+    }
+    // Optional metadata must not turn a successful listing into a timeout. Keep
+    // partial results if a provider stalls, with one budget for all extra calls.
+    let enrichment = async {
+        if p.kind == ProviderKind::Ollama {
+            for model in models.iter_mut().filter(|m| m.supports_images.is_none()).take(50) {
+                if let Ok((200..=299, body)) = http.post(ModelRequest {
+                    url: format!("{}/api/show", base_url(p).trim_end_matches('/').trim_end_matches("/v1")),
+                    headers: headers.clone(),
+                }, json!({"model": model.id})).await {
+                    model.reasoning = super::reasoning::detect(p.kind, &model.id, &body);
+                    model.supports_images = image_support(p.kind, &model.id, &body);
+                }
+            }
+        } else if !matches!(p.kind, ProviderKind::Anthropic | ProviderKind::Google | ProviderKind::Openrouter) {
+            let base = base_url(p).trim_end_matches('/');
+            let mut bases = vec![base];
+            if let Some(root) = base.strip_suffix("/v1") { bases.push(root); }
+            for base in bases {
+                if let Ok((200..=299, body)) = http.get(ModelRequest { url: format!("{base}/model/info"), headers: headers.clone() }).await {
+                    let Some(entries) = body["data"].as_array() else { continue };
+                    for model in &mut models {
+                        if let Some(entry) = entries.iter().find(|e| e["model_name"] == model.id || e["model_info"]["key"] == model.id || e["id"] == model.id) {
+                            model.reasoning = super::reasoning::litellm(&entry["model_info"]);
+                            model.supports_images = entry["model_info"]["supports_vision"].as_bool();
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(2), enrichment).await;
+    for model in &mut models {
+        model.detected_reasoning = model.reasoning.clone();
+        model.detected_supports_images = model.supports_images;
+        model.supports_images_source = model.supports_images.map(|_| ImageSupportSource::Detected);
+    }
+    Ok(models)
+}
+pub(crate) async fn test_and_fetch(
+    id: String,
+    probe_model: Option<String>,
+    settings: &Mutex<AppSettings>,
+    path: &std::path::PathBuf,
+) -> Result<Value, String> {
+    let provider = settings
+        .lock()
+        .await
+        .providers
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or("Provider not found")?;
+    let start = Instant::now();
+    let auth_budget = match &provider.auth {
+        ProviderAuth::Command { timeout_ms, .. } => timeout_ms.unwrap_or(15_000),
+        _ => 0,
+    };
+    let operation = async {
+        if let Some(model_id) = probe_model {
+            let mut model = provider.models.iter().find(|m| m.id == model_id).cloned().ok_or("Model not found")?;
+            model.reasoning = Some(probe(&provider, &model, &Keychain, &Http).await?);
+            model.detected_reasoning = model.reasoning.clone();
+            Ok(vec![model])
+        } else { fetch(&provider, &Keychain, &Http).await }
+    };
+    match tokio::time::timeout(Duration::from_millis(auth_budget.saturating_add(17_000)), operation)
+        .await
+        .unwrap_or_else(|_| Err("Model listing timed out".into()))
+    {
+        Ok(models) => {
+            let mut current = settings.lock().await;
+            let mut next = current.clone();
+            let target = next
+                .providers
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or("Provider was deleted")?;
+            if serde_json::to_value(&provider).ok() != serde_json::to_value(&*target).ok() {
+                return Err("Provider changed; test again".into());
+            }
+            merge_models(&mut target.models, models);
+            target.models_fetched_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            );
+            let result =
+                json!({"ok":true, "latencyMs":start.elapsed().as_millis(), "models":target.models});
+            crate::storage::write_settings(path, &next)?;
+            *current = next;
+            Ok(result)
+        }
+        Err(error) => Ok(
+            json!({"ok":false, "latencyMs":start.elapsed().as_millis(), "models":[], "error":error}),
+        ),
+    }
+}
+
+pub(crate) async fn probe(p: &ProviderEntry, model: &ProviderModel, keys: &dyn KeyStore, http: &dyn ModelHttp) -> Result<ReasoningCapability, String> {
+    let mut headers = p.extra_headers.clone();
+    let (_, auth) = kind_info(p.kind);
+    if let Some(token) = token(p, keys).await? {
+        if !auth.is_empty() { headers.insert(auth.into(), if auth == "authorization" { format!("Bearer {token}") } else { token }); }
+    }
+    let base = base_url(p).trim_end_matches('/');
+    let mut body = json!({"model":model.id,"messages":[{"role":"user","content":"Hi"}],"max_tokens":1});
+    let (url, param, control) = match p.kind {
+        ProviderKind::Anthropic => {
+            headers.insert("anthropic-version".into(), "2023-06-01".into());
+            body["output_config"] = json!({"effort":"low"});
+            (format!("{base}/messages"), "effort", "adaptive")
+        }
+        ProviderKind::Google => {
+            body = json!({"contents":[{"parts":[{"text":"Hi"}]}],"generationConfig":{"maxOutputTokens":1,"thinkingConfig":{"thinkingBudget":128}}});
+            let mut url = reqwest::Url::parse(&format!("{base}/models/")).map_err(|_| "Invalid provider URL")?;
+            url.path_segments_mut().map_err(|_| "Invalid provider URL")?.pop_if_empty().push(&format!("{}:generateContent", model.id));
+            (url.to_string(), "thinkingConfig", "budget")
+        }
+        ProviderKind::Ollama => {
+            body = json!({"model":model.id,"messages":[{"role":"user","content":"Hi"}],"think":if model.id.starts_with("gpt-oss") { json!("low") } else { json!(true) },"stream":false,"options":{"num_predict":1}});
+            (format!("{}/api/chat", base.trim_end_matches("/v1")), "think", if model.id.starts_with("gpt-oss") { "effort" } else { "thinking-toggle" })
+        }
+        ProviderKind::Openrouter => {
+            body["reasoning"] = json!({"effort":"low"});
+            (format!("{base}/chat/completions"), "reasoning", "effort")
+        }
+        _ if model.reasoning.as_ref().is_some_and(|r| r.control == "thinking-toggle") => {
+            body["thinking"] = json!({"type":"enabled"});
+            (format!("{base}/chat/completions"), "thinking", "thinking-toggle")
+        }
+        _ => {
+            body["reasoning_effort"] = json!("low");
+            (format!("{base}/chat/completions"), "reasoning_effort", "effort")
+        }
+    };
+    let (status, body) = http.post(ModelRequest { url, headers }, body).await?;
+    if status>=400 {nucode_diag_mcp::writer::record(||{let mut e=nucode_diag_mcp::core::event("error","provider",&format!("provider.http_{status}"),"Provider HTTP error");e.context=json!({"providerKind":p.kind,"model":model.id});e.detail=json!({"status":status});e});}
+    let supported = super::reasoning::classify_probe(status, &body, param).ok_or_else(|| format!("Reasoning detection inconclusive (HTTP {status}); existing capabilities kept"))?;
+    // A successful probe proves only the requested level, never the entire range.
+    Ok(super::reasoning::capability(supported, if control == "thinking-toggle" { &["high"] } else { &["low"] }, control, "probe"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+    #[test]
+    fn likely_vision_covers_renamed_multimodal_models_only() {
+        for id in ["GPT 6.1 Sol (Account 2)", "gpt-5.6-terra", "openai/gpt-4o-mini", "Claude Opus 5.5", "Gemini 3.8 Flash (Account 1)"] {
+            assert_eq!(likely_vision(id), Some(true), "{id}");
+        }
+        for id in ["GLM 5.3", "Nano Banana 2 (Account 1)", "o3-mini", "llama3"] {
+            assert_eq!(likely_vision(id), None, "{id}");
+        }
+    }
+    #[test]
+    fn concurrent_keychain_reads_share_one_prompt_and_failed_reads_can_retry() {
+        use std::sync::{Barrier, atomic::{AtomicUsize, Ordering}};
+        let cache = StdMutex::default();
+        let reads = AtomicUsize::new(0);
+        let start = Barrier::new(4);
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    start.wait();
+                    assert_eq!(cached_key(&cache, "test", || {
+                        reads.fetch_add(1, Ordering::SeqCst);
+                        std::thread::sleep(Duration::from_millis(20));
+                        Ok(Some("fixture-key".into()))
+                    }).unwrap().as_deref(), Some("fixture-key"));
+                });
+            }
+        });
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+        assert!(cached_key(&cache, "retry", || Err("denied".into())).is_err());
+        assert_eq!(cached_key(&cache, "retry", || Ok(None)).unwrap(), None);
+        assert_eq!(cached_key(&cache, "retry", || panic!("missing credentials are cached")).unwrap(), None);
+    }
+    #[derive(Default)]
+    struct Keys(StdMutex<BTreeMap<String, String>>);
+    impl KeyStore for Keys {
+        fn get(&self, id: &str) -> Result<Option<String>, String> {
+            Ok(self.0.lock().unwrap().get(id).cloned())
+        }
+        fn set(&self, id: &str, key: &str) -> Result<(), String> {
+            self.0.lock().unwrap().insert(id.into(), key.into());
+            Ok(())
+        }
+        fn delete(&self, id: &str) -> Result<(), String> {
+            self.0.lock().unwrap().remove(id);
+            Ok(())
+        }
+    }
+    struct FakeHttp {
+        replies: StdMutex<std::collections::VecDeque<Result<(u16, Value), String>>>,
+        requests: StdMutex<Vec<ModelRequest>>,
+        bodies: StdMutex<Vec<Value>>,
+    }
+    impl ModelHttp for FakeHttp {
+        fn post(&self, request: ModelRequest, body: Value) -> BoxFuture<'_, Result<(u16, Value), String>> {
+            self.bodies.lock().unwrap().push(body);
+            self.get(request)
+        }
+        fn get(&self, request: ModelRequest) -> BoxFuture<'_, Result<(u16, Value), String>> {
+            self.requests.lock().unwrap().push(request);
+            let response = self
+                .replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("unexpected HTTP request");
+            Box::pin(async { response })
+        }
+    }
+    fn http(replies: Vec<Result<(u16, Value), String>>) -> FakeHttp {
+        FakeHttp {
+            replies: StdMutex::new(replies.into()),
+            requests: StdMutex::new(vec![]),
+            bodies: StdMutex::new(vec![]),
+        }
+    }
+    fn provider(kind: ProviderKind) -> ProviderEntry {
+        serde_json::from_value(json!({"id":"test","name":"Test","kind":kind,"auth":{"type":"apiKey"},"models":[{"id":"model","enabled":true}],"enabled":true,"baseUrl": if kind == ProviderKind::OpenaiCompatible { Some("http://localhost:1234/v1") } else { None }})).unwrap()
+    }
+    #[tokio::test]
+    async fn image_support_from_provider_lists() {
+        for (kind, field, entries, expected) in [
+            (ProviderKind::Openrouter, "data", json!([
+                {"id":"vision","architecture":{"input_modalities":["text","image"]}},
+                {"id":"text","architecture":{"input_modalities":["text"]}},
+                {"id":"unknown"}
+            ]), vec![Some(true), Some(false), None]),
+            (ProviderKind::Google, "models", json!([
+                {"name":"models/vision","inputModalities":["TEXT","IMAGE"]},
+                {"name":"models/text","input_modalities":["text"]},
+                {"name":"models/unknown","supportedGenerationMethods":["generateContent"]}
+            ]), vec![Some(true), Some(false), None]),
+            (ProviderKind::Anthropic, "data", json!([
+                {"id":"claude-3-opus"}, {"id":"claude-sonnet-4-5"}, {"id":"other"}
+            ]), vec![Some(true), Some(true), None]),
+        ] {
+            let mut p = provider(kind);
+            p.auth = ProviderAuth::None;
+            let fake = http(vec![Ok((200, json!({field: entries})))]);
+            let models = fetch(&p, &Keys::default(), &fake).await.unwrap();
+            assert_eq!(models.iter().map(|m| m.supports_images).collect::<Vec<_>>(), expected);
+            for model in models {
+                assert_eq!(model.detected_supports_images, model.supports_images);
+                assert_eq!(model.supports_images_source, model.supports_images.map(|_| ImageSupportSource::Detected));
+            }
+            assert_eq!(fake.requests.lock().unwrap().len(), 1);
+        }
+    }
+    #[tokio::test]
+    async fn litellm_image_metadata_uses_names_keys_and_both_endpoint_paths() {
+        let keys = Keys::default();
+        keys.set("test", "secret").unwrap();
+        for kind in [ProviderKind::OpenaiCompatible, ProviderKind::Openai] {
+            for fallback in [false, true] {
+                let p = provider(kind);
+                let mut replies = vec![Ok((200, json!({"data":[{"id":"vision"},{"id":"text"},{"id":"unknown"}]})))];
+                if fallback { replies.push(Ok((404, Value::Null))); }
+                replies.push(Ok((200, json!({"data":[
+                    {"model_name":"vision","model_info":{"supports_vision":true}},
+                    {"model_name":"alias","model_info":{"key":"text","supports_vision":false}},
+                    {"model_name":"unknown","model_info":{"supports_vision":"true"}}
+                ]}))));
+                let fake = http(replies);
+                let models = fetch(&p, &keys, &fake).await.unwrap();
+                assert_eq!(models.iter().map(|m| m.supports_images).collect::<Vec<_>>(), [Some(true), Some(false), None]);
+                let requests = fake.requests.lock().unwrap();
+                assert_eq!(requests[1].url, format!("{}/model/info", base_url(&p)));
+                if fallback { assert_eq!(requests[2].url, format!("{}/model/info", base_url(&p).trim_end_matches("/v1"))); }
+                assert!(requests.iter().all(|r| r.headers["authorization"] == "Bearer secret"));
+            }
+        }
+    }
+    #[tokio::test]
+    async fn optional_image_metadata_failures_do_not_fail_listing() {
+        let mut p = provider(ProviderKind::OpenaiCompatible);
+        p.auth = ProviderAuth::None;
+        for response in [Ok((404, Value::Null)), Ok((401, Value::Null)), Ok((200, Value::Null)), Err("offline".into())] {
+            let fake = http(vec![Ok((200, json!({"data":[{"id":"model"}]}))), response.clone(), response]);
+            let models = fetch(&p, &Keys::default(), &fake).await.unwrap();
+            assert_eq!(models[0].supports_images, None);
+            assert_eq!(models[0].supports_images_source, None);
+        }
+    }
+    #[tokio::test]
+    async fn stalled_image_metadata_keeps_the_successful_list() {
+        struct SlowMetadata(FakeHttp);
+        impl ModelHttp for SlowMetadata {
+            fn get(&self, request: ModelRequest) -> BoxFuture<'_, Result<(u16, Value), String>> {
+                if request.url.ends_with("/models") { self.0.get(request) }
+                else { Box::pin(std::future::pending()) }
+            }
+        }
+        let mut p = provider(ProviderKind::OpenaiCompatible);
+        p.auth = ProviderAuth::None;
+        let fake = SlowMetadata(http(vec![Ok((200, json!({"data":[{"id":"model"}]})))]));
+        let models = tokio::time::timeout(Duration::from_secs(3), fetch(&p, &Keys::default(), &fake)).await.unwrap().unwrap();
+        assert_eq!(models[0].id, "model");
+        assert_eq!(models[0].supports_images, None);
+    }
+    #[tokio::test]
+    async fn ollama_images_use_show_only_when_unknown_and_cap_requests() {
+        let mut p = provider(ProviderKind::Ollama);
+        p.auth = ProviderAuth::None;
+        let mut entries = vec![json!({"id":"listed","capabilities":["vision"]})];
+        entries.extend((0..51).map(|n| json!({"id":format!("model-{n}")})));
+        let mut replies = vec![Ok((200, json!({"data":entries})))];
+        replies.extend((0..50).map(|n| Ok((200, json!({"capabilities":if n == 0 { vec!["vision"] } else { vec!["completion"] }})))));
+        let fake = http(replies);
+        let models = fetch(&p, &Keys::default(), &fake).await.unwrap();
+        assert_eq!(models[0].supports_images, Some(true));
+        assert_eq!(models[1].supports_images, Some(true));
+        assert_eq!(models[2].supports_images, Some(false));
+        assert_eq!(models[51].supports_images, None);
+        assert_eq!(fake.bodies.lock().unwrap().len(), 50);
+        assert_eq!(fake.bodies.lock().unwrap()[0], json!({"model":"model-0"}));
+        assert_eq!(fake.requests.lock().unwrap()[1].url, "http://localhost:11434/api/show");
+        let fake = http(vec![Ok((200, json!({"data":[{"id":"model"}]}))), Err("offline".into())]);
+        assert_eq!(fetch(&p, &Keys::default(), &fake).await.unwrap()[0].supports_images, None);
+    }
+    #[test]
+    fn image_overrides_survive_refetch_and_serde_round_trip() {
+        for choice in [true, false] {
+            let mut models = provider(ProviderKind::Openai).models;
+            assert_eq!(models[0].supports_images_source, None);
+            models[0].supports_images = Some(choice);
+            models[0].supports_images_source = Some(ImageSupportSource::User);
+            models[0].enabled = false;
+            models = serde_json::from_value(serde_json::to_value(models).unwrap()).unwrap();
+            let fetched: ProviderModel = serde_json::from_value(json!({"id":"model","enabled":true,"supportsImages":!choice,"supportsImagesSource":"detected","detectedSupportsImages":!choice})).unwrap();
+            merge_models(&mut models, vec![fetched.clone()]);
+            assert_eq!(models[0].supports_images, Some(choice));
+            assert_eq!(models[0].supports_images_source, Some(ImageSupportSource::User));
+            assert_eq!(models[0].detected_supports_images, Some(!choice));
+            assert!(!models[0].enabled);
+            models[0].supports_images_source = None;
+            merge_models(&mut models, vec![fetched]);
+            assert_eq!(models[0].supports_images, Some(!choice));
+            assert_eq!(models[0].supports_images_source, Some(ImageSupportSource::Detected));
+        }
+    }
+    #[tokio::test]
+    async fn fetch_detects_proxy_and_ollama_without_probing_and_explicit_probe_proves_only_low() {
+        let keys = Keys::default();
+        keys.set("test", "secret").unwrap();
+        let p = provider(ProviderKind::OpenaiCompatible);
+        let fake = http(vec![
+            Ok((200, json!({"data":[{"id":"GLM 5.3"}]}))),
+            Ok((200, json!({"data":[{"model_name":"GLM 5.3","model_info":{"supports_reasoning":true,"supported_reasoning_efforts":["low","high","max"],"supported_openai_params":["thinking"]}}]}))),
+        ]);
+        let models = fetch(&p, &keys, &fake).await.unwrap();
+        assert_eq!(models[0].reasoning.as_ref().unwrap().levels, ["low","high","max"]);
+        assert_eq!(models[0].detected_reasoning, models[0].reasoning);
+        assert_eq!(fake.requests.lock().unwrap()[1].url, "http://localhost:1234/v1/model/info");
+        assert_eq!(fake.bodies.lock().unwrap().len(), 0);
+        let fake = http(vec![Ok((200, json!({"data":[{"id":"gpt-oss:20b"}]}))), Ok((200, json!({"capabilities":["thinking"]})))]);
+        let models = fetch(&provider(ProviderKind::Ollama), &keys, &fake).await.unwrap();
+        assert_eq!(models[0].reasoning.as_ref().unwrap().levels, ["low","medium","high"]);
+        assert_eq!(fake.requests.lock().unwrap()[1].url, "http://localhost:11434/api/show");
+        assert_eq!(fake.bodies.lock().unwrap()[0], json!({"model":"gpt-oss:20b"}));
+        let fake = http(vec![Ok((200, json!({})))]);
+        let cap = probe(&p, &p.models[0], &keys, &fake).await.unwrap();
+        assert_eq!(cap.source, "probe");
+        assert_eq!(cap.levels, ["low"]);
+        assert_eq!(fake.bodies.lock().unwrap()[0]["max_tokens"], 1);
+        assert_eq!(fake.bodies.lock().unwrap()[0]["reasoning_effort"], "low");
+    }
+    #[tokio::test]
+    async fn command_auth_timeout_is_configurable_and_actionable() {
+        let mut p = provider(ProviderKind::Openai);
+        p.auth = serde_json::from_value(json!({"type":"command","command":"/bin/sh","args":["-c","printf token"]})).unwrap();
+        assert!(matches!(p.auth, ProviderAuth::Command { timeout_ms: None, .. }));
+        assert_eq!(token(&p, &Keys::default()).await.unwrap().as_deref(), Some("token"));
+        p.auth = serde_json::from_value(json!({"type":"command","command":"/bin/sleep","args":["1"],"timeoutMs":20})).unwrap();
+        assert_eq!(token(&p, &Keys::default()).await.unwrap_err(), "The auth command took longer than 0.02 s. If the script lives in an iCloud-synced folder (Desktop/Documents), move it or read the key file directly.");
+        let (config, _) = crate::shared::engines::codex_config(&[p.clone()], &AgentPolicy::default(), Path::new("/managed")).unwrap();
+        assert!(config.contains("NUCODE_PROVIDER_TEST_KEY"));
+        assert!(!config.contains("/bin/sleep"));
+        assert_eq!(crate::shared::pi::config::models(&[p])["providers"]["openai"]["apiKey"], "$NUCODE_PROVIDER_TEST_KEY");
+    }
+    #[tokio::test]
+    async fn kind_table_urls_and_headers_and_google_paging() {
+        use ProviderKind::*;
+        let table = [
+            (Openai, "https://api.openai.com/v1", "authorization"),
+            (Anthropic, "https://api.anthropic.com/v1", "x-api-key"),
+            (
+                Google,
+                "https://generativelanguage.googleapis.com/v1beta",
+                "x-goog-api-key",
+            ),
+            (Openrouter, "https://openrouter.ai/api/v1", "authorization"),
+            (Groq, "https://api.groq.com/openai/v1", "authorization"),
+            (Mistral, "https://api.mistral.ai/v1", "authorization"),
+            (Xai, "https://api.x.ai/v1", "authorization"),
+            (Deepseek, "https://api.deepseek.com", "authorization"),
+            (Zai, "https://api.z.ai/api/paas/v4", "authorization"),
+            (Ollama, "http://localhost:11434/v1", ""),
+            (Lmstudio, "http://localhost:1234/v1", ""),
+            (OpenaiCompatible, "", "authorization"),
+        ];
+        let keys = Keys::default();
+        keys.set("test", "secret").unwrap();
+        for (kind, url, header) in table {
+            assert_eq!(kind_info(kind), (url, header));
+            let fake = if kind == Google {
+                http(vec![
+                    Ok((
+                        200,
+                        json!({"models":[{"name":"models/one"}],"nextPageToken":"a +/"}),
+                    )),
+                    Ok((200, json!({"models":[{"name":"models/two"}]}))),
+                ])
+            } else if !matches!(kind, Anthropic | Openrouter) {
+                let mut replies = vec![Ok((200, json!({"data":[{"id":"one"}]}))), Ok((404, Value::Null))];
+                if kind != Ollama && base_url(&provider(kind)).trim_end_matches('/').ends_with("/v1") { replies.push(Ok((404, Value::Null))); }
+                http(replies)
+            } else {
+                http(vec![Ok((200, json!({"data":[{"id":"one"}]})))])
+            };
+            let p = provider(kind);
+            let models = fetch(&p, &keys, &fake).await.unwrap();
+            assert_eq!(models[0].id, "one");
+            let requests = fake.requests.lock().unwrap();
+            assert_eq!(requests[0].url, format!("{}/models", base_url(&p)));
+            if !header.is_empty() {
+                assert_eq!(
+                    requests[0].headers[header],
+                    if header == "authorization" {
+                        "Bearer secret"
+                    } else {
+                        "secret"
+                    }
+                );
+            } else {
+                assert!(requests[0].headers.is_empty());
+            }
+            if kind == Anthropic {
+                assert_eq!(requests[0].headers["anthropic-version"], "2023-06-01");
+            }
+            if kind == Google {
+                assert_eq!(models[1].id, "two");
+                assert!(requests[1].url.contains("pageToken=a+%2B%2F"));
+            }
+        }
+    }
+    #[tokio::test]
+    async fn actionable_errors_do_not_echo_response_secrets() {
+        let keys = Keys::default();
+        keys.set("test", "secret").unwrap();
+        for (status, expected) in [
+            (401, "API key rejected"),
+            (
+                404,
+                "This endpoint doesn't list models; add model IDs manually",
+            ),
+        ] {
+            assert_eq!(
+                fetch(
+                    &provider(ProviderKind::Openai),
+                    &keys,
+                    &http(vec![Ok((status, json!({"error":"secret"})))])
+                )
+                .await
+                .unwrap_err(),
+                expected
+            );
+        }
+        let error = "Is the server running at http://localhost:1234/v1?";
+        assert_eq!(
+            fetch(
+                &provider(ProviderKind::Openai),
+                &keys,
+                &http(vec![Err(error.into())])
+            )
+            .await
+            .unwrap_err(),
+            error
+        );
+    }
+    #[test]
+    fn merge_keeps_flags_manual_models_and_delete_removes_key() {
+        let mut p = provider(ProviderKind::Openai);
+        p.models[0].enabled = false;
+        let mut fetched = p.models[0].clone();
+        fetched.enabled = true;
+        fetched.display_name = Some("New".into());
+        let mut manual = fetched.clone();
+        manual.id = "manual".into();
+        p.models.push(manual);
+        merge_models(&mut p.models, vec![fetched]);
+        assert!(!p.models[0].enabled);
+        assert_eq!(p.models.len(), 2);
+        assert_eq!(p.models[0].display_name.as_deref(), Some("New"));
+        let keys = Keys::default();
+        keys.set("test", "secret").unwrap();
+        delete_removed_keys(&[p], &[], &keys).unwrap();
+        assert!(keys.get("test").unwrap().is_none());
+    }
+    #[test]
+    fn policy_merge_and_validation() {
+        let p = provider(ProviderKind::Openai);
+        let over: AgentPolicyOverride = serde_json::from_value(
+            json!({"defaultEngine":"codex","subagents":{"maxConcurrent":7}}),
+        )
+        .unwrap();
+        let mut policy = effective_policy(&AgentPolicy::default(), Some(&over));
+        assert_eq!(policy.default_engine, "codex".to_owned());
+        assert_eq!(policy.subagents.max_concurrent, 7);
+        assert_eq!(policy.subagents.max_per_turn, 8);
+        assert_eq!(policy.subagents.roles.len(), 3);
+        assert!(validate(&[p.clone()], &policy).is_ok());
+        policy.subagents.max_depth = 4;
+        assert!(validate(&[p.clone()], &policy).is_err());
+        policy.subagents.max_depth = 1;
+        policy.subagents.roles[0].model = Some(ModelRef {
+            provider_id: "disabled".into(),
+            model_id: "model".into(),
+        });
+        assert!(validate(&[p], &policy)
+            .unwrap_err()
+            .contains("Enable provider"));
+    }
+    #[test]
+    fn command_policy_round_trips_and_merges_without_changing_legacy_defaults() {
+        let base = AgentPolicy::default();
+        assert_eq!(base.subagents.mode, SubagentMode::Custom);
+        assert_eq!(base.subagents.max_run_minutes, 0);
+        assert_eq!(base.subagents.daily_token_limit, 0);
+        let over: AgentPolicyOverride = serde_json::from_value(json!({"subagents": {
+            "mode":"chain-of-command", "maxDepth":2, "maxRunMinutes":15, "dailyTokenLimit":25000,
+            "roles":[
+                {"name":"colonel","description":"Delegate","model":null,"toolAccess":"full","instructions":""},
+                {"name":"major","description":"QA","model":null,"toolAccess":"full","instructions":""},
+                {"name":"enlisted","description":"Work","model":null,"toolAccess":"full","instructions":""}
+            ]
+        }})).unwrap();
+        let mut policy = effective_policy(&base, Some(&over));
+        assert!(validate(&[], &policy).is_ok());
+        let saved = serde_json::to_value(&policy).unwrap();
+        assert_eq!(saved["subagents"]["mode"], "chain-of-command");
+        assert_eq!(saved["subagents"]["maxRunMinutes"], 15);
+        assert_eq!(saved["subagents"]["dailyTokenLimit"], 25000);
+        policy.subagents.daily_token_limit = 1_000_000_001;
+        assert!(validate(&[], &policy).unwrap_err().contains("Execution limits"));
+        policy.subagents.daily_token_limit = 25000;
+        assert_eq!(serde_json::from_value::<AgentPolicy>(saved).unwrap().subagents.mode, SubagentMode::ChainOfCommand);
+        policy.subagents.max_per_turn = 2;
+        assert!(validate(&[], &policy).unwrap_err().contains("at least 3"));
+        policy.subagents.max_per_turn = 8;
+        policy.subagents.roles.pop();
+        assert!(validate(&[], &policy).unwrap_err().contains("enlisted"));
+        policy.subagents.enabled = false;
+        assert!(validate(&[], &policy).is_ok());
+        assert!(serde_json::from_value::<AgentPolicy>(json!({"subagents":{"mode":"unknown"}})).is_err());
+    }
+    #[test]
+    fn command_specialists_preserve_ranks_and_reject_core_overrides() {
+        let mut policy = AgentPolicy::default();
+        let role: AgentRole = serde_json::from_value(json!({"name":"researcher","description":"Research","model":null,"toolAccess":"read-only","instructions":"Cite files","commandRank":"enlisted"})).unwrap();
+        policy.subagents.roles.push(role);
+        assert!(validate(&[], &policy).is_ok());
+        let saved = serde_json::to_value(&policy).unwrap();
+        assert_eq!(saved["subagents"]["roles"][3]["commandRank"], "enlisted");
+        let restored: AgentPolicy = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored.subagents.roles[3].command_rank, Some(CommandRank::Enlisted));
+        assert_eq!(restored.subagents.roles[0].command_rank, None);
+        for name in ["commander", "colonel", "major"] {
+            policy.subagents.roles[3].name = name.into();
+            assert!(validate(&[], &policy).unwrap_err().contains("Core command ranks"));
+        }
+        let mut invalid = serde_json::to_value(&restored.subagents.roles[3]).unwrap();
+        invalid["commandRank"] = json!("commander");
+        assert!(serde_json::from_value::<AgentRole>(invalid).is_err());
+    }
+    #[test]
+    fn catalog_flags_only_the_policy_default_model() {
+        let mut p = provider(ProviderKind::Openai);
+        p.models.push(serde_json::from_value(json!({"id":"sol","enabled":true})).unwrap());
+        let mut list = catalog(&[p]);
+        mark_default(&mut list, Some(&ModelRef { provider_id: "test".into(), model_id: "sol".into() }));
+        let flags: Vec<_> = list["result"]["data"].as_array().unwrap().iter().map(|m| (m["modelId"].clone(), m["isDefault"].clone())).collect();
+        assert_eq!(flags, vec![(json!("model"), json!(false)), (json!("sol"), json!(true))]);
+        let before = list.clone();
+        mark_default(&mut list, None);
+        assert_eq!(list, before);
+    }
+    #[test]
+    fn registry_only_catalog_and_codex_config_are_secret_free() {
+        let mut p = provider(ProviderKind::Openai);
+        p.name = "Name \"quoted\"\nline".into();
+        let mut policy = AgentPolicy::default();
+        policy.default_model = Some(ModelRef {
+            provider_id: "test".into(),
+            model_id: "model".into(),
+        });
+        let catalog = catalog(&[p.clone()]);
+        assert_eq!(catalog["result"]["data"][0]["id"], "test/model");
+        let (config, files) =
+            crate::shared::engines::codex_config(&[p], &policy, Path::new("/managed")).unwrap();
+        let parsed = config.parse::<toml_edit::Document>().unwrap();
+        assert_eq!(
+            parsed["model_providers"]["test"]["requires_openai_auth"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed["cli_auth_credentials_store"].as_str(),
+            Some("ephemeral")
+        );
+        assert_eq!(parsed["analytics"]["enabled"].as_bool(), Some(false));
+        assert_eq!(parsed["apps"]["_default"]["enabled"].as_bool(), Some(false));
+        assert_eq!(
+            parsed["plugins"]["_default"]["enabled"].as_bool(),
+            Some(false)
+        );
+        assert!(parsed.get("forced_login_method").is_none());
+        assert!(parsed.get("chatgpt_base_url").is_none());
+        assert!(config.contains("NUCODE_PROVIDER_TEST_KEY"));
+        assert!(!config.contains("super-secret"));
+        assert_eq!(files.len(), 3);
+        for (_, content) in files {
+            assert!(content.parse::<toml_edit::Document>().is_ok());
+        }
+    }
+    #[test]
+    fn one_projects_codex_roles_never_reach_another_project() {
+        let p = provider(ProviderKind::Openai);
+        let home = std::env::temp_dir().join(format!("nucode-roles-{}", uuid::Uuid::new_v4()));
+        let policy = |name: &str| {
+            let mut policy = AgentPolicy::default();
+            policy.subagents.roles = vec![serde_json::from_value(serde_json::json!({
+                "name": name, "description": "Project role", "model": null, "toolAccess": "read-only", "instructions": "Help."
+            })).unwrap()];
+            policy
+        };
+        let (alpha, beta) = (policy("alpha-only"), policy("beta-only"));
+        // Project A's Codex starts, then project B's, in the one shared Codex home.
+        let keys = Keys::default();
+        crate::shared::engines::prepare_codex(&home, &[p.clone()], &alpha, &keys, false).unwrap();
+        crate::shared::engines::prepare_codex(&home, &[p.clone()], &beta, &keys, false).unwrap();
+        let shared = std::fs::read_to_string(home.join("config.toml")).unwrap();
+        assert!(!shared.contains("alpha-only") && !shared.contains("beta-only"), "{shared}");
+        assert!(shared.contains("max_threads"));
+        let a = crate::shared::engines::codex_config_args(&[p.clone()], &alpha, &home).unwrap().join(" ");
+        assert!(a.contains("alpha-only") && !a.contains("beta-only"));
+        let b = crate::shared::engines::codex_config_args(&[p], &beta, &home).unwrap().join(" ");
+        assert!(b.contains("beta-only") && !b.contains("alpha-only"));
+        // Each project's role file still exists for its own `-c` config_file path.
+        assert!(a.contains("config_file") && std::fs::read_dir(home.join("roles")).unwrap().count() == 2);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn project_roles_override_without_mutating_global_policy() {
+        let base = AgentPolicy::default();
+        let before = serde_json::to_value(&base).unwrap();
+        let mut roles = base.subagents.roles.clone();
+        roles[0].instructions = "Only in project A".into();
+        let over: AgentPolicyOverride = serde_json::from_value(json!({"subagents":{"roles":roles}})).unwrap();
+        let a = effective_policy(&base, Some(&over));
+        let b = effective_policy(&base, None);
+        assert_eq!(a.subagents.roles[0].instructions, "Only in project A");
+        assert_eq!(serde_json::to_value(&b).unwrap(), before);
+        assert_eq!(serde_json::to_value(&base).unwrap(), before);
+        assert_eq!(a.subagents.roles.len(), b.subagents.roles.len());
+    }
+    #[test]
+    fn keychain_values_only_reach_child_environment() {
+        let p = provider(ProviderKind::Openai);
+        let keys = Keys::default();
+        keys.set("test", "super-secret").unwrap();
+        let home = std::env::temp_dir().join(format!("nucode-registry-{}", uuid::Uuid::new_v4()));
+        struct Locked;
+        impl KeyStore for Locked {
+            fn get(&self, _: &str) -> Result<Option<String>, String> { panic!("History must not request Keychain access") }
+            fn set(&self, _: &str, _: &str) -> Result<(), String> { panic!("History must not write credentials") }
+            fn delete(&self, _: &str) -> Result<(), String> { panic!("History must not delete credentials") }
+        }
+        assert!(crate::shared::engines::prepare_codex(&home, &[p.clone()], &AgentPolicy::default(), &Locked, false).unwrap().is_empty());
+        let env = crate::shared::engines::prepare_codex(
+            &home,
+            &[p.clone()],
+            &AgentPolicy::default(),
+            &keys,
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            env,
+            vec![("NUCODE_PROVIDER_TEST_KEY".into(), "super-secret".into())]
+        );
+        let args = crate::shared::engines::codex_config_args(&[p], &AgentPolicy::default(), &home)
+            .unwrap();
+        assert!(!args.join(" ").contains("super-secret"));
+        assert!(!std::fs::read_to_string(home.join("config.toml"))
+            .unwrap()
+            .contains("super-secret"));
+        assert!(!home.join("auth.json").exists());
+        std::fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn codex_capability_and_auth_mapping() {
+        for kind in [
+            ProviderKind::Openai,
+            ProviderKind::Anthropic,
+            ProviderKind::Google,
+            ProviderKind::Openrouter,
+            ProviderKind::Groq,
+            ProviderKind::Mistral,
+            ProviderKind::Xai,
+            ProviderKind::Deepseek,
+            ProviderKind::Zai,
+            ProviderKind::Ollama,
+            ProviderKind::Lmstudio,
+            ProviderKind::OpenaiCompatible,
+        ] {
+            let mut p = provider(kind);
+            let expected = matches!(
+                kind,
+                ProviderKind::Openai | ProviderKind::Openrouter | ProviderKind::Ollama
+            );
+            assert_eq!(codex_usable(&p), expected);
+            if kind == ProviderKind::OpenaiCompatible {
+                p.api_style = Some(ApiStyle::Responses);
+                assert!(codex_usable(&p));
+            }
+        }
+        for auth in [
+            ProviderAuth::None,
+            ProviderAuth::Env {
+                var: "MY_KEY".into(),
+            },
+            ProviderAuth::Command {
+                command: "token-helper".into(),
+                args: vec!["a \"quoted\" argument".into()],
+                timeout_ms: None,
+            },
+        ] {
+            let mut p = provider(ProviderKind::Openai);
+            p.auth = auth;
+            let (config, _) = crate::shared::engines::codex_config(
+                &[p],
+                &AgentPolicy::default(),
+                Path::new("/managed"),
+            )
+            .unwrap();
+            let parsed = config.parse::<toml_edit::Document>().unwrap();
+            assert_eq!(
+                parsed["model_providers"]["test"]["requires_openai_auth"].as_bool(),
+                Some(false)
+            );
+            assert!(!config.contains("super-secret"));
+        }
+    }
+    use std::path::Path;
+}

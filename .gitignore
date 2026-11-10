@@ -1,0 +1,13 @@
+node_modules/
+target/
+dist/
+.tmp/
+.DS_Store
+.codegraph/
+.claude/settings.local.json
+.cargo-home/
+.codegraph-nucode/
+.cargo-home/
+.playwright-mcp/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

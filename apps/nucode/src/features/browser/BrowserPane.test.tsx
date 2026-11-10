@@ -1,0 +1,325 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BrowserPane } from "./BrowserPane";
+import { drawBrowserFrame, normalizeBrowserUrl } from "./browser";
+import { browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, browserNativeBounds } from "@services/tauri";
+import type { BrowserState } from "./browser";
+
+vi.mock("@services/tauri", () => ({ browserPasswordFill: vi.fn().mockResolvedValue({ filled: true, username: true }), browserPasswordOffer: vi.fn().mockResolvedValue(undefined), browserPasswordResume: vi.fn().mockResolvedValue(undefined), browserRequest: vi.fn(), subscribeBrowser: vi.fn(), browserNativeBounds: vi.fn(), openBrowserDownloads: vi.fn(), openBrowserUrl: vi.fn(), exportBrowserScreenshot: vi.fn() }));
+const drawImage = vi.fn();
+let receive: (s: BrowserState) => void;
+const stop = vi.fn();
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(browserRequest).mockResolvedValue(undefined);
+  vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
+  vi.mocked(subscribeBrowser).mockImplementation(async fn => { receive = fn; return stop; });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage, clearRect: vi.fn() } as unknown as CanvasRenderingContext2D);
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+const state: BrowserState = { tabs: [{ id: "one", title: "Example", url: "https://example.test/", loading: false }], active: "one", capabilities: { screenshot: true, evaluate: true } };
+describe("Browser pane", () => {
+  it("selects the URL on focus and first click, leaving subsequent clicks to place the caret", async () => {
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    act(() => receive(state));
+    const input = screen.getByLabelText<HTMLInputElement>("URL or search");
+    expect(fireEvent.mouseDown(input, { button: 0 })).toBe(false);
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
+    expect(fireEvent.mouseDown(input, { button: 0 })).toBe(true);
+    input.setSelectionRange(5, 5);
+    fireEvent.mouseUp(input);
+    fireEvent.click(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([5, 5]);
+    act(() => { input.blur(); input.focus(); });
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
+  });
+  it("does not focus the URL when an agent opens a blank page", async () => {
+    render(<><input aria-label="Composer" /><BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} /></>);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    const composer = screen.getByLabelText("Composer");
+    composer.focus();
+    act(() => receive({ ...state, agent: true, tabs: [{ ...state.tabs[0], url: "about:blank" }] }));
+    expect(document.activeElement).toBe(composer);
+  });
+  it("normalizes URLs and search terms, rejecting executable schemes", () => {
+    const search = "https://search.test/?q={query}";
+    expect(normalizeBrowserUrl("example.com/path",search)).toBe("https://example.com/path");
+    expect(normalizeBrowserUrl("localhost:3000",search)).toBe("https://localhost:3000/");
+    expect(normalizeBrowserUrl("find cats & dogs",search)).toBe("https://search.test/?q=find%20cats%20%26%20dogs");
+    expect(() => normalizeBrowserUrl("javascript:alert(1)",search)).toThrow();
+  });
+  it("attaches, navigates, changes tabs and stops streaming on unmount", async () => {
+    const view = render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(browserRequest).toHaveBeenCalledWith(expect.objectContaining({ action:"attach" })));
+    act(() => receive(state));
+    fireEvent.change(screen.getByLabelText("URL or search"), { target: { value:"example.org" } });
+    fireEvent.submit(screen.getByLabelText("URL or search").closest("form")!);
+    expect(browserRequest).toHaveBeenCalledWith({ action:"navigate",url:"https://example.org/" });
+    for (const name of ["Back","Forward","Reload"]) fireEvent.click(screen.getByRole("button",{name}));
+    fireEvent.click(screen.getByRole("tab",{name:"Example"}));
+    expect(browserRequest).toHaveBeenCalledWith({ action:"activate",id:"one" });
+    act(() => receive({ ...state, tabs: [{ ...state.tabs[0], loading:true }] }));
+    fireEvent.click(screen.getByRole("button",{name:"Stop loading"}));
+    expect(browserRequest).toHaveBeenCalledWith({ action:"stop" });
+    view.unmount(); expect(stop).toHaveBeenCalled();
+  });
+  it("renders frames at DPR and forwards mouse, keys, wheel, paste and IME", async () => {
+    vi.stubGlobal("Image", class { onload?: () => void; set src(_: string) { this.onload?.(); } });
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    act(() => receive({ ...state, frame:"AAAA",frameTarget:"one",width:400,height:300,dpr:2 }));
+    const canvas = screen.getByLabelText(/Browser page/) as HTMLCanvasElement;
+    expect(canvas.width).toBe(800); expect(canvas.height).toBe(600); expect(drawImage).toHaveBeenCalled();
+    fireEvent.mouseDown(canvas,{clientX:20,clientY:30,button:2,buttons:2,ctrlKey:true});
+    expect(browserRequest).toHaveBeenCalledWith(expect.objectContaining({action:"mouse",type:"mousePressed",button:2,modifiers:2}));
+    const keyboard = screen.getByLabelText("Browser keyboard input");
+    fireEvent.keyDown(keyboard,{key:"a",code:"KeyA",keyCode:65});
+    expect(browserRequest).toHaveBeenCalledWith(expect.objectContaining({action:"key",type:"keyDown",key:"a",text:"a"}));
+    fireEvent.keyUp(keyboard,{key:"a",code:"KeyA"});
+    fireEvent.wheel(canvas,{deltaY:120});
+    expect(browserRequest).toHaveBeenCalledWith(expect.objectContaining({action:"mouse",type:"mouseWheel",deltaY:120}));
+    fireEvent.paste(keyboard,{clipboardData:{getData:()=>"pasted"}});
+    fireEvent.compositionStart(keyboard); fireEvent.compositionEnd(keyboard,{data:"日本語"});
+    expect(browserRequest).toHaveBeenCalledWith({action:"text",text:"pasted"});
+    expect(browserRequest).toHaveBeenCalledWith({action:"text",text:"日本語"});
+  });
+  it("shows agent activity and takes over", () => {
+    const takeover = vi.fn();
+    render(<BrowserPane agentActive onClose={vi.fn()} onTakeOver={takeover} />);
+    expect(screen.getByText("Agent is using the browser")).toBeTruthy();
+    fireEvent.click(screen.getByText("Take over")); expect(takeover).toHaveBeenCalledOnce();
+  });
+  it("scales backing pixels without changing CSS coordinates", () => {
+    const canvas = document.createElement("canvas");
+    const source = document.createElement("img");
+    drawBrowserFrame(canvas,source,600,400,1.5);
+    expect([canvas.width,canvas.height]).toEqual([900,600]);
+    expect(drawImage).toHaveBeenCalledWith(source,0,0,900,600);
+  });
+});
+
+it("uses the native slot, aligned toolbar sizes, and native takeover events", async () => {
+  const takeover = vi.fn();
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={takeover} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", takeover: 1, tabs: [{ ...state.tabs[0], ready: true, canGoBack: false, canGoForward: false }] }));
+  expect(screen.getByLabelText("Native browser page")).toBeTruthy();
+  expect(document.querySelector("canvas")).toBeNull();
+  expect(screen.getByRole("button", { name: "Back" }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("progressbar", { name: "Page loading" })).toBeTruthy();
+  expect(document.querySelector(".browser-toolbar .browser-address")).toBeTruthy();
+  expect(takeover).toHaveBeenCalledOnce();
+});
+
+it("captures before hiding the native page and discards late captures after a tab change", async () => {
+  vi.stubGlobal("Image", class { naturalWidth = 800; naturalHeight = 600; src = ""; decode = async () => {}; });
+  let finish!: (image: string) => void;
+  vi.mocked(browserRequest).mockImplementation(async params => params.action === "screenshot" ? new Promise<string>(resolve => { finish = resolve; }) : undefined);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, width: 500, height: 400 } as DOMRect);
+  render(<BrowserPane onBrowserContext={vi.fn()} onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], ready: true }] }));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Annotate page" })));
+  expect(screen.queryByRole("group", { name: "Browser annotations" })).toBeNull();
+  await act(async () => finish("AAAA"));
+  expect(screen.getByRole("group", { name: "Browser annotations" })).toBeTruthy();
+  expect(screen.getByRole("img", { name: /Page screenshot/ }).getAttribute("viewBox")).toBe("0 0 800 600");
+  fireEvent.click(screen.getByRole("button", { name: "Close annotations" }));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Annotate page" })));
+  act(() => receive({ ...state, active: "two", tabs: [{ ...state.tabs[0], id: "two" }] }));
+  await act(async () => finish("AAAA"));
+  expect(screen.queryByRole("group", { name: "Browser annotations" })).toBeNull();
+});
+
+it.each(["reload", "agent"])("closes stale annotations when %s begins", async reason => {
+  vi.stubGlobal("Image", class { naturalWidth = 800; naturalHeight = 600; src = ""; decode = async () => {}; });
+  vi.mocked(browserRequest).mockImplementation(async params => params.action === "screenshot" ? "AAAA" : undefined);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 500, height: 400 } as DOMRect);
+  render(<BrowserPane onBrowserContext={vi.fn()} onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive(state));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Annotate page" })));
+  expect(screen.getByRole("group", { name: "Browser annotations" })).toBeTruthy();
+  act(() => receive(reason === "reload" ? { ...state, tabs: [{ ...state.tabs[0], loading: true }] } : { ...state, agent: true }));
+  expect(screen.queryByRole("group", { name: "Browser annotations" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Annotate page" }).hasAttribute("disabled")).toBe(true);
+});
+
+it("does not offer capture tools when the backend reports no screenshot support", async () => {
+  render(<BrowserPane onBrowserContext={vi.fn()} onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", capabilities: { screenshot: false, evaluate: false } }));
+  expect(screen.queryByRole("button", { name: "Annotate page" })).toBeNull();
+});
+
+it.each(["tab", "URL"])("dismisses clear-site confirmation after its %s changes without clearing another site", async change => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const original: BrowserState = { ...state, backend: "native", tabs: [{ ...state.tabs[0], ready: true }] };
+  act(() => receive(original));
+  fireEvent.click(screen.getByRole("button", { name: "Actions for page" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Clear site data" }));
+  const confirm = screen.getByRole("button", { name: "Clear data" });
+  act(() => receive(change === "tab"
+    ? { ...original, active: "two", tabs: [...original.tabs, { ...original.tabs[0], id: "two", url: "https://second.test/" }] }
+    : { ...original, tabs: [{ ...original.tabs[0], url: "https://second.test/" }] }));
+  expect(screen.queryByRole("button", { name: "Clear data" })).toBeNull();
+  fireEvent.click(confirm);
+  expect(browserRequest).not.toHaveBeenCalledWith(expect.objectContaining({ action: "clearSite" }));
+  act(() => receive(original));
+  expect(screen.queryByRole("button", { name: "Clear data" })).toBeNull();
+});
+
+it("binds confirmed site-data clearing to the original tab and page URL", async () => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native" }));
+  fireEvent.click(screen.getByRole("button", { name: "Actions for page" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Clear site data" }));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Clear data" })));
+  expect(browserRequest).toHaveBeenCalledWith({ action: "clearSite", confirmed: true, tabId: "one", expectedUrl: "https://example.test/" });
+  expect(screen.queryByRole("button", { name: "Clear data" })).toBeNull();
+});
+
+it("treats a new native blank tab as idle and focuses its URL without stealing focus on existing-tab selection", async () => {
+  render(<BrowserPane onBrowserContext={vi.fn()} onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const original: BrowserState = { ...state, backend: "native", tabs: [{ ...state.tabs[0], ready: true }] };
+  act(() => receive(original));
+  const tabs = [...original.tabs, { id: "two", title: "New tab", url: "about:blank", loading: true, ready: false }];
+  act(() => receive({ ...original, active: "two", tabs }));
+  const address = screen.getByRole("textbox", { name: "URL or search" }) as HTMLInputElement;
+  expect(document.activeElement).toBe(address);
+  expect(address.value).toBe("");
+  expect(screen.getByText("Enter a URL or search to open a page.")).toBeTruthy();
+  expect(screen.queryByText("Loading page…")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Stop loading" })).toBeNull();
+  expect(screen.getByRole("progressbar", { name: "Page loading" }).getAttribute("aria-valuenow")).toBe("100");
+  expect(screen.getByRole("button", { name: "Annotate page" }).hasAttribute("disabled")).toBe(true);
+  act(() => receive({ ...original, tabs }));
+  const tab = screen.getByRole("tab", { name: "New tab" });
+  tab.focus();
+  act(() => receive({ ...original, active: "two", tabs }));
+  expect(document.activeElement).toBe(tab);
+  act(() => receive({ ...original, active: "two", tabs: [tabs[0], { ...tabs[1], url: "https://second.test/", loading: true }] }));
+  expect(screen.getByText("Loading page…")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Stop loading" })).toBeTruthy();
+});
+
+it("replaces native loading guidance with a retryable navigation error", async () => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const pending: BrowserState = { ...state, backend: "native", tabs: [{ ...state.tabs[0], ready: false, loading: true }] };
+  act(() => receive(pending));
+  expect(screen.getByText("Loading page…")).toBeTruthy();
+  act(() => receive({ ...pending, tabs: [{ ...pending.tabs[0], loading: false, error: "Could not connect to the server." }] }));
+  expect(screen.getByRole("alert").textContent).toContain("Could not connect to the server.");
+  expect(screen.queryByText("Loading page…")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(browserRequest).toHaveBeenCalledWith({ action: "navigate", url: pending.tabs[0].url });
+  vi.mocked(browserRequest).mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  expect(browserRequest).toHaveBeenCalledWith({ action: "navigate", url: pending.tabs[0].url });
+  act(() => receive(pending));
+  expect(screen.getByText("Loading page…")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+  act(() => receive({ ...pending, tabs: [{ ...pending.tabs[0], loading: false, ready: true }] }));
+  fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  expect(browserRequest).toHaveBeenCalledWith({ action: "reload" });
+});
+
+it.each(["Escape", "Close"])("returns annotation focus to its trigger after explicit %s", async dismiss => {
+  vi.stubGlobal("Image", class { naturalWidth = 800; naturalHeight = 600; src = ""; decode = async () => {}; });
+  vi.mocked(browserRequest).mockImplementation(async params => params.action === "screenshot" ? "AAAA" : undefined);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 500, height: 400 } as DOMRect);
+  render(<BrowserPane onBrowserContext={vi.fn()} onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive(state));
+  const trigger = screen.getByRole("button", { name: "Annotate page" });
+  await act(async () => fireEvent.click(trigger));
+  const annotations = screen.getByRole("group", { name: "Browser annotations" });
+  expect(document.activeElement).toBe(annotations);
+  if (dismiss === "Escape") fireEvent.keyDown(annotations, { key: "Escape" });
+  else fireEvent.click(screen.getByRole("button", { name: "Close annotations" }));
+  expect(screen.queryByRole("group", { name: "Browser annotations" })).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
+
+it("keeps composer focus after adding an annotated image to chat", async () => {
+  vi.stubGlobal("Image", class { naturalWidth = 800; naturalHeight = 600; src = ""; decode = async () => {}; });
+  vi.mocked(browserRequest).mockImplementation(async params => params.action === "screenshot" ? "AAAA" : undefined);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 500, height: 400 } as DOMRect);
+  vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue({ drawImage, clearRect: vi.fn(), scale: vi.fn() } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,RESULT");
+  const onContext = vi.fn(() => screen.getByRole("textbox", { name: "Chat draft" }).focus());
+  render(<><BrowserPane onBrowserContext={onContext} onClose={vi.fn()} onTakeOver={vi.fn()} /><textarea aria-label="Chat draft" /></>);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive(state));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Annotate page" })));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add to chat" })));
+  expect(onContext).toHaveBeenCalledExactlyOnceWith({ image: "data:image/png;base64,RESULT", text: "Browser: https://example.test/" });
+  expect(screen.queryByRole("group", { name: "Browser annotations" })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Chat draft" }));
+});
+
+it("keeps a failed native tab retryable without showing it as still loading", async () => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const failed = { id: "two", title: "New tab", url: "about:blank", loading: false, ready: false, error: "Could not open this tab: Main window unavailable. Choose Retry to try again." };
+  act(() => receive({ ...state, backend: "native", active: "two", tabs: [...state.tabs, failed] }));
+  expect(screen.getByRole("alert").textContent).toContain("Main window unavailable");
+  expect(screen.queryByRole("button", { name: "Stop loading" })).toBeNull();
+  expect(screen.getByRole("tab", { name: "Example" })).toBeTruthy();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+  expect(browserRequest).toHaveBeenCalledWith({ action: "reload" });
+  act(() => receive({ ...state, backend: "native", active: "two", tabs: [...state.tabs, { ...failed, ready: true, error: undefined }] }));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("tab", { name: "New tab" }).getAttribute("aria-selected")).toBe("true");
+});
+
+it("shows saved-login controls only for native tabs with logins, and fills the selected login", async () => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native" }));
+  expect(screen.queryByLabelText("Fill saved password")).toBeNull();
+  const savedLogins = [{ id: "login", username: "alice" }];
+  act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], savedLogins }] }));
+  fireEvent.click(screen.getByLabelText("Fill saved password"));
+  await waitFor(() => expect(browserPasswordFill).toHaveBeenCalledWith("one", "login"));
+  await waitFor(() => expect(screen.getByLabelText("Fill saved password")).not.toHaveProperty("disabled", true));
+  act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], savedLogins: [...savedLogins, { id: "other", username: "bob" }] }] }));
+  fireEvent.click(screen.getByLabelText("Fill saved password"));
+  fireEvent.click(screen.getByRole("button", { name: "bob" }));
+  await waitFor(() => expect(browserPasswordFill).toHaveBeenCalledWith("one", "other"));
+  act(() => receive({ ...state, backend: "cdp", tabs: [{ ...state.tabs[0], savedLogins }] }));
+  expect(screen.queryByLabelText("Fill saved password")).toBeNull();
+});
+it.each([["Save", "save"], ["Never for this site", "never"], ["Not now", "dismiss"]])("handles the %s password offer decision", async (button, decision) => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", passwordOffer: { origin: "https://example.test", username: "alice", update: false } }));
+  expect(screen.getByText("Save password for https://example.test as alice?")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: button }));
+  await waitFor(() => expect(browserPasswordOffer).toHaveBeenCalledWith(decision));
+});
+it("shows update and paused banners and resumes only through the password command", async () => {
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], credentialsPaused: true }], passwordOffer: { origin: "https://example.test", username: "alice", update: true } }));
+  expect(screen.getByText("Update password for https://example.test as alice?")).toBeTruthy();
+  expect(screen.getByText("Agent paused on this page while you sign in")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Resume agent" }));
+  await waitFor(() => expect(browserPasswordResume).toHaveBeenCalledWith("one"));
+  expect(browserRequest).not.toHaveBeenCalledWith(expect.objectContaining({ action: "resume" }));
+});
+it("shows fill errors in the browser error area", async () => {
+  vi.mocked(browserPasswordFill).mockRejectedValueOnce("Authentication was cancelled");
+  render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], savedLogins: [{ id: "login", username: "alice" }] }] }));
+  fireEvent.click(screen.getByLabelText("Fill saved password"));
+  expect(await screen.findByText("Authentication was cancelled")).toBeTruthy();
+});

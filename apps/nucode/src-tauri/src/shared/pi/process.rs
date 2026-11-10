@@ -1,0 +1,444 @@
+use super::translate::{self, Translator};
+use crate::codegraph::CodegraphSetup;
+use serde_json::{json, Value};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::{Child, ChildStdin, Command},
+    sync::{oneshot, watch, Mutex},
+    time::{timeout, timeout_at, Instant},
+};
+
+pub(super) type Emit = Arc<dyn Fn(Value) + Send + Sync>;
+pub(super) struct Process {
+    pub translator: Mutex<Translator>,
+    pub operation: Mutex<()>,
+    pub alive: AtomicBool,
+    pub running: AtomicBool,
+    settled: watch::Sender<u64>,
+    cancelling: AtomicBool,
+    pub extensions: Mutex<std::collections::HashSet<String>>,
+    pub preview: Mutex<Option<Arc<super::preview::Preview>>>,
+    preview_operation: Mutex<()>,
+    preview_generation: AtomicU64,
+    child: Mutex<Child>,
+    stdin: Mutex<Option<ChildStdin>>,
+    pending: Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
+    dialogs: Mutex<HashMap<String, Value>>,
+    next_id: AtomicU64,
+    touched: Mutex<Instant>,
+    diagnostic_start: Mutex<Option<std::time::Instant>>,
+    emit: Emit,
+    graph: Option<CodegraphSetup>,
+    omp: bool,
+    blobs: Option<std::path::PathBuf>,
+}
+impl Process {
+    pub async fn spawn(
+        mut command: Command,
+        mut translator: Translator,
+        emit: Emit,
+        graph: Option<CodegraphSetup>,
+        idle: Duration,
+        secrets: Vec<String>,
+    ) -> Result<Arc<Self>, String> {
+        let omp = command.as_std().get_envs().any(|(k,v)| k == "NUCODE_OMP" && v.is_some());
+        let blobs = command.as_std().get_envs().find_map(|(k, v)| (k == "PI_CODING_AGENT_DIR").then_some(v).flatten()).map(|home| std::path::PathBuf::from(home).join("blobs"));
+        if omp {translator.diagnostic_engine="omp".into();}
+        command
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let diagnostic_start = nucode_diag_mcp::writer::enabled().then(std::time::Instant::now);
+        let mut child = command
+            .spawn()
+            .map_err(|e| { nucode_diag_mcp::writer::record(|| {let mut event=nucode_diag_mcp::core::event("error","engine","engine.spawn_failed","Engine spawn failed");event.context=serde_json::json!({"engine":"pi"});event.detail=serde_json::json!({"errorClass":format!("{:?}",e.kind())});event});e.to_string() })?;
+        let diagnostic_pid=child.id();
+        nucode_diag_mcp::observe::child(diagnostic_pid,if omp {"omp"} else {"pi"});
+        let stdout = child.stdout.take().ok_or("Pi stdout unavailable")?;
+        let stderr = child.stderr.take().ok_or("Pi stderr unavailable")?;
+        let stdin = child.stdin.take();
+        let p = Arc::new(Self {
+            blobs,
+            translator: Mutex::new(translator),
+            operation: Mutex::new(()),
+            alive: AtomicBool::new(true),
+            running: AtomicBool::new(false),
+            settled: watch::channel(0).0,
+            cancelling: AtomicBool::new(false),
+            extensions: Mutex::new(Default::default()),
+            preview: Mutex::new(None),
+            preview_operation: Mutex::new(()),
+            preview_generation: AtomicU64::new(0),
+            child: Mutex::new(child),
+            stdin: Mutex::new(stdin),
+            pending: Mutex::new(HashMap::new()),
+            dialogs: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
+            touched: Mutex::new(Instant::now()),
+            diagnostic_start: Mutex::new(diagnostic_start),
+            emit,
+            graph,
+            omp,
+        });
+        let reader = p.clone();
+        let output_secrets = secrets.clone();
+        tokio::spawn(async move {
+            // split(b'\n') is deliberately LF-only (including U+2028/U+2029 in strings).
+            let mut lines = BufReader::new(stdout).split(b'\n');
+            let reason = loop {
+                match lines.next_segment().await {
+                    Ok(Some(line)) if line.iter().all(u8::is_ascii_whitespace) => continue,
+                    Ok(Some(line)) => match serde_json::from_str::<Value>(&redact(
+                        String::from_utf8_lossy(&line).into_owned(),
+                        &output_secrets,
+                    )) {
+                        Ok(m) => reader.receive(m).await,
+                        Err(e) => {nucode_diag_mcp::writer::record(||nucode_diag_mcp::core::event("error","engine","engine.protocol_decode","Pi protocol decode failed"));break format!("Pi returned invalid JSON: {e}");},
+                    },
+                    Ok(None) => break "Pi process exited unexpectedly".into(),
+                    Err(e) => break format!("Pi stdout failed: {e}"),
+                }
+            };
+            if let Ok(Some(status)) = reader.child.lock().await.try_wait() {
+                if nucode_diag_mcp::writer::enabled() { nucode_diag_mcp::observe::exited(diagnostic_pid, status); }
+            }
+            reader.alive.store(false, Ordering::SeqCst);
+            let mut t = reader.translator.lock().await;
+            let running = reader.running.load(Ordering::SeqCst);
+            if running && !t.active {
+                for e in t.apply(&json!({"type":"agent_start"})) {
+                    (reader.emit)(e);
+                }
+            }
+            if t.active {
+                for e in t.fail(&reason) {
+                    (reader.emit)(e);
+                }
+            }
+            reader.set_running(false);
+            drop(t);
+            for (_, tx) in reader.pending.lock().await.drain() {
+                let _ = tx.send(Err(reason.clone()));
+            }
+            let thread = reader.translator.lock().await.thread.clone();
+            for (id, _) in reader.dialogs.lock().await.drain() {
+                (reader.emit)(
+                    json!({"method":"serverRequest/resolved","params":{"threadId":thread,"requestId":id}}),
+                );
+            }
+        });
+        let stderr_emit = p.emit.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).split(b'\n');
+            while let Ok(Some(line)) = lines.next_segment().await {
+                let line = redact(String::from_utf8_lossy(&line).into_owned(), &secrets);
+                nucode_diag_mcp::observe::stderr(diagnostic_pid,&line);
+                eprintln!("pi: {line}");
+                stderr_emit(json!({"method":"codex/stderr","params":{"message":line}}));
+            }
+        });
+        let weak = Arc::downgrade(&p);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(idle.min(Duration::from_secs(30))).await;
+                let Some(p) = weak.upgrade() else {
+                    break;
+                };
+                if !p.alive.load(Ordering::SeqCst) {
+                    break;
+                }
+                let _operation = p.operation.lock().await;
+                if !p.running.load(Ordering::SeqCst)
+                    && !p.translator.lock().await.active
+                    && p.pending.lock().await.is_empty()
+                    && p.touched.lock().await.elapsed() >= idle
+                {
+                    let _ = p.shutdown().await;
+                    break;
+                }
+            }
+        });
+        Ok(p)
+    }
+    pub(super) async fn receive(self: &Arc<Self>, mut m: Value) {
+        if let Some(directory) = &self.blobs {
+            for key in ["message", "result"] {
+                if let Some(message) = m.get_mut(key) { super::images::restore(message, directory); }
+            }
+        }
+        // OMP can publish agent_end before asynchronous extension hooks finish.
+        // Wait for its settlement frame so QA and usage records arrive first.
+        if self.omp && (m["type"] == "session_settled" || (m["type"] == "prompt_result" && m["sessionSettled"] == true)) {
+            m = json!({"type":"agent_settled", "aborted":m["status"] == "aborted", "errorMessage":m["error"]["message"]});
+        }
+        *self.touched.lock().await = Instant::now();
+        if m["type"] == "response" {
+            if let Some(id) = m["id"].as_str() {
+                if let Some(tx) = self.pending.lock().await.remove(id) {
+                    let _ = tx.send(if m["success"] == true {
+                        Ok(m["data"].clone())
+                    } else {
+                        Err(m["error"].as_str().unwrap_or("Pi command failed").into())
+                    });
+                }
+            }
+            return;
+        }
+        if m["type"] == "extension_ui_request" {
+            let method = m["method"].as_str().unwrap_or("");
+            if method == "select" && m["title"].as_str().is_some_and(|title| title.starts_with("nucode:preview:")) {
+                let owner = self.clone();
+                let generation = self.preview_generation.load(Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let _operation = owner.preview_operation.lock().await;
+                    if generation != owner.preview_generation.load(Ordering::SeqCst) || owner.cancelling.load(Ordering::SeqCst) {
+                        let _ = owner.write(json!({"type":"extension_ui_response","id":m["id"],"cancelled":true})).await;
+                        return;
+                    }
+                    let preview = owner.preview.lock().await.clone();
+                    let result = match &preview {
+                        Some(preview) if !owner.cancelling.load(Ordering::SeqCst) => match serde_json::from_str(m["title"].as_str().unwrap().trim_start_matches("nucode:preview:")) {
+                            Ok(params) => preview.request(params).await,
+                            Err(error) => Err(error.to_string()),
+                        },
+                        _ => Err("Preview request is unavailable or cancelled".into()),
+                    };
+                    if generation != owner.preview_generation.load(Ordering::SeqCst) || owner.cancelling.load(Ordering::SeqCst) || !owner.alive.load(Ordering::SeqCst) {
+                        if let Some(preview) = preview { let _ = preview.stop().await; }
+                        let _ = owner.write(json!({"type":"extension_ui_response","id":m["id"],"cancelled":true})).await;
+                    } else {
+                        let value = match result { Ok(value) => json!({"tasks":value}), Err(error) => json!({"error":error}) };
+                        let text = redact(value.to_string(), preview.as_ref().map(|p| p.secrets.as_slice()).unwrap_or_default());
+                        let _ = owner.write(json!({"type":"extension_ui_response","id":m["id"],"value":text})).await;
+                    }
+                });
+                return;
+            }
+            if method == "setStatus" && matches!(m["statusKey"].as_str(), Some("nucode-verification" | "nucode-execution-limit")) {
+                if let Some(record) = m["statusText"].as_str().and_then(|text| serde_json::from_str::<Value>(text).ok()) {
+                    let kind = if m["statusKey"] == "nucode-execution-limit" { "nucode_execution_limit" } else { "nucode_verification" };
+                    for event in self.translator.lock().await.apply(&json!({"type":kind,"record":record})) {
+                        (self.emit)(event);
+                    }
+                }
+                return;
+            }
+            if method == "setStatus" && m["statusText"] == "ready" {
+                if let Some(key @ ("nucode-gate" | "nucode-subagents" | "nucode-work")) = m["statusKey"].as_str()
+                {
+                    self.extensions.lock().await.insert(key.into());
+                    return;
+                }
+            }
+            if translate::approval(&m).is_none() && translate::login_requested(&m) {
+                for event in self.translator.lock().await.fail(
+                    "Accounts and logins are disabled. Configure an API key provider in Settings.",
+                ) {
+                    (self.emit)(event);
+                }
+                let _ = self
+                    .write(json!({"type":"extension_ui_response","id":m["id"],"cancelled":true}))
+                    .await;
+                return;
+            }
+            if !matches!(method, "select" | "confirm" | "input" | "editor") {
+                eprintln!("pi extension UI: {m}");
+                (self.emit)(
+                    json!({"method":"codex/stderr","params":{"message":format!("pi extension UI: {m}")}}),
+                );
+                return;
+            }
+            if self.cancelling.load(Ordering::SeqCst) {
+                let _ = self.write(json!({"type":"extension_ui_response","id":m["id"],"cancelled":true})).await;
+                return;
+            }
+            let mut t = self.translator.lock().await;
+            // tool_call approval can precede tool_execution_start in pi.
+            if let Some(a) = translate::approval(&m) {
+                for event in t.approval_item(&a) {
+                    (self.emit)(event);
+                }
+            }
+            let request = translate::ui_request(&m, &t.thread, &t.turn_id());
+            drop(t);
+            let id = request["id"].as_str().unwrap().to_owned();
+            let mut dialogs = self.dialogs.lock().await;
+            if self.cancelling.load(Ordering::SeqCst) {
+                drop(dialogs);
+                let _ = self.write(json!({"type":"extension_ui_response","id":m["id"],"cancelled":true})).await;
+                return;
+            }
+            dialogs.insert(id.clone(), m.clone());
+            (self.emit)(request);
+            drop(dialogs);
+            if let Some(ms) = m["timeout"].as_u64() {
+                let weak = Arc::downgrade(self);
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(ms)).await;
+                    if let Some(p) = weak.upgrade() {
+                        let _ = p.answer(&id, json!({})).await;
+                    }
+                });
+            }
+            return;
+        }
+        let mut t = self.translator.lock().await;
+        if !self.alive.load(Ordering::SeqCst) { return; }
+        let events = t.apply(&m);
+        if m["type"] == "agent_start" {
+            self.set_running(true);
+        }
+        if m["type"] == "agent_settled" {
+            self.set_running(false);
+        }
+        for e in events { (self.emit)(e); }
+        if m["type"] == "compaction_end"
+            && m["errorMessage"].is_null()
+            && m["aborted"] != true
+            && m["result"].is_object()
+        {
+            if let Some(g) = &self.graph {
+                g.bump_epoch(&t.thread);
+            }
+        }
+    }
+    pub async fn write(&self, value: Value) -> Result<(), String> {
+        let mut bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
+        bytes.push(b'\n');
+        self.stdin
+            .lock()
+            .await
+            .as_mut()
+            .ok_or("Pi process is closed")?
+            .write_all(&bytes)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    pub fn set_running(&self, running: bool) {
+        if self.running.swap(running, Ordering::SeqCst) && !running {
+            self.settled.send_modify(|generation| *generation += 1);
+        }
+    }
+    pub async fn interrupt(self: &Arc<Self>, wait: Duration) -> Result<Value, String> {
+        // Settlement can precede the abort acknowledgement.
+        let mut settled = self.settled.subscribe();
+        let generation = *settled.borrow();
+        let deadline = Instant::now() + wait;
+        let result = timeout_at(deadline, self.request(json!({"type":"abort"}))).await
+            .unwrap_or_else(|_| Err("Pi abort acknowledgement timed out".into()));
+        let owner = self.clone();
+        tokio::spawn(async move {
+            if !owner.running.load(Ordering::SeqCst)
+                || timeout_at(deadline, settled.wait_for(|current| *current != generation)).await.is_ok() {
+                return;
+            }
+            let mut translator = owner.translator.lock().await;
+            // An old watchdog must never interrupt a newer turn.
+            if *settled.borrow() != generation || !owner.running.load(Ordering::SeqCst) { return; }
+            // Retire the peer so its late frames cannot settle the next turn.
+            owner.alive.store(false, Ordering::SeqCst);
+            if !translator.active {
+                for event in translator.apply(&json!({"type":"agent_start"})) { (owner.emit)(event); }
+            }
+            let events = translator.apply(&json!({"type":"agent_settled","aborted":true}));
+            owner.set_running(false);
+            for event in events { (owner.emit)(event); }
+            drop(translator);
+            let _ = owner.shutdown().await;
+        });
+        result
+    }
+    pub async fn request(&self, mut value: Value) -> Result<Value, String> {
+        if !self.alive.load(Ordering::SeqCst) {
+            return Err("Pi process exited; retry to resume the session".into());
+        }
+        *self.touched.lock().await = Instant::now();
+        if value["type"] == "prompt" { self.cancelling.store(false, Ordering::SeqCst); }
+        if value["type"] == "abort" {
+            self.cancelling.store(true, Ordering::SeqCst);
+            self.preview_generation.fetch_add(1, Ordering::SeqCst);
+            {
+                let _operation = self.preview_operation.lock().await;
+                if let Some(preview) = self.preview.lock().await.clone() { preview.stop().await?; }
+            }
+            self.translator.lock().await.apply(&json!({"type":"abort_requested"}));
+            // Pi waits for tool hooks to settle before acknowledging abort. An
+            // unanswered extension dialog otherwise holds that wait forever.
+            let dialogs = std::mem::take(&mut *self.dialogs.lock().await);
+            let thread = self.translator.lock().await.thread.clone();
+            for (id, request) in dialogs {
+                self.write(json!({"type":"extension_ui_response","id":request["id"],"cancelled":true})).await?;
+                (self.emit)(json!({"method":"serverRequest/resolved","params":{"threadId":thread,"requestId":id}}));
+            }
+        }
+        let id = format!("nu-{}", self.next_id.fetch_add(1, Ordering::SeqCst));
+        value["id"] = json!(id);
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(id.clone(), tx);
+        let initial_state = value["type"] == "get_state";
+        if let Err(e) = self.write(value).await {
+            self.pending.lock().await.remove(&id);
+            return Err(e);
+        }
+        let result = match timeout(Duration::from_secs(300), rx).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) => Err("Pi request cancelled".into()),
+            Err(_) => Err("Pi request timed out after 300 seconds".into()),
+        };
+        self.pending.lock().await.remove(&id);
+        if initial_state && result.is_ok() {
+            nucode_diag_mcp::observe::ready(if self.omp {"omp"} else {"pi"}, self.diagnostic_start.lock().await.take());
+        }
+        result
+    }
+    pub async fn answer(&self, id: &str, result: Value) -> Result<(), String> {
+        let request = self
+            .dialogs
+            .lock()
+            .await
+            .remove(id)
+            .ok_or("Pi question expired or was already answered")?;
+        self.write(translate::ui_response(&request, &result))
+            .await?;
+        let thread = self.translator.lock().await.thread.clone();
+        (self.emit)(
+            json!({"method":"serverRequest/resolved","params":{"threadId":thread,"requestId":id}}),
+        );
+        Ok(())
+    }
+    pub async fn pid(&self) -> Option<u32> {
+        if !self.alive.load(Ordering::SeqCst) { return None; }
+        let mut child = self.child.lock().await;
+        match child.try_wait() { Ok(None) => child.id(), _ => None }
+    }
+    pub async fn shutdown(&self) -> Result<(), String> {
+        // Drain stdout while waiting: pi may still be finishing a write on EOF.
+        self.stdin.lock().await.take();
+        let mut child = self.child.lock().await;
+        if timeout(Duration::from_secs(2), child.wait()).await.is_err() {
+            crate::shared::process_core::kill_child_process_tree(&mut child).await;
+            let _ = child.wait().await;
+        }
+        self.alive.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+pub(super) fn redact(mut text: String, secrets: &[String]) -> String {
+    for secret in secrets.iter().filter(|s| !s.is_empty()) {
+        let escaped = serde_json::to_string(secret).unwrap();
+        text = text
+            .replace(&escaped[1..escaped.len() - 1], "[REDACTED]")
+            .replace(secret, "[REDACTED]");
+    }
+    text
+}

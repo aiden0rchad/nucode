@@ -1,0 +1,258 @@
+import { FeatureSettings } from "@settings/features";
+import { formatModelRef } from "@settings/registry";
+// @vitest-environment jsdom
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
+import {act,cleanup,fireEvent,render as renderUi,screen,waitFor,within} from "@testing-library/react";
+import {EvalsView} from "./EvalsView";
+import {planCount,roleSettings,metric,type EvalResult} from "./evals";
+import {createFixtures} from "@/dev/uiPreview/fixtures";
+import {createEvalFixture} from "@/dev/uiPreview/evals";
+import {evalRequest,engineRuntime} from "@services/tauri";
+const evalStyles=(await vi.importActual<{readFileSync:(path:string,encoding:"utf8")=>string}>("node:fs")).readFileSync("src/features/evals/evals.css","utf8");
+const settingsStyles=(await vi.importActual<{readFileSync:(path:string,encoding:"utf8")=>string}>("node:fs")).readFileSync("src/styles/settings.css","utf8");
+let progress:(event:{runId:string;status:string})=>void;
+vi.mock("@services/tauri",()=>({evalRequest:vi.fn(),engineRuntime:vi.fn()}));
+vi.mock("@services/events",()=>({subscribeEvalProgress:vi.fn(fn=>{progress=fn;return()=>{};})}));
+const settings=createFixtures().settings;
+const render = (ui: import("react").ReactNode) => renderUi(<FeatureSettings.Provider value={settings}>{ui}</FeatureSettings.Provider>);
+let fixture:ReturnType<typeof createEvalFixture>;
+beforeEach(()=>{localStorage.removeItem("nucode.evals.plan.v1");vi.mocked(engineRuntime).mockResolvedValue([{engine:"pi",state:"pending",message:"Ready to set up on first use"}]);fixture=createEvalFixture((_w,_m,p)=>progress?.(p as {runId:string;status:string}));vi.mocked(evalRequest).mockImplementation(async(a,p)=>fixture(a,p as Record<string,unknown>) as never);});
+afterEach(()=>{cleanup();vi.clearAllMocks();});
+it("starts with the configured engine, model and reasoning, and submits changes",async()=>{
+ const configured={...settings,lastComposerReasoningEffort:"low",agentPolicy:{...settings.agentPolicy!,defaultEngine:"omp",defaultModel:{providerId:"openai",modelId:"gpt-5-mini"}}};
+ render(<EvalsView appSettings={configured} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/2 tests · 2 tasks/);
+ expect(within(screen.getByRole("group",{name:"Engines"})).getByRole("button",{name:/omp/}).getAttribute("aria-pressed")).toBe("true");
+ expect(screen.getByLabelText("Selected models").textContent).toContain("GPT-5 mini");
+ expect((screen.getByRole("combobox",{name:"Reasoning"}) as HTMLSelectElement).value).toBe("low");
+ expect(vi.mocked(evalRequest).mock.calls.find(([action])=>action==="plan")?.[1]).toMatchObject({engines:["omp"],models:["openai/gpt-5-mini"],effort:"low"});
+ fireEvent.change(screen.getByRole("combobox",{name:"Reasoning"}),{target:{value:"high"}});
+ fireEvent.click(screen.getByRole("button",{name:"Start run"}));
+ fireEvent.click(screen.getByRole("button",{name:"Confirm start"}));
+ await waitFor(()=>expect(evalRequest).toHaveBeenCalledWith("start",expect.objectContaining({engines:["omp"],models:["openai/gpt-5-mini"],effort:"high"})));
+});
+it("falls back when saved defaults are no longer available",async()=>{
+ const configured={...settings,lastComposerReasoningEffort:"invalid",agentPolicy:{...settings.agentPolicy!,defaultEngine:"removed",defaultModel:{providerId:"removed",modelId:"missing"}}};
+ render(<EvalsView appSettings={configured} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/2 tests · 2 tasks/);
+ expect(vi.mocked(evalRequest).mock.calls.find(([action])=>action==="plan")?.[1]).toMatchObject({engines:["pi"],models:["openai/gpt-5"],effort:undefined});
+ expect((screen.getByRole("combobox",{name:"Reasoning"}) as HTMLSelectElement).value).toBe("");
+});
+it("keeps the draft and budget across settings/full-view remounts without retaining spending confirmation",async()=>{
+ const first=render(<EvalsView appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/2 tests · 2 tasks/);
+ fireEvent.change(screen.getByRole("combobox",{name:"Reasoning"}),{target:{value:"low"}});
+ fireEvent.change(screen.getByRole("spinbutton",{name:"Token cap"}),{target:{value:"400000"}});
+ fireEvent.click(screen.getByRole("button",{name:"Start run"}));
+ expect(screen.getByRole("button",{name:"Confirm start"})).toBeTruthy();
+ const saved=JSON.parse(localStorage.getItem("nucode.evals.plan.v1")!);
+ first.unmount();
+ render(<EvalsView full appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/2 tests · 2 tasks/);
+ expect(screen.queryByRole("button",{name:"Confirm start"})).toBeNull();
+ expect((screen.getByRole("spinbutton",{name:"Token cap"}) as HTMLInputElement).value).toBe("400000");
+ fireEvent.click(screen.getByRole("button",{name:"Start run"}));
+ fireEvent.click(screen.getByRole("button",{name:"Confirm start"}));
+ await waitFor(()=>expect(evalRequest).toHaveBeenCalledWith("start",saved));
+});
+it("rejects malformed drafts and removes unavailable models without silently substituting one",async()=>{
+ localStorage.setItem("nucode.evals.plan.v1",JSON.stringify({engines:"omp",models:[],codegraph:[false]}));
+ const first=render(<EvalsView appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/2 tests · 2 tasks/);
+ const saved=JSON.parse(localStorage.getItem("nucode.evals.plan.v1")!);
+ first.unmount();
+ localStorage.setItem("nucode.evals.plan.v1",JSON.stringify({...saved,models:["removed/missing"],maxTotalTokens:400000,extra:"ignored"}));
+ render(<EvalsView full appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByText(/0 tests · 2 tasks/);
+ expect((screen.getByRole("button",{name:"Start run"}) as HTMLButtonElement).disabled).toBe(true);
+ expect(JSON.parse(localStorage.getItem("nucode.evals.plan.v1")!)).toMatchObject({models:[],maxTotalTokens:400000});
+ expect(JSON.parse(localStorage.getItem("nucode.evals.plan.v1")!)).not.toHaveProperty("extra");
+});
+it("shows the recorded reasoning and team settings when viewing a run",async()=>{
+ const saved=fixture("run",{runId:"eval-a"}) as EvalResult;
+ saved.run.plan.effort="low";
+ saved.run.environment.agentPolicy={...settings.agentPolicy!,subagents:{...settings.agentPolicy!.subagents,enabled:false}};
+ render(<EvalsView initialRunId="eval-a" appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ expect(await screen.findByText("Requested reasoning: Low · Team: Off")).toBeTruthy();
+});
+it("counts the matrix and requires explicit confirmation before spending",async()=>{
+ render(<EvalsView appSettings={settings} onUpdateAppSettings={vi.fn()} />);
+ await screen.findByText(/2 tests · 2 tasks/);
+ fireEvent.click(screen.getByRole("button",{name:"Start run"}));
+ expect(vi.mocked(evalRequest).mock.calls.some(([a])=>a==="start")).toBe(false);
+ fireEvent.click(screen.getByRole("button",{name:"Confirm start"}));
+ await screen.findByRole("heading",{name:"Results Running"});
+ expect(screen.getByLabelText("Test progress").textContent).toContain("Running");
+ fixture("cancel",{runId:"eval-live"});
+ await screen.findByRole("heading",{name:"Results Cancelled"});
+});
+it("shows A/B deltas, sortable highlighted comparisons and read-only transcripts",async()=>{
+ render(<EvalsView full appSettings={settings} onUpdateAppSettings={vi.fn()} />);
+ const history=await screen.findByRole("button",{name:/10\/22\/2026.*Completed/});
+ fireEvent.click(history);
+ await screen.findByRole("heading",{name:"Results Completed"});
+ fireEvent.click(screen.getByText("Compare with a previous run"));
+ fireEvent.change(screen.getByLabelText("Previous run"),{target:{value:"eval-a"}});
+ await screen.findByRole("table",{name:"A/B deltas"});
+ expect(within(screen.getByRole("table",{name:"A/B deltas"})).getByText("-50.0 pp").className).toBe("evals-regression");
+ fireEvent.click(screen.getByText("Detailed metrics"));
+ fireEvent.click(screen.getByRole("button",{name:/Median tokens/}));
+ expect(screen.getByRole("button",{name:/Median tokens/}).closest("th")?.getAttribute("aria-sort")).toBe("ascending");
+ expect(document.querySelector(".evals-best")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:/pi \/ OpenAI · GPT-5/}));
+ fireEvent.click(screen.getAllByRole("button",{name:"Open transcript (read-only)"})[0]);
+ expect(screen.getByLabelText("Read-only transcript").textContent).toContain("Implemented the task");
+});
+it("confirms role writes and preserves other policy fields",async()=>{
+ const update=vi.fn().mockResolvedValue(undefined);
+ render(<EvalsView appSettings={settings} onUpdateAppSettings={update} />);
+ fireEvent.click(await screen.findByRole("button",{name:/10\/21\/2026.*Completed/}));
+ await screen.findByRole("heading",{name:"Results Completed"});
+ fireEvent.click(screen.getByRole("button",{name:/pi \/ OpenAI · GPT-5/}));
+ fireEvent.click(screen.getByRole("button",{name:"Set as default for role"}));
+ expect(update).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole("button",{name:"Confirm default"}));
+ await waitFor(()=>expect(update).toHaveBeenCalledTimes(1));
+ expect(update.mock.calls[0][0].agentPolicy.defaultModel).toEqual({providerId:"openai",modelId:"gpt-5"});
+ expect(update.mock.calls[0][0].agentPolicy.subagents).toEqual(settings.agentPolicy?.subagents);
+});
+it("handles filters and named role model refs containing slashes",()=>{
+ const plan={engines:["pi","omp"],models:["p/m","p/n"],codegraph:[false,true],repeats:2,concurrency:2,tags:["smoke"],categories:["bugfix"]};
+ expect(planCount([{id:"a",tags:["smoke"],category:"bugfix",requires:[]},{id:"b",tags:[],category:"bugfix",requires:[]}],plan)).toEqual({tasks:1,cells:16});
+ const policy=settings.agentPolicy!;
+ const s={...settings,agentPolicy:{...policy,subagents:{...policy.subagents,roles:[{name:"worker",description:"",instructions:"keep",toolAccess:"full" as const,model:null}]}}};
+ const next=roleSettings(s,"lab/org/model","worker");
+ expect(next.agentPolicy?.subagents.roles[0]).toMatchObject({instructions:"keep",model:{providerId:"lab",modelId:"org/model"}});
+ expect(s.agentPolicy.subagents.roles[0].model).toBeNull();
+});
+it("sorts multiple configurations independently",async()=>{
+ const base=fixture("run",{runId:"eval-a"}) as EvalResult;
+ base.summary[1]={...base.summary[1],tokens:100,passRate:0.5};
+ render(<EvalsView full appSettings={settings} onUpdateAppSettings={vi.fn()} />);
+ fireEvent.click(await screen.findByRole("button",{name:/10\/21\/2026.*Completed/}));
+ await screen.findByRole("heading",{name:"Results Completed"});
+ fireEvent.click(screen.getByText("Detailed metrics"));
+ fireEvent.click(screen.getByRole("button",{name:/Median tokens/}));
+ const table=screen.getByRole("button",{name:/Median tokens/}).closest("table")!;
+ expect(within(table).getAllByRole("row")[1].textContent).toContain("omp");
+});
+
+
+it.each([1024,1440])("uses chips, searchable models and untruncated labels at %ipx",async width=>{
+ vi.stubGlobal("innerWidth",width);
+ const {container}=render(<EvalsView appSettings={settings} onUpdateAppSettings={vi.fn()} />);
+ await screen.findByText(/2 tests · 2 tasks/);
+ const form=container.querySelector(".evals-new-run")!;
+ expect(form.querySelector("select[multiple]")).toBeNull();
+ for(const label of form.querySelectorAll("label")) expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+ expect(screen.getByText("will install")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Choose models"}));
+ const dialog=screen.getByRole("dialog",{name:"Choose models"});
+ fireEvent.change(within(dialog).getByRole("textbox",{name:"Search models"}),{target:{value:"gpt-5-mini"}});
+ const options=within(dialog).getAllByRole("option");
+ expect(options.every(option=>option.textContent?.includes("GPT-5 mini"))).toBe(true);
+ fireEvent.click(options[0]);
+ expect(options[0].getAttribute("aria-selected")).toBe("true");
+ fireEvent.keyDown(dialog,{key:"Escape"});
+ expect(screen.queryByRole("dialog",{name:"Choose models"})).toBeNull();
+ expect(document.activeElement).toBe(screen.getByRole("button",{name:"Choose models"}));
+ await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Increase repeats"}));});
+ expect((screen.getByRole("spinbutton",{name:"Repeats"}) as HTMLInputElement).value).toBe("2");
+ vi.unstubAllGlobals();
+});
+it("keeps preparing runs active and displays the installation message",async()=>{
+ const base=fixture("run",{runId:"eval-live"}) as EvalResult;
+ base.run.status="preparing";base.run.message="Preparing pi…";
+ render(<EvalsView appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole("button",{name:/10\/23\/2026.*Preparing engines/}));
+ await screen.findByText("Preparing pi…");
+ fireEvent.click(screen.getByRole("button",{name:"New run"}));
+ expect((screen.getByRole("button",{name:"Start run"}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.getByRole("button",{name:"Cancel run"})).toBeTruthy();
+});
+
+it("renders one Settings summary card per configuration and opens that run",async()=>{
+ const open=vi.fn();
+ render(<EvalsView initialRunId="eval-b" appSettings={settings} onUpdateAppSettings={vi.fn()} onOpenFull={open}/>);
+ const cards=await screen.findByLabelText("Configuration summaries");
+ const result=fixture("run",{runId:"eval-b"}) as EvalResult;
+ expect(within(cards).getAllByRole("article")).toHaveLength(result.summary.length);
+ for(const row of result.summary) expect(within(cards).getByRole("article",{name:`${row.engine} / ${formatModelRef(settings,row.model).name} · cg:off`})).toBeTruthy();
+ expect(within(cards).getByText("50.0%")).toBeTruthy();
+ expect(within(cards).getByText("unknown")).toBeTruthy();
+ expect(screen.getByText("App preview · pi 1.4.0 · omp 18.12.6")).toBeTruthy();
+ expect(screen.queryByRole("table",{name:"Configuration comparison"})).toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"Open results"}));
+ expect(open).toHaveBeenCalledWith("eval-b");
+});
+
+it.each([1024,1440])("keeps full results headers unwrapped at %ipx and opens matrix transcripts",async width=>{
+ vi.stubGlobal("innerWidth",width);
+ const result=fixture("run",{runId:"eval-b"}) as EvalResult;
+ result.run.cells[1].output="x".repeat(3000)+"AssertionError: frequency map";
+ result.run.cells.push({...result.run.cells[0],id:"repeat-2",repeat:1});
+ render(<><style>{settingsStyles+evalStyles}</style><EvalsView full initialRunId="eval-b" appSettings={settings} onUpdateAppSettings={vi.fn()}/></>);
+ fireEvent.click(await screen.findByText("Detailed metrics"));
+ const table=screen.getByRole("table",{name:"Configuration comparison"});
+ expect(within(table).getAllByRole("columnheader").map(h=>h.textContent)).toEqual(["Configuration","Pass rate ↓","Median tokens","Cached input","Total cost","Tool calls","First response","Median time","Errors"]);
+ for(const header of table.querySelectorAll("th,th button")) expect(getComputedStyle(header).whiteSpace).toBe("nowrap");
+ for(const header of table.querySelectorAll("thead th")) {
+  const style=getComputedStyle(header);
+  expect(style.fontSize).toBe("12px");expect(style.textTransform).toBe("none");
+ }
+ for(const button of table.querySelectorAll("thead button")) {
+  const style=getComputedStyle(button);
+  expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");expect(style.borderRadius).toBe("0");expect(style.boxShadow).toBe("none");
+ }
+ expect(getComputedStyle(table.querySelector("th")!).position).toBe("sticky");
+ expect(getComputedStyle(table.parentElement!).overflowX).toBe("auto");
+ expect(within(table).getByText("2.1k")).toBeTruthy();
+ expect(within(table).getByText("1.5s")).toBeTruthy();
+ expect(screen.getByLabelText("Configuration summaries")).toBeTruthy();
+ const matrix=screen.getByRole("table",{name:"Task by configuration"});
+ expect(within(matrix).getAllByRole("row")).toHaveLength(3);
+ expect(within(matrix).getAllByRole("button")).toHaveLength(5);
+ const failed=within(matrix).getByRole("button",{name:/failed/});
+ expect(failed.title).toHaveLength(2000);
+ expect(failed.title.endsWith("AssertionError: frequency map")).toBe(true);
+ fireEvent.click(failed);
+ expect(screen.getByLabelText("Read-only transcript").textContent).toContain("Implemented the task");
+ vi.unstubAllGlobals();
+});
+
+it("formats comparison units without converting unknown values to zero",()=>{
+ expect(metric("tokens",36600)).toBe("36.6k");
+ expect(metric("firstTokenMs",18500)).toBe("18.5s");
+ expect(metric("costUsd",null)).toBe("unknown");
+ expect(metric("costUsd",0)).toBe("$0.0000");
+ expect(metric("cacheRate",0.375)).toBe("37.5%");
+});
+
+it("explains cancelled runs without empty metrics or a pending label",async()=>{
+ const saved=fixture("run",{runId:"eval-live"}) as EvalResult;
+ saved.run.status="cancelled";
+ saved.run.cells.forEach(c=>{c.status="cancelled";c.turns=0;});
+ render(<EvalsView full initialRunId="eval-live" appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ await screen.findByRole("heading",{name:"Results Cancelled"});
+ expect(screen.getByRole("heading",{name:"Model evaluations"})).toBeTruthy();
+ expect(screen.getAllByText("No completed test results").length).toBeGreaterThan(0);
+ expect(screen.queryByText("pending")).toBeNull();
+ expect(screen.queryByRole("table",{name:"Configuration comparison"})).toBeNull();
+ expect(screen.queryByText("Compare with a previous run")).toBeNull();
+ const matrix=screen.getByRole("table",{name:"Task by configuration"});
+ expect(within(matrix).getAllByText("Cancelled")).toHaveLength(4);
+ expect(within(matrix).queryByText("—")).toBeNull();
+});
+it("names the model on running tests and clears transcripts when selecting a different run",async()=>{
+ render(<EvalsView full initialRunId="eval-live" appSettings={settings} onUpdateAppSettings={vi.fn()}/>);
+ const running=await screen.findByLabelText("Test progress");
+ expect(within(running).getAllByText("GPT-5")).toHaveLength(2);
+ expect(screen.getByRole("progressbar",{name:"Finished tests"}).getAttribute("value")).toBe("0");
+ fireEvent.click(within(running).getAllByRole("button")[0]);
+ expect(screen.getByLabelText("Read-only transcript")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:/10\/21\/2026.*Completed/}));
+ const heading=await screen.findByRole("heading",{name:"Results Completed"});
+ await waitFor(()=>expect(document.activeElement).toBe(heading));
+ expect(screen.queryByLabelText("Read-only transcript")).toBeNull();
+ expect(screen.queryByLabelText("Configuration details")).toBeNull();
+});

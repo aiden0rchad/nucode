@@ -1,0 +1,142 @@
+import type { ReorderRowProps } from "../hooks/useSidebarReorder";
+import Plus from "lucide-react/dist/esm/icons/plus";
+import { ProjectAvatar } from "./ProjectAvatar";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import { IconButton } from "@/features/design-system/components/IconButton";
+import { Squircle } from "@/features/design-system/components/squircle/Squircle";
+import { ProjectEngine } from "./SidebarTree";
+import type { MouseEvent } from "react";
+
+import type { WorkspaceInfo } from "../../../types";
+
+type WorkspaceCardProps = {
+  reorderProps?: ReorderRowProps;
+  workspace: WorkspaceInfo;
+  workspaceName?: React.ReactNode;
+  summary?: string | null;
+  isActive: boolean;
+  isCollapsed: boolean;
+  addMenuOpen: boolean;
+  addMenuWidth: number;
+  onSelectWorkspace: (id: string) => void;
+  onShowWorkspaceMenu: (event: MouseEvent, workspaceId: string) => void;
+  onToggleWorkspaceCollapse: (workspaceId: string, collapsed: boolean) => void;
+  onConnectWorkspace: (workspace: WorkspaceInfo) => void;
+  onToggleAddMenu: (anchor: {
+    workspaceId: string;
+    top: number;
+    left: number;
+    width: number;
+  } | null) => void;
+  children?: React.ReactNode;
+};
+
+export function WorkspaceCard({
+  workspace,
+  reorderProps,
+  workspaceName,
+  summary = null,
+  isActive,
+  isCollapsed,
+  addMenuOpen,
+  addMenuWidth,
+  onSelectWorkspace,
+  onShowWorkspaceMenu,
+  onToggleWorkspaceCollapse,
+  onConnectWorkspace,
+  onToggleAddMenu,
+  children,
+}: WorkspaceCardProps) {
+  const contentCollapsedClass = isCollapsed ? " collapsed" : "";
+
+  return (
+    <ProjectEngine engine={workspace.settings.agentPolicy?.defaultEngine}><Squircle className={`workspace-card project-group-card${isActive ? " is-selected" : ""}`}>
+      <div
+        {...reorderProps}
+        className={`workspace-row ${isActive ? "active" : ""}`}
+        title={[workspace.name, summary].filter(Boolean).join(" · ")}
+        data-depth={0}
+        role="button"
+      aria-label={workspace.name}
+        tabIndex={0}
+        onClick={() => onSelectWorkspace(workspace.id)}
+        onContextMenu={(event) => onShowWorkspaceMenu(event, workspace.id)}
+        onKeyDown={(event) => {
+          reorderProps?.onKeyDown?.(event);
+          if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            onSelectWorkspace(workspace.id);
+          }
+        }}
+      >
+        <IconButton size="sm"
+          className={`workspace-toggle ${isCollapsed ? "" : "expanded"}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleWorkspaceCollapse(workspace.id, !isCollapsed);
+          }}
+          data-tauri-drag-region="false"
+          aria-label={isCollapsed ? "Show agents" : "Hide agents"}
+          aria-expanded={!isCollapsed}
+        >
+          <ChevronRight className="workspace-toggle-icon" aria-hidden />
+        </IconButton>
+        <div className="workspace-copy">
+          <div className="workspace-name-row">
+            <div className="workspace-title">
+              <ProjectAvatar name={workspace.name} />
+              <span className="workspace-name">{workspaceName ?? workspace.name}</span>
+            </div>
+          </div>
+        </div>
+        <span className="workspace-count">{summary?.match(/^\d+/)?.[0]}</span>
+        <div className="workspace-actions">
+          <IconButton size="sm"
+            className="ghost workspace-add"
+            onClick={(event) => {
+              event.stopPropagation();
+              const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+              const left = Math.min(
+                Math.max(rect.left, 12),
+                window.innerWidth - addMenuWidth - 12,
+              );
+              const top = rect.bottom + 8;
+              onToggleAddMenu(
+                addMenuOpen
+                  ? null
+                  : {
+                      workspaceId: workspace.id,
+                      top,
+                      left,
+                      width: addMenuWidth,
+                    },
+              );
+            }}
+            data-tauri-drag-region="false"
+            aria-label="Add agent options"
+            aria-expanded={addMenuOpen}
+          ><Plus aria-hidden /></IconButton>
+          {!workspace.connected && (
+            <span
+              className="connect"
+              title="Connect workspace to its engine"
+              onClick={(event) => {
+                event.stopPropagation();
+                onConnectWorkspace(workspace);
+              }}
+            >
+              connect
+            </span>
+          )}
+        </div>
+      </div>
+      <div
+        className={`workspace-card-content${contentCollapsedClass}`}
+        aria-hidden={isCollapsed}
+        inert={isCollapsed ? true : undefined}
+      >
+        <div className="workspace-card-content-inner">{children}</div>
+      </div>
+    </Squircle></ProjectEngine>
+  );
+}

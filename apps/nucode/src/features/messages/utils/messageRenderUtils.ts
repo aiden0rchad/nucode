@@ -1,0 +1,759 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
+import type { ConversationItem } from "../../../types";
+
+export type ToolSummary = {
+  label: string;
+  value?: string;
+  detail?: string;
+  output?: string;
+};
+
+export type StatusTone = "completed" | "processing" | "failed" | "unknown";
+
+export type ParsedReasoning = {
+  summaryTitle: string;
+  bodyText: string;
+  hasBody: boolean;
+  workingLabel: string | null;
+};
+
+export type MessageImage = {
+  src: string;
+  label: string;
+};
+
+export type ToolGroupItem = Extract<
+  ConversationItem,
+  { kind: "tool" | "reasoning" | "explore" | "userInput" }
+>;
+
+export type ToolGroup = {
+  id: string;
+  items: ToolGroupItem[];
+  toolCount: number;
+  messageCount: number;
+};
+
+export type MessageListEntry =
+  | { kind: "item"; item: ConversationItem }
+  | { kind: "toolGroup"; group: ToolGroup };
+
+export const SCROLL_THRESHOLD_PX = 120;
+export const MAX_COMMAND_OUTPUT_LINES = 200;
+
+export function basename(path: string) {
+  if (!path) {
+    return "";
+  }
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : path;
+}
+
+function parseToolArgs(detail: string) {
+  if (!detail) {
+    return null;
+  }
+  try {
+    return JSON.parse(detail) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function firstStringField(
+  source: Record<string, unknown> | null,
+  keys: string[],
+) {
+  if (!source) {
+    return "";
+  }
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function formatCollabAgentLabel(agent: {
+  threadId: string;
+  nickname?: string;
+  role?: string;
+}) {
+  const nickname = agent.nickname?.trim();
+  const role = agent.role?.trim();
+  if (nickname && role) {
+    return `${nickname} [${role}]`;
+  }
+  if (nickname) {
+    return nickname;
+  }
+  if (role) {
+    return `${agent.threadId} [${role}]`;
+  }
+  return agent.threadId;
+}
+
+function stoppedDelegation(item: Extract<ConversationItem, { kind: "tool" }>) {
+  if (item.toolType !== "collabToolCall") return false;
+  const nodes = [...(item.agentsTree ?? [])];
+  for (let i = 0; i < nodes.length; i++) nodes.push(...(nodes[i].children ?? []));
+  return nodes.some(node => node.status === "aborted")
+    && nodes.every(node => node.status === "aborted" || node.status === "completed");
+}
+
+function summarizeCollabLabel(title: string, status?: string) {
+  const tool = title.replace(/^collab:\s*/i, "").trim().toLowerCase();
+  const tone = statusToneFromText(status);
+  if (tool.includes("wait")) {
+    return tone === "processing" ? "waiting for" : "waited for";
+  }
+  if (tool.includes("resume")) {
+    return tone === "processing" ? "resuming" : "resumed";
+  }
+  if (tool.includes("close")) {
+    return tone === "processing" ? "closing" : "closed";
+  }
+  if (tool.includes("spawn")) {
+    if (tone === "failed") {
+      return "spawn failed";
+    }
+    return tone === "processing" ? "spawning" : "spawned";
+  }
+  if (tool.includes("send") || tool.includes("interaction")) {
+    return tone === "processing" ? "sending to" : "sent to";
+  }
+  return "sub-agent";
+}
+
+function summarizeCollabReceiver(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+) {
+  const receivers =
+    item.collabReceivers && item.collabReceivers.length > 0
+      ? item.collabReceivers
+      : item.collabReceiver
+        ? [item.collabReceiver]
+        : [];
+  if (receivers.length === 0) {
+    const nodes = item.agentsTree ?? [];
+    return nodes.length > 1 ? `${nodes[0].agent || "Agent"} +${nodes.length - 1}` : nodes[0]?.agent || "agent";
+  }
+  const label = (receiver: (typeof receivers)[number]) => {
+    if (receiver.threadId.startsWith(`${item.id}:agent:`)) {
+      return receiver.nickname?.trim() || receiver.role?.trim()
+        || item.agentsTree?.find((node) => node.id === receiver.threadId)?.agent?.trim()
+        || "Sub-agent";
+    }
+    return formatCollabAgentLabel(receiver);
+  };
+  if (receivers.length === 1) {
+    return label(receivers[0]);
+  }
+  return `${label(receivers[0])} +${receivers.length - 1}`;
+}
+
+export function toolNameFromTitle(title: string) {
+  if (!title.toLowerCase().startsWith("tool:")) {
+    return "";
+  }
+  const [, toolPart = ""] = title.split(":");
+  const segments = toolPart.split("/").map((segment) => segment.trim());
+  return segments.length ? segments[segments.length - 1] : "";
+}
+
+export function formatCount(value: number, singular: string, plural: string) {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function sanitizeReasoningTitle(title: string) {
+  return title
+    .replace(/[`*_~]/g, "")
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .trim();
+}
+
+export function parseReasoning(
+  item: Extract<ConversationItem, { kind: "reasoning" }>,
+): ParsedReasoning {
+  const summary = item.summary ?? "";
+  const content = item.content ?? "";
+  const hasSummary = summary.trim().length > 0;
+  const titleSource = hasSummary ? summary : content;
+  const titleLines = titleSource.split("\n");
+  const trimmedLines = titleLines.map((line) => line.trim());
+  const titleLineIndex = trimmedLines.findIndex(Boolean);
+  const rawTitle = titleLineIndex >= 0 ? trimmedLines[titleLineIndex] : "";
+  const cleanTitle = sanitizeReasoningTitle(rawTitle);
+  const summaryTitle = cleanTitle
+    ? cleanTitle.length > 80
+      ? `${cleanTitle.slice(0, 80)}…`
+      : cleanTitle
+    : "Reasoning";
+  const summaryLines = summary.split("\n");
+  const contentLines = content.split("\n");
+  const summaryBody =
+    hasSummary && titleLineIndex >= 0
+      ? summaryLines
+          .filter((_, index) => index !== titleLineIndex)
+          .join("\n")
+          .trim()
+      : "";
+  const contentBody = hasSummary
+    ? content.trim()
+    : titleLineIndex >= 0
+      ? contentLines
+          .filter((_, index) => index !== titleLineIndex)
+          .join("\n")
+          .trim()
+      : content.trim();
+  const bodyParts = [summaryBody, contentBody].filter(Boolean);
+  const bodyText = bodyParts.join("\n\n").trim();
+  const hasBody = bodyText.length > 0;
+  const hasAnyText = titleSource.trim().length > 0;
+  const workingLabel = hasAnyText ? summaryTitle : null;
+  return {
+    summaryTitle,
+    bodyText,
+    hasBody,
+    workingLabel,
+  };
+}
+
+export function normalizeMessageImageSrc(path: string) {
+  if (!path) {
+    return "";
+  }
+  if (path.startsWith("data:") || path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  if (path.startsWith("file://")) {
+    return path;
+  }
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return "";
+  }
+}
+
+function isToolGroupItem(item: ConversationItem): item is ToolGroupItem {
+  return (
+    item.kind === "tool" ||
+    item.kind === "reasoning" ||
+    item.kind === "explore" ||
+    item.kind === "userInput"
+  );
+}
+
+function mergeExploreItems(
+  items: Extract<ConversationItem, { kind: "explore" }>[],
+): Extract<ConversationItem, { kind: "explore" }> {
+  const first = items[0];
+  const last = items[items.length - 1];
+  const status = last?.status ?? "explored";
+  const entries = items.flatMap((item) => item.entries);
+  return {
+    id: first.id,
+    kind: "explore",
+    status,
+    entries,
+  };
+}
+
+function mergeConsecutiveExploreRuns(items: ToolGroupItem[]): ToolGroupItem[] {
+  const result: ToolGroupItem[] = [];
+  let run: Extract<ConversationItem, { kind: "explore" }>[] = [];
+
+  const flushRun = () => {
+    if (run.length === 0) {
+      return;
+    }
+    if (run.length === 1) {
+      result.push(run[0]);
+    } else {
+      result.push(mergeExploreItems(run));
+    }
+    run = [];
+  };
+
+  items.forEach((item) => {
+    if (item.kind === "explore") {
+      run.push(item);
+      return;
+    }
+    flushRun();
+    result.push(item);
+  });
+  flushRun();
+  return result;
+}
+
+const TASK_LINE = /^\s*[-*+]\s+\[[ xX]\]\s/;
+
+/** Drops a message's GFM task-list lines (and their wrapped continuation lines). */
+export function stripTaskList(text: string) {
+  const kept: string[] = [];
+  let inTask = false;
+  for (const line of text.split("\n")) {
+    if (TASK_LINE.test(line)) { inTask = true; continue; }
+    if (inTask && /^\s{2,}\S/.test(line)) continue;
+    inTask = false;
+    kept.push(line);
+  }
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Some engines plan by writing a Markdown checklist, which also arrives as a plan item with the same text.
+ * Only the latest checklist stays in the conversation (its plan item would repeat it); earlier ones are
+ * superseded, so their checklist lines go and their "Updated plan" row keeps the snapshot.
+ */
+export function collapseChecklistPlans(items: ConversationItem[]): { items: ConversationItem[]; checklistPlanIds: Set<string> } {
+  const planByText = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind === "tool" && item.toolType === "plan" && (item.output ?? "").trim()) planByText.set((item.output ?? "").trim(), item.id);
+  }
+  const checklistPlanIds = new Set<string>();
+  if (!planByText.size) return { items, checklistPlanIds };
+  const checklists = items.filter((item): item is Extract<ConversationItem, { kind: "message" }> =>
+    item.kind === "message" && item.role === "assistant" && planByText.has(item.text.trim()) && item.text.split("\n").some((line) => TASK_LINE.test(line)));
+  if (!checklists.length) return { items, checklistPlanIds };
+  const latest = checklists[checklists.length - 1];
+  const latestPlanId = planByText.get(latest.text.trim());
+  for (const message of checklists) checklistPlanIds.add(planByText.get(message.text.trim())!);
+  const superseded = new Set(checklists.slice(0, -1).map((message) => message.id));
+  const result: ConversationItem[] = [];
+  for (const item of items) {
+    if (item.kind === "tool" && item.id === latestPlanId) continue;
+    if (item.kind === "message" && superseded.has(item.id)) {
+      const text = stripTaskList(item.text);
+      if (text) result.push({ ...item, text });
+      continue;
+    }
+    result.push(item);
+  }
+  return { items: result, checklistPlanIds };
+}
+
+export function buildToolGroups(items: ConversationItem[]): MessageListEntry[] {
+  const entries: MessageListEntry[] = [];
+  let buffer: ToolGroupItem[] = [];
+
+  const flush = () => {
+    if (buffer.length === 0) {
+      return;
+    }
+    const normalizedBuffer = mergeConsecutiveExploreRuns(buffer);
+    const toolCount = normalizedBuffer.reduce((total, item) => {
+      if (item.kind === "tool") {
+        return total + 1;
+      }
+      if (item.kind === "explore") {
+        return total + item.entries.length;
+      }
+      return total;
+    }, 0);
+    const messageCount = normalizedBuffer.filter(
+      (item) => item.kind !== "tool" && item.kind !== "explore",
+    ).length;
+    if (toolCount === 0 || normalizedBuffer.length === 1) {
+      normalizedBuffer.forEach((item) => entries.push({ kind: "item", item }));
+    } else {
+      entries.push({
+        kind: "toolGroup",
+        group: {
+          id: normalizedBuffer[0].id,
+          items: normalizedBuffer,
+          toolCount,
+          messageCount,
+        },
+      });
+    }
+    buffer = [];
+  };
+
+  items.forEach((item) => {
+    if (isToolGroupItem(item)) {
+      buffer.push(item);
+    } else {
+      flush();
+      entries.push({ kind: "item", item });
+    }
+  });
+  flush();
+  return entries;
+}
+
+export function cleanCommandText(commandText: string) {
+  if (!commandText) {
+    return "";
+  }
+  const trimmed = commandText.trim();
+  const shellMatch = trimmed.match(
+    /^(?:\/\S+\/)?(?:bash|zsh|sh|fish)(?:\.exe)?\s+-lc\s+(['"])([\s\S]+)\1$/,
+  );
+  const inner = shellMatch ? shellMatch[2] : trimmed;
+  const cdMatch = inner.match(
+    /^\s*cd\s+[^&;]+(?:\s*&&\s*|\s*;\s*)([\s\S]+)$/i,
+  );
+  const stripped = cdMatch ? cdMatch[1] : inner;
+  return stripped.trim();
+}
+
+export type ToolCategory = "read" | "edit" | "command" | "browser" | "search" | "agent" | "plan" | "lookup" | "other";
+export type ToolDescription = { verb: string; target: string; category: ToolCategory; mono?: boolean };
+
+const BROWSER_VERBS: Record<string, [string, string[]]> = {
+  browser_navigate: ["Opened", ["url"]],
+  browser_navigate_back: ["Went back", []],
+  browser_snapshot: ["Read page", []],
+  browser_take_screenshot: ["Took screenshot", []],
+  browser_click: ["Clicked", ["element", "target", "ref"]],
+  browser_type: ["Typed into", ["element", "target", "ref"]],
+  browser_fill_form: ["Filled form", []],
+  browser_select_option: ["Selected in", ["element", "target", "ref"]],
+  browser_press_key: ["Pressed", ["key"]],
+  browser_hover: ["Hovered", ["element", "target", "ref"]],
+  browser_evaluate: ["Ran page script", []],
+  browser_console_messages: ["Checked console", []],
+  browser_network_requests: ["Checked network", []],
+  browser_handle_dialog: ["Answered dialog", []],
+  browser_wait_for: ["Waited for", ["text", "textGone"]],
+  browser_scroll: ["Scrolled", ["ref"]],
+  browser_tabs: ["Managed tabs", []],
+  browser_close: ["Closed browser", []],
+};
+
+const shortUrl = (url: string) => url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+const humanize = (name: string) => name.replace(/^mcp__/, "").replace(/[_-]+/g, " ").trim();
+const stripRange = (path: string) => path.replace(/:\d+(?:-\d+)?$/, "");
+
+/** One verb + short target per tool call, in the style of Claude/Codex desktop. */
+export function describeTool(item: Extract<ConversationItem, { kind: "tool" }>): ToolDescription {
+  const args = parseToolArgs(item.detail);
+  if (item.toolType === "commandExecution") {
+    return { verb: "Ran", target: cleanCommandText(item.title.replace(/^Command:\s*/i, "")) || "command", category: "command", mono: true };
+  }
+  if (item.toolType === "fileChange") {
+    const changes = item.changes ?? [];
+    const names = changes.map((change) => basename(change.path)).filter(Boolean);
+    const created = changes.length > 0 && changes.every((change) => /add|create/i.test(change.kind ?? ""));
+    return { verb: created ? "Created" : "Edited", target: names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] || "files", category: "edit" };
+  }
+  if (item.toolType === "plan") return { verb: "Updated plan", target: "", category: "plan" };
+  if (item.toolType === "webSearch") return { verb: "Searched", target: item.detail || "the web", category: "search" };
+  if (item.toolType === "imageView") return { verb: "Viewed", target: basename(item.detail || "") || "image", category: "read" };
+  if (item.toolType === "collabToolCall") {
+    const label = stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status);
+    return { verb: label.charAt(0).toUpperCase() + label.slice(1), target: summarizeCollabReceiver(item), category: "agent" };
+  }
+  if (item.toolType === "hook") return { verb: "Hook", target: item.title.replace(/^Hook:\s*/i, "").trim(), category: "other" };
+  const name = (toolNameFromTitle(item.title) || item.title).trim();
+  const browser = BROWSER_VERBS[name];
+  if (browser) {
+    const value = firstStringField(args, browser[1]);
+    // A bare snapshot ref ("e46") means nothing to the user; show the verb alone.
+    return { verb: browser[0], target: name === "browser_navigate" ? shortUrl(value) : /^e\d+$/.test(value) ? "" : value, category: "browser" };
+  }
+  const path = stripRange(firstStringField(args, ["path", "file", "filename", "file_path"]));
+  const lower = name.toLowerCase();
+  if (lower === "read" && path.startsWith("xd://")) return { verb: "Looked up", target: `${humanize(path.slice(5).replace(/^mcp__/, "").replace(/^nucode_browser_/, ""))} tool`, category: "lookup" };
+  if (lower === "preview_server") return { verb: args?.action === "start" ? "Started preview" : args?.action === "stop" ? "Stopped preview" : "Checked previews", target: firstStringField(args, ["label"]), category: "command" };
+  if (lower === "subagent" || lower === "task") return { verb: "Ran sub-agent", target: firstStringField(args, ["agent", "description"]), category: "agent" };
+  if (/codegraph|explore/.test(lower)) return { verb: "Explored code", target: firstStringField(args, ["query"]), category: "search" };
+  if (lower === "read" || lower.endsWith("read_file") || lower === "view") return { verb: "Read", target: basename(path) || path, category: "read" };
+  if (lower === "ls" || lower.includes("list_dir")) return { verb: "Listed", target: path || ".", category: "read" };
+  if (/grep|find|glob|search/.test(lower)) return { verb: "Searched", target: firstStringField(args, ["pattern", "query", "text", "glob"]), category: "search" };
+  if (lower === "write" || lower === "edit") return { verb: lower === "write" ? "Wrote" : "Edited", target: basename(path), category: "edit" };
+  // Code-mode tools (Codex's exec, the JS REPLs) run a script rather than a shell command.
+  const code = lower === "eval" || lower === "exec" || lower === "js";
+  if (lower === "bash" || code) return { verb: code ? "Ran code" : "Ran", target: lower === "bash" ? firstStringField(args, ["command"]) : "", category: "command", mono: lower === "bash" };
+  if (lower === "fetch" || lower.includes("web_fetch")) return { verb: "Fetched", target: shortUrl(firstStringField(args, ["url"])), category: "search" };
+  return { verb: "Used", target: humanize(name) || "tool", category: "other" };
+}
+
+/** "Read 3 files · Edited 2 files · Ran 1 command · 4 browser actions · 1 failed" */
+export function summarizeToolGroup(items: ToolGroupItem[]) {
+  const counts = new Map<ToolCategory, number>();
+  let failed = 0;
+  let stopped = 0;
+  let explored = 0;
+  // Tools without a category are named when there are only one or two kinds ("Used context compaction ×2").
+  const others = new Map<string, number>();
+  for (const item of items) {
+    if (item.kind === "explore") { explored += item.entries.length; continue; }
+    if (item.kind !== "tool") continue;
+    const { category, verb, target } = describeTool(item);
+    if (category === "lookup") continue;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+    if (category === "other") {
+      const name = (verb === "Used" ? target : `${verb.toLowerCase()} ${target}`).trim() || "tool";
+      others.set(name, (others.get(name) ?? 0) + 1);
+    }
+    if (stoppedDelegation(item)) stopped += 1;
+    else if (statusToneFromText(item.status) === "failed") failed += 1;
+  }
+  const n = (category: ToolCategory) => counts.get(category) ?? 0;
+  const parts = [
+    n("read") && `Read ${formatCount(n("read"), "file", "files")}`,
+    explored && `Explored ${formatCount(explored, "item", "items")}`,
+    n("search") && `${formatCount(n("search"), "search", "searches")}`,
+    n("edit") && `Edited ${formatCount(n("edit"), "file", "files")}`,
+    n("command") && `Ran ${formatCount(n("command"), "command", "commands")}`,
+    n("browser") && formatCount(n("browser"), "browser action", "browser actions"),
+    n("agent") && formatCount(n("agent"), "sub-agent call", "sub-agent calls"),
+    n("plan") && "Updated plan",
+    others.size > 0 && (others.size <= 2
+      ? `Used ${[...others].map(([name, count]) => (count > 1 ? `${name} ×${count}` : name)).join(", ")}`
+      : formatCount(n("other"), "other tool call", "other tool calls")),
+    failed && `${failed} failed`,
+    stopped && `${stopped} stopped`,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+export function buildToolSummary(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+  commandText: string,
+): ToolSummary {
+  if (item.toolType === "commandExecution") {
+    const cleanedCommand = cleanCommandText(commandText);
+    return {
+      label: "command",
+      value: cleanedCommand || "Command",
+      detail: "",
+      output: item.output || "",
+    };
+  }
+
+  if (item.toolType === "webSearch") {
+    return {
+      label: statusToneFromText(item.status) === "processing" ? "searching" : "searched",
+      value: item.detail || "the web",
+    };
+  }
+
+  if (item.toolType === "imageView") {
+    const file = basename(item.detail || "");
+    return {
+      label: "read",
+      value: file || "image",
+    };
+  }
+
+  if (item.toolType === "hook") {
+    return {
+      label: "hook",
+      value: item.title.replace(/^Hook:\s*/i, "").trim() || item.title || "hook",
+      detail: item.detail || "",
+      output: item.output || "",
+    };
+  }
+
+  if (item.toolType === "collabToolCall") {
+    return {
+      label: stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status),
+      value: summarizeCollabReceiver(item),
+      detail: item.detail || "",
+      output: item.output || "",
+    };
+  }
+
+  if (item.toolType === "mcpToolCall") {
+    const toolName = toolNameFromTitle(item.title);
+    const args = parseToolArgs(item.detail);
+    // Results (page snapshots and the like) stay hidden; a failure shows why.
+    const output = statusToneFromText(item.status) === "failed" ? item.output || "" : "";
+    if (toolName.toLowerCase().includes("search")) {
+      return {
+        label: statusToneFromText(item.status) === "processing" ? "searching" : "searched",
+        value:
+          firstStringField(args, ["query", "pattern", "text"]) || item.detail,
+        output,
+      };
+    }
+    if (toolName.toLowerCase().includes("read")) {
+      const targetPath =
+        firstStringField(args, ["path", "file", "filename"]) || item.detail;
+      return {
+        label: "read",
+        value: basename(targetPath),
+        detail: targetPath && targetPath !== basename(targetPath) ? targetPath : "",
+        output,
+      };
+    }
+    if (toolName) {
+      return {
+        label: "tool",
+        value: toolName,
+        detail: item.detail || "",
+        output,
+      };
+    }
+  }
+
+  return {
+    label: "tool",
+    value: item.title || "",
+    detail: item.detail || "",
+    output: item.output || "",
+  };
+}
+
+export function formatDurationMs(durationMs: number) {
+  const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const durationMinutes = Math.floor(durationSeconds / 60);
+  const durationRemainder = durationSeconds % 60;
+  return `${durationMinutes}:${String(durationRemainder).padStart(2, "0")}`;
+}
+
+export function statusToneFromText(status?: string): StatusTone {
+  if (!status) {
+    return "unknown";
+  }
+  const normalized = status.toLowerCase();
+  if (/(fail|error)/.test(normalized)) {
+    return "failed";
+  }
+  if (/(pending|running|processing|started|in[_\s-]?progress)/.test(normalized)) {
+    return "processing";
+  }
+  if (/(complete|completed|success|done)/.test(normalized)) {
+    return "completed";
+  }
+  return "unknown";
+}
+
+export function toolStatusTone(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+  hasChanges: boolean,
+): StatusTone {
+  if (stoppedDelegation(item)) return "unknown";
+  const fromStatus = statusToneFromText(item.status);
+  if (fromStatus !== "unknown") {
+    return fromStatus;
+  }
+  if (item.output || hasChanges) {
+    return "completed";
+  }
+  return "processing";
+}
+
+export function formatToolStatusLabel(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+) {
+  if (item.toolType !== "hook") {
+    return "";
+  }
+  const parts: string[] = [];
+  const status = (item.status ?? "").trim().toLowerCase();
+  if (status) {
+    parts.push(status.replace(/[_-]+/g, " "));
+  }
+  if (typeof item.durationMs === "number" && Number.isFinite(item.durationMs)) {
+    parts.push(formatDurationMs(item.durationMs));
+  }
+  return parts.join(" • ");
+}
+
+
+export type PlanFollowupState = {
+  shouldShow: boolean;
+  planItemId: string | null;
+};
+
+export function computePlanFollowupState({
+  threadId,
+  items,
+  isThinking,
+  hasVisibleUserInputRequest,
+}: {
+  threadId: string | null;
+  items: ConversationItem[];
+  isThinking: boolean;
+  hasVisibleUserInputRequest: boolean;
+}): PlanFollowupState {
+  if (!threadId) {
+    return { shouldShow: false, planItemId: null };
+  }
+  if (hasVisibleUserInputRequest) {
+    return { shouldShow: false, planItemId: null };
+  }
+
+  let planIndex = -1;
+  let planItem: Extract<ConversationItem, { kind: "tool" }> | null = null;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === "tool" && item.toolType === "plan") {
+      planIndex = index;
+      planItem = item;
+      break;
+    }
+  }
+
+  if (!planItem) {
+    return { shouldShow: false, planItemId: null };
+  }
+
+  const planItemId = planItem.id;
+
+  if (!(planItem.output ?? "").trim()) {
+    return { shouldShow: false, planItemId };
+  }
+
+  const planTone = toolStatusTone(planItem, false);
+  if (planTone === "failed") {
+    return { shouldShow: false, planItemId };
+  }
+
+  // Some backends stream plan output deltas without a final status update. As
+  // soon as the turn stops thinking, treat the latest plan output as ready.
+  if (isThinking && planTone !== "completed") {
+    return { shouldShow: false, planItemId };
+  }
+
+  for (let index = planIndex + 1; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.kind === "message" && item.role === "user") {
+      return { shouldShow: false, planItemId };
+    }
+  }
+
+  return { shouldShow: true, planItemId };
+}
+
+export function scrollKeyForItems(items: ConversationItem[]) {
+  if (!items.length) {
+    return "empty";
+  }
+  const last = items[items.length - 1];
+  switch (last.kind) {
+    case "message":
+      return `${last.id}-${last.text.length}`;
+    case "userInput":
+      return `${last.id}-${last.status}-${last.questions.length}`;
+    case "reasoning":
+      return `${last.id}-${last.summary.length}-${last.content.length}`;
+    case "explore":
+      return `${last.id}-${last.status}-${last.entries.length}`;
+    case "tool":
+      return `${last.id}-${last.status ?? ""}-${last.output?.length ?? 0}`;
+    case "diff":
+      return `${last.id}-${last.status ?? ""}-${last.diff.length}`;
+    case "review":
+      return `${last.id}-${last.state}-${last.text.length}`;
+    default: {
+      const _exhaustive: never = last;
+      return _exhaustive;
+    }
+  }
+}
+
+export function exploreKindLabel(
+  kind: Extract<ConversationItem, { kind: "explore" }>["entries"][number]["kind"],
+) {
+  return kind[0].toUpperCase() + kind.slice(1);
+}
