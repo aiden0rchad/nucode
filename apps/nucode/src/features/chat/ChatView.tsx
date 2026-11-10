@@ -184,7 +184,7 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
         {editing && <div className="chat-editing">Editing the last message · creates a new branch <button type="button" onClick={() => { clearDraft(); composerInput.current?.focus(); }}>Cancel</button></div>}
         <textarea writingsuggestions="false" ref={composerInput} aria-label="Message" placeholder="Ask anything" rows={1} value={draft} disabled={busy} onChange={e => setDraft(e.target.value)} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); if (!disabled) addFiles(files); } }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); /* Interrupting a running reply takes Cmd/Ctrl+Enter, so plain Enter can never stop it by accident. */ if (!chat.running || e.metaKey || e.ctrlKey) send(); } }} />
 
-        {chat.error && <p role="alert">{chat.error}</p>}
+        {chat.error && <p role="alert" className="composer-dictation-error chat-composer-error">{chat.error}{chat.error.endsWith("in Settings") && <button type="button" className="ghost composer-dictation-error-dismiss" onClick={onOpenSettings}>Open Settings</button>}</p>}
         </ComposerShell>
       </form>
       {!chat.messages.length && <div className="chat-examples starter-pills">{examples.map(({ label, prompt, Icon }) => <button key={label} onClick={() => setDraft(prompt)}><Icon aria-hidden />{label}</button>)}</div>}

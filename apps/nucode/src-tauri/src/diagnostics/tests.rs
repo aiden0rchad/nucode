@@ -156,6 +156,19 @@ fn content_is_opt_in_and_metadata_allowlisted() {
     assert_eq!(e.detail["note"], "[REDACTED]");
 }
 #[test]
+fn turn_failures_are_classified_without_their_text() {
+    for (text, class) in [
+        ("Connection error.", "Connection"),
+        ("Request timed out", "Timeout"),
+        ("401 Invalid API key", "Auth"),
+        ("429 rate limit exceeded", "RateLimit"),
+        ("503 Service Unavailable", "Server"),
+        ("something else", "EngineError"),
+    ] {
+        assert_eq!(crate::observe::error_class(text), class, "{text}");
+    }
+}
+#[test]
 fn signals_and_rules() {
     let mut t = signals::Turn {
         context: json!({"model":"m"}),

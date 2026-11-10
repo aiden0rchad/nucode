@@ -18,6 +18,25 @@ struct Tracker {
     baselines: BTreeMap<String, Value>,
 }
 static TRACKER: OnceLock<Mutex<Tracker>> = OnceLock::new();
+pub(crate) fn error_class(message: &str) -> &'static str {
+    let m = message.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| m.contains(w));
+    if has(&["timed out", "timeout"]) {
+        "Timeout"
+    } else if has(&["connect", "network", "fetch failed", "socket", "enotfound", "certificate"]) {
+        "Connection"
+    } else if has(&["401", "403", "unauthorized", "forbidden", "api key", "authentication"]) {
+        "Auth"
+    } else if has(&["429", "rate limit", "quota"]) {
+        "RateLimit"
+    } else if has(&["context length", "context window", "maximum context"]) {
+        "ContextLength"
+    } else if has(&["500", "502", "503", "504", "overloaded", "server error", "bad gateway"]) {
+        "Server"
+    } else {
+        "EngineError"
+    }
+}
 pub fn observe(message: &Value) {
     if !writer::enabled() {
         return;
@@ -84,6 +103,9 @@ pub fn observe(message: &Value) {
                 "Engine turn failed",
             );
             e.context = json!({"threadId":thread,"turnId":p["turnId"]});
+            let text = p["error"]["message"].as_str().unwrap_or("");
+            // The text is content: kept only with snippets on, the class always.
+            e.detail = json!({"errorClass":error_class(text),"stderrTail":text});
             e
         });
         if p["willRetry"] == true {
