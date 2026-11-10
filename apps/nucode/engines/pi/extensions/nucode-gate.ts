@@ -26,7 +26,7 @@ export default function (pi: ExtensionAPI) {
         event = { ...event, toolName: prefix.slice(0, -1) + "__" + event.toolName.slice(prefix.length) };
       }
     }
-    if (process.env.NUCODE_CHAT === "1" && !(process.env.NUCODE_CHAT_WEB === "1" && ["mcp__nucode_browser__browser_navigate", "mcp__nucode_browser__browser_snapshot", "mcp__nucode_browser__browser_take_screenshot"].includes(event.toolName))) return { block: true, reason: "Tools are disabled in Chat mode" };
+    if (process.env.NUCODE_CHAT === "1" && !(process.env.NUCODE_CHAT_WEB === "1" && ["mcp__nucode_browser__browser_navigate", "mcp__nucode_browser__browser_snapshot", "mcp__nucode_browser__browser_take_screenshot", "mcp__nucode_browser__web_search", "mcp__nucode_browser__web_fetch"].includes(event.toolName))) return { block: true, reason: "Tools are disabled in Chat mode" };
     if (process.env.NUCODE_OMP === "1" && !["read", "grep", "find", "glob", "bash", "write", "edit", "subagent", "report_verification"].includes(event.toolName) && !event.toolName.startsWith("mcp__")) {
       const home = process.env.PI_CODING_AGENT_DIR!, session = process.env.NUCODE_SESSION_KEY!;
       const access = JSON.parse(readFileSync(join(home, "nucode/threads", `${session}.json`), "utf8")) as Access;

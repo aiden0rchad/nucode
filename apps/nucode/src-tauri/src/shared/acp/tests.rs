@@ -165,6 +165,14 @@ fn permissions_obey_access_and_connector_policy() {
         ),
         Allow
     );
+    for tool in ["web_search", "web_fetch"] {
+        for mode in ["ask", "read-only", "full-access"] {
+            assert_eq!(permissions::connector_decision(&entries, &format!("mcp__nucode_browser__{tool}"), mode), Allow);
+        }
+        let mut denied = entries.clone();
+        denied.iter_mut().find(|s| s.id == "nucode-browser").unwrap().tool_denylist = Some(vec![tool.into()]);
+        assert_eq!(permissions::connector_decision(&denied, &format!("mcp__nucode_browser__{tool}"), "full-access"), Reject);
+    }
     entries
         .iter_mut()
         .find(|s| s.id == "nucode-browser")

@@ -1,4 +1,5 @@
 use super::{Browser, Settings};
+use futures_util::{future::{AbortHandle, Abortable}, stream::FuturesUnordered, StreamExt};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -141,10 +142,20 @@ async fn proxy(
     let mut pending = HashMap::new();
     let mut sequence = 0;
     let mut activity = NativeActivity::new(|params| browser.request(params));
+    let client = super::web::client()?;
+    let mut web_requests = FuturesUnordered::new();
+    let mut web_cancellations: HashMap<String, AbortHandle> = HashMap::new();
     let result = async {
         loop {
             tokio::select! {
                 _ = signal.wait() => break,
+                Some(completed) = web_requests.next() => {
+                    let completed: Result<(Value, Value), futures_util::future::Aborted> = completed;
+                    if let Ok((id, result)) = completed {
+                        web_cancellations.remove(&id.to_string());
+                        emit(&json!({"jsonrpc":"2.0","id":id,"result":result}).to_string())?;
+                    }
+                }
                 generation = &mut activity.idle => {
                     if generation == activity.generation { activity.set(false).await; }
                 }
@@ -154,6 +165,10 @@ async fn proxy(
                     if let Ok(v) = serde_json::from_str::<Value>(&line) {
                         if v["method"] == "initialize" { initialize = Some(v.clone()); }
                         if v["method"] == "notifications/cancelled" {
+                            if let Some(cancel) = web_cancellations.remove(&v["params"]["requestId"].to_string()) {
+                                cancel.abort();
+                                continue;
+                            }
                             activity.set(false).await;
                             for id in cancel_pending(&mut pending, &v["params"]["requestId"]) {
                                 let cancel = json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id}});
@@ -165,6 +180,12 @@ async fn proxy(
                             }
                         }
                         if v["method"] == "tools/call" {
+                            if matches!(v["params"]["name"].as_str(), Some("web_search" | "web_fetch")) {
+                                let (cancel, registration) = AbortHandle::new_pair();
+                                web_cancellations.insert(v["id"].to_string(), cancel);
+                                web_requests.push(Abortable::new(web_call(client.clone(), browser.settings(), v), registration));
+                                continue;
+                            }
                             let endpoint = match browser.request(json!({"action":"ensure"})).await {
                                 Ok(endpoint) => endpoint,
                                 Err(error) => {
@@ -277,6 +298,18 @@ async fn proxy(
     result
 }
 
+async fn web_call(client: reqwest::Client, settings: Result<Settings, String>, request: Value) -> (Value, Value) {
+    let result = match settings {
+        Ok(settings) => super::web::call(&client, &settings, request["params"]["name"].as_str().unwrap_or(""), &request["params"]["arguments"]).await,
+        Err(error) => Err(error),
+    };
+    let result = match result {
+        Ok(text) => json!({"content":[{"type":"text","text":text}]}),
+        Err(error) => json!({"isError":true,"content":[{"type":"text","text":error}]}),
+    };
+    (request["id"].clone(), result)
+}
+
 fn emit(line: &str) -> Result<(), String> {
     let mut stdout = std::io::stdout().lock();
     writeln!(stdout, "{line}")
@@ -332,6 +365,38 @@ pub(super) fn spawn(
 mod tests {
     use super::*;
     use std::{sync::Mutex, time::Duration};
+
+    #[tokio::test]
+    async fn background_calls_return_mcp_errors_and_cancel_without_results() {
+        let client = super::super::web::client().unwrap();
+        let request = json!({"id":"fetch","params":{"name":"web_fetch","arguments":{"url":"file:///unavailable"}}});
+        let (id, result) = web_call(client.clone(), Ok(Settings::default()), request.clone()).await;
+        assert_eq!(id, "fetch");
+        assert_eq!(result, json!({"isError":true,"content":[{"type":"text","text":"Only HTTP(S) URLs are supported"}]}));
+        let (cancel, registration) = AbortHandle::new_pair();
+        let future = Abortable::new(web_call(client.clone(), Ok(Settings::default()), request.clone()), registration);
+        cancel.abort();
+        assert!(future.await.is_err());
+        let (_, result) = web_call(client, Err("Settings unavailable".into()), request).await;
+        assert_eq!(result["content"][0]["text"], "Settings unavailable");
+    }
+
+    #[tokio::test]
+    async fn slow_background_request_does_not_block_other_completions() {
+        use futures_util::FutureExt;
+        let mut requests = FuturesUnordered::new();
+        let (cancel, registration) = AbortHandle::new_pair();
+        requests.push(Abortable::new(std::future::pending::<(Value, Value)>(), registration).boxed());
+        let (_, registration) = AbortHandle::new_pair();
+        requests.push(Abortable::new(web_call(super::super::web::client().unwrap(), Ok(Settings::default()),
+            json!({"id":7,"params":{"name":"web_search","arguments":{}}})), registration).boxed());
+        let (id, result) = tokio::time::timeout(Duration::from_secs(1), requests.next()).await.unwrap().unwrap().unwrap();
+        assert_eq!(id, 7);
+        assert_eq!(result["isError"], true);
+        cancel.abort();
+        assert!(requests.next().await.unwrap().is_err());
+        assert!(requests.next().await.is_none());
+    }
 
     #[tokio::test]
     async fn native_activity_stays_active_between_calls() {

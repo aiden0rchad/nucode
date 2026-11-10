@@ -138,6 +138,9 @@ fn browser_delivery_and_per_tool_approval_for_both_engines() {
         } else {
             "default_tools_approval_mode = \"approve\""
         }));
+        for tool in ["web_search", "web_fetch"] {
+            assert!(super::super::browser::READ_TOOLS.contains(&tool));
+        }
         for tool in super::super::browser::READ_TOOLS {
             assert!(config.contains(&format!("{tool} = {{ approval_mode = \"approve\" }}")));
         }

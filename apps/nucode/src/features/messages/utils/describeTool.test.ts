@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationItem } from "../../../types";
 import { describeTool, summarizeToolGroup, toolStatusTone } from "./messageRenderUtils";
+import { toolIcon } from "./toolIcon";
+import { Globe } from "lucide-react";
 
 type Tool = Extract<ConversationItem, { kind: "tool" }>;
 const tool = (patch: Partial<Tool>): Tool => ({ id: Math.random().toString(36), kind: "tool", toolType: "mcpToolCall", title: "", detail: "", status: "completed", ...patch } as Tool);
 
 describe("describeTool", () => {
+  it("renders background web tools as search and reading with a globe", () => {
+    const search = tool({ title: "Tool: Browser / web_search", detail: JSON.stringify({ query: "Rust docs" }) });
+    const fetch = tool({ title: "Tool: nucode-browser / web_fetch", detail: JSON.stringify({ url: "https://example.test/docs/" }) });
+    expect(describeTool(search)).toEqual({ verb: "Searched", target: "Rust docs", category: "search" });
+    expect(describeTool(fetch)).toEqual({ verb: "Read", target: "example.test/docs", category: "search" });
+    expect(toolIcon(search)).toBe(Globe);
+    expect(toolIcon(fetch)).toBe(Globe);
+    expect(summarizeToolGroup([search, fetch])).not.toContain("browser");
+  });
   it.each([
     ["xd://mcp__nucode_browser_browser_snapshot", "browser snapshot tool"],
     ["xd://mcp__codegraph_explore", "codegraph explore tool"],

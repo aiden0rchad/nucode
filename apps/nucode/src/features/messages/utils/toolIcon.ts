@@ -1,13 +1,13 @@
 import { Bot, Code2, FilePenLine, FileText, Globe, Image, ListChecks, MousePointerClick, Search, Terminal, Wrench } from "lucide-react";
 import type { ConversationItem } from "../../../types";
-import { describeTool, type ToolDescription } from "./messageRenderUtils";
+import { toolNameFromTitle, describeTool, type ToolDescription } from "./messageRenderUtils";
 
 type ToolItem = Extract<ConversationItem, { kind: "tool" }>;
 
 /** The glyph for a tool step, shared by Code's tool rows and Work's steps so the same action looks the same in both. */
 export function toolIcon(item: ToolItem, description: ToolDescription = describeTool(item)) {
   if (item.toolType === "imageView") return Image;
-  if (item.toolType === "webSearch") return Globe;
+  if (item.toolType === "webSearch" || ["web_search", "web_fetch"].includes(toolNameFromTitle(item.title))) return Globe;
   if (item.toolType === "subAgentActivity") return Bot;
   switch (description.category) {
     case "command": return Terminal;

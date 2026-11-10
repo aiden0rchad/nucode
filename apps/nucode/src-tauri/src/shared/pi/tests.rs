@@ -190,6 +190,32 @@ async fn chat_profile_is_isolated_and_forks_models_and_last_user_without_changin
     engine.shutdown().await.unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn chat_web_exposes_background_tools_and_respects_connector_restrictions() {
+    for restricted in [false, true] {
+        let dir = temp();
+        if restricted {
+            std::fs::write(dir.join("settings.json"), json!({"mcpServers":[{"id":"nucode-browser","enabled":true,"toolAllowlist":["web_search","browser_click"]}]}).to_string()).unwrap();
+        }
+        let mut engine = PiEngine::chat(dir.clone(), Arc::new(|_, _| {}));
+        engine.fake = true;
+        engine.keys = Arc::new(Keys);
+        let providers = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+        engine.configure("chats", providers, AgentPolicy::default()).await;
+        let started = engine.request("chats", "thread/start", json!({"model":"first/fake","web":true})).await.unwrap();
+        let id = started["result"]["thread"]["id"].as_str().unwrap();
+        let spawn: Value = serde_json::from_slice(&std::fs::read(engine.directory("chats").unwrap().join(format!("{id}.spawn"))).unwrap()).unwrap();
+        assert!(spawn["args"].as_array().unwrap().iter().any(|arg| arg.as_str().is_some_and(|s| s.contains("mcp__nucode_browser__web_search,mcp__nucode_browser__web_fetch"))));
+        let home = dir.join("chats/agent").join(id);
+        let connectors: Value = serde_json::from_slice(&std::fs::read(home.join("nucode/connectors.json")).unwrap()).unwrap();
+        assert_eq!(connectors.as_array().unwrap().len(), 1);
+        assert_eq!(connectors[0]["id"], "nucode-browser");
+        assert_eq!(connectors[0]["toolAllowlist"], if restricted { json!(["web_search"]) } else { json!(["browser_navigate","browser_snapshot","browser_take_screenshot","web_search","web_fetch"]) });
+        engine.shutdown().await.unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
 fn replay(name: &str) -> (Translator, Vec<Value>) {
     let mut translator = Translator::new("recorded", "/tmp/nucode-fixture");
     let mut events = vec![];
@@ -693,6 +719,26 @@ fn connector_items_names_and_every_call_approvals() {
         translate::ui_response(&request, &json!({"decision":"accept"}))["value"],
         "Allow"
     );
+}
+
+#[test]
+fn background_web_tools_remain_connector_items_for_pi_and_omp() {
+    for virtual_call in [false, true] {
+        for (tool, args) in [("web_search", json!({"query":"Rust docs"})), ("web_fetch", json!({"url":"https://example.test/docs"}))] {
+            let mut t = Translator::new("thread", "/workspace")
+                .with_connectors(HashMap::from([("nucode_browser".into(), "Browser".into())]));
+            t.apply(&json!({"type":"agent_start"}));
+            let (name, input) = if virtual_call {
+                ("write".into(), json!({"path":format!("xd://mcp__nucode_browser_{tool}"),"content":args.to_string()}))
+            } else { (format!("mcp__nucode_browser__{tool}"), args.clone()) };
+            let events = t.apply(&json!({"type":"tool_execution_start","toolCallId":"call","toolName":name,"args":input}));
+            let item = &events.iter().find(|e| e["method"] == "item/started").unwrap()["params"]["item"];
+            assert_eq!(item["type"], "mcpToolCall");
+            assert_eq!(item["server"], "Browser");
+            assert_eq!(item["tool"], tool);
+            assert_eq!(item["arguments"], args);
+        }
+    }
 }
 
 #[test]

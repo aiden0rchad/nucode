@@ -6,6 +6,7 @@ pub mod native;
 use backend::BrowserBackend;
 pub(crate) mod bridge;
 mod launcher;
+mod web;
 #[cfg(unix)]
 mod lifecycle;
 #[cfg(unix)]
@@ -27,6 +28,8 @@ use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
 pub(crate) use crate::types::BrowserSettings as Settings;
 pub const READ_TOOLS: &[&str] = &[
+    "web_search",
+    "web_fetch",
     "browser_snapshot",
     "browser_take_screenshot",
     "browser_console_messages",

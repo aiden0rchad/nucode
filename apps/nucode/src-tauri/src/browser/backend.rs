@@ -103,7 +103,7 @@ pub fn filter_tools(response: &mut Value, native: bool) {
                 tool["description"] = json!(format!("{} {note}", tool["description"].as_str().unwrap_or("")));
             }
             for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_navigate") {
-                tool["description"] = json!(format!("{} Returns once the page has loaded, followed by the page snapshot (as browser_snapshot gives it), so no browser_wait_for or browser_snapshot call is needed. This is the user's in-app browser; it keeps their sign-ins. If you don't know a site's exact address (say, an organisation's portal), check browser_tabs, search, or ask; don't guess a generic domain. If a page wants the user to sign in, ask them to sign in in the browser panel; don't switch to another browser or computer use.", tool["description"].as_str().unwrap_or("")));
+                tool["description"] = json!(format!("{} Returns once the page has loaded, followed by the page snapshot (as browser_snapshot gives it), so no browser_wait_for or browser_snapshot call is needed. This is the user's in-app browser; it keeps their sign-ins. If you don't know a site's exact address (say, an organisation's portal), check browser_tabs, use web_search, or ask; don't guess a generic domain. If a page wants the user to sign in, ask them to sign in in the browser panel; don't switch to another browser or computer use.", tool["description"].as_str().unwrap_or("")));
             }
             for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_tabs") {
                 tool["description"] = json!(format!("{} The list marks the active tab (\"active\":true), which the other browser tools act on. new and select return that tab's page snapshot.", tool["description"].as_str().unwrap_or("")));
@@ -119,6 +119,16 @@ pub fn filter_tools(response: &mut Value, native: bool) {
                 },"required":["function"],"additionalProperties":false});
             }
         }
+    }
+    if let Some(tools) = response.get_mut("result").and_then(|r| r.get_mut("tools")).and_then(Value::as_array_mut) {
+        tools.retain(|tool| tool["name"] != "web_search" && tool["name"] != "web_fetch");
+        for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_navigate") {
+            let description = tool["description"].as_str().unwrap_or("");
+            if !description.contains(super::web::NAVIGATE_NOTE) {
+                tool["description"] = json!(format!("{description} {}", super::web::NAVIGATE_NOTE));
+            }
+        }
+        tools.splice(0..0, super::web::tools());
     }
 }
 
@@ -398,10 +408,12 @@ mod tests {
         let response = json!({"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"browser_snapshot"}]}});
         let mut cdp = response.clone();
         filter_tools(&mut cdp, false);
-        assert_eq!(cdp, response);
+        assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
+        assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
+        assert_eq!(&cdp["result"]["tools"].as_array().unwrap()[2..], response["result"]["tools"].as_array().unwrap().as_slice());
         let mut native = response;
         filter_tools(&mut native, true);
-        let scroll = native["result"]["tools"][1].clone();
+        let scroll = native["result"]["tools"][3].clone();
         assert_eq!(scroll, json!({"name":"browser_scroll",
             "description":"Scroll the page by x/y pixels, or scroll an element (snapshot ref or selector) into view.",
             "inputSchema":{"type":"object","properties":{
@@ -411,7 +423,7 @@ mod tests {
             },"additionalProperties":false}}));
         filter_tools(&mut native, true);
         assert_eq!(native["result"]["tools"].as_array().unwrap().iter().filter(|t| t["name"] == "browser_scroll").count(), 1);
-        assert_eq!(native["result"]["tools"][1], scroll);
+        assert_eq!(native["result"]["tools"][3], scroll);
     }
 
     #[tokio::test]
@@ -432,7 +444,14 @@ mod tests {
         let response = json!({"jsonrpc":"2.0","id":5,"result":{"tools":tools,"nextCursor":"next"}});
         let mut cdp = response.clone();
         filter_tools(&mut cdp, false);
-        assert_eq!(cdp, response);
+        assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
+        assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
+        for (actual, original) in cdp["result"]["tools"].as_array().unwrap()[2..].iter().zip(response["result"]["tools"].as_array().unwrap()) {
+            if actual["name"] == "browser_navigate" {
+                assert_eq!(actual["description"], format!("Original description. {}", super::super::web::NAVIGATE_NOTE));
+                assert_eq!(actual["inputSchema"], original["inputSchema"]);
+            } else { assert_eq!(actual, original); }
+        }
         let mut native = response.clone();
         filter_tools(&mut native, true);
         for tool in native["result"]["tools"].as_array().unwrap() {
@@ -452,11 +471,11 @@ mod tests {
                 assert!(description.starts_with("Original description. ") && description.contains("don't guess a generic domain") && description.contains("sign in in the browser panel"));
             } else if tool["name"] == "browser_tabs" {
                 assert!(tool["description"].as_str().unwrap().starts_with("Original description. The list marks the active tab"));
-            } else if tool["name"] != "browser_evaluate" {
+            } else if !["browser_evaluate", "web_search", "web_fetch"].iter().any(|name| tool["name"] == *name) {
                 assert_eq!(tool["description"], "Original description.");
             }
         }
-        assert_eq!(native["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>(), supported_tools());
+        assert_eq!(native["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>(), ["web_search", "web_fetch"].into_iter().chain(supported_tools().iter().copied()).collect::<Vec<_>>());
         let evaluate = native["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "browser_evaluate").unwrap();
         assert_eq!(evaluate["inputSchema"]["required"], json!(["function"]));
         assert_eq!(evaluate["inputSchema"]["properties"].as_object().unwrap().len(), 2);

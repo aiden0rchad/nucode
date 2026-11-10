@@ -452,6 +452,8 @@ export function describeTool(item: Extract<ConversationItem, { kind: "tool" }>):
   }
   if (item.toolType === "hook") return { verb: "Hook", target: item.title.replace(/^Hook:\s*/i, "").trim(), category: "other" };
   const name = (toolNameFromTitle(item.title) || item.title).trim();
+  if (name === "web_search") return { verb: "Searched", target: firstStringField(args, ["query"]), category: "search" };
+  if (name === "web_fetch") return { verb: "Read", target: shortUrl(firstStringField(args, ["url"])), category: "search" };
   const browser = BROWSER_VERBS[name];
   if (browser) {
     const value = firstStringField(args, browser[1]);

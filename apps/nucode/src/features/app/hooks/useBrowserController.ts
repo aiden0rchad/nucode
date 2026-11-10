@@ -23,7 +23,7 @@ export function useBrowserController(shortcut = true) {
     const params = (message.params ?? {}) as Record<string, unknown>;
     const item = params.item as Record<string, unknown> | undefined;
     const thread = String(params.threadId ?? "");
-    if (message.method === "item/started" && item?.type === "mcpToolCall" && ["nucode-browser", "nucode_browser", "Browser"].includes(String(item.server))) {
+    if (message.method === "item/started" && item?.type === "mcpToolCall" && ["nucode-browser", "nucode_browser", "Browser"].includes(String(item.server)) && !["web_search", "web_fetch"].includes(String(item.tool))) {
       setCalls(previous => ({ ...previous, [`${event.workspace_id}:${item.id}`]: { workspace: event.workspace_id, thread, turn: String(params.turnId ?? "") } }));
     } else if (message.method === "item/completed" && item) {
       setCalls(previous => { const next = { ...previous }; delete next[`${event.workspace_id}:${item.id}`]; return next; });

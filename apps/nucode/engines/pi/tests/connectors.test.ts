@@ -11,6 +11,12 @@ test("browser read tools never ask; mutations ask unless the thread has full acc
   for (const name of ["click","type","fill_form","select_option","drag","drop","file_upload","evaluate","run_code_unsafe","press_key","handle_dialog","set_cookie","set_storage","future_mutation"]) {
     assert.equal(decide(name),"ask"); assert.equal(decide(name,"full-access"),"allow"); assert.equal(decide(name,"read-only"),"block"); assert.equal(decide(name,"ask",false),"block");
   }
+  for (const tool of ["web_search", "web_fetch"]) {
+    for (const mode of ["ask", "read-only", "full-access"]) assert.equal(connectorDecision([browser], `mcp__nucode_browser__${tool}`, mode, false), "allow");
+    browser.toolDenylist = [tool];
+    assert.equal(connectorDecision([browser], `mcp__nucode_browser__${tool}`, "full-access", true), "block");
+    browser.toolDenylist = undefined;
+  }
   browser.approval="auto"; assert.equal(decide("click"),"allow");
   browser.toolDenylist=["browser_snapshot"]; assert.equal(decide("snapshot"),"block");
 });

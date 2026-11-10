@@ -355,7 +355,7 @@ impl PiEngine {
         if self.chat {
             connectors.retain(|c| c.enabled && c.id == "nucode-browser");
             for connector in &mut connectors {
-                let allowed = ["browser_navigate", "browser_snapshot", "browser_take_screenshot"].into_iter()
+                let allowed = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "web_search", "web_fetch"].into_iter()
                     .filter(|name| connector.tool_allowlist.as_ref().is_none_or(|list| list.iter().any(|n| n == name)))
                     .map(str::to_owned).collect();
                 connector.tool_allowlist = Some(allowed);
@@ -494,7 +494,7 @@ impl PiEngine {
                 "--system-prompt", "You are a helpful conversational assistant. Answer clearly and honestly.",
             ]);
             if web && !connectors.is_empty() {
-                command.env("NUCODE_CHAT_WEB", "1").args(["-e", "builtin:mcp", "--tools", "mcp__nucode_browser__browser_navigate,mcp__nucode_browser__browser_snapshot,mcp__nucode_browser__browser_take_screenshot"]);
+                command.env("NUCODE_CHAT_WEB", "1").args(["-e", "builtin:mcp", "--tools", "mcp__nucode_browser__browser_navigate,mcp__nucode_browser__browser_snapshot,mcp__nucode_browser__browser_take_screenshot,mcp__nucode_browser__web_search,mcp__nucode_browser__web_fetch"]);
             } else { command.env_remove("NUCODE_CHAT_WEB"); }
         } else if self.profile.omp() {
             command.args(["--no-pty", "--no-title", "--no-skills", "--no-rules"]);

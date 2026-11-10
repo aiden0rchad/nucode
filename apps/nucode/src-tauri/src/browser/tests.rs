@@ -36,7 +36,10 @@ async fn pinned_playwright_lists_verified_schemas_without_a_browser_or_sockets()
     assert!(!tools.iter().any(|t| t["name"] == "browser_scroll"));
     let mut cdp = listed.clone();
     backend::filter_tools(&mut cdp, false);
-    assert_eq!(cdp, listed);
+    assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
+    assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
+    let navigate = cdp["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "browser_navigate").unwrap();
+    assert!(navigate["description"].as_str().unwrap().ends_with(web::NAVIGATE_NOTE));
     let mut native = listed;
     backend::filter_tools(&mut native, true);
     let scroll = native["result"]["tools"].as_array().unwrap().iter()
