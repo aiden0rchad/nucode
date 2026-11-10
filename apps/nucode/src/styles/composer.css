@@ -441,6 +441,7 @@
   overflow: hidden;
 }
 .composer-dictation-inline .composer-waveform-bar { flex-basis: 2px; }
+.composer-dictation-inline-hint { font-size: 12px; color: var(--text-subtle); white-space: nowrap; }
 /* The wave takes the paperclip's place until the transcript lands. */
 .composer-shell-actions:has(.composer-dictation-inline) .composer-add { display: none; }
 

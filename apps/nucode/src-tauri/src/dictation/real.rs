@@ -1021,7 +1021,10 @@ pub(crate) async fn dictation_stop(
 
         match outcome {
             Ok(text) => {
-                if !text.trim().is_empty() {
+                if text.trim().is_empty() {
+                    // The hint event: without it the wave just vanishes and nothing is typed.
+                    emit_event(&app_handle, DictationEvent::Canceled { message: "No speech detected".to_string() });
+                } else {
                     emit_event(&app_handle, DictationEvent::Transcript { text });
                 }
             }

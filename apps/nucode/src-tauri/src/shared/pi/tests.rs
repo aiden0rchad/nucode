@@ -1130,6 +1130,20 @@ impl KeyStore for Keys {
         panic!("must not delete credentials")
     }
 }
+#[test]
+fn a_missing_key_blocks_only_the_selected_provider() {
+    struct OnlyA;
+    impl KeyStore for OnlyA {
+        fn get(&self, id: &str) -> Result<Option<String>, String> { Ok((id == "a").then(|| "key-a".into())) }
+        fn set(&self, _: &str, _: &str) -> Result<(), String> { unreachable!() }
+        fn delete(&self, _: &str) -> Result<(), String> { unreachable!() }
+    }
+    let registry: Vec<ProviderEntry> = ["a", "b"].iter().map(|id| serde_json::from_value(json!({"id":id,"name":id.to_uppercase(),"kind":"openai-compatible","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"m","enabled":true}]})).unwrap()).collect();
+    let env = config::credentials(&registry, &OnlyA, "a").unwrap();
+    assert_eq!(env.len(), 1);
+    assert_eq!(env["NUCODE_PROVIDER_A_KEY"], "key-a");
+    assert_eq!(config::credentials(&registry, &OnlyA, "b").unwrap_err(), "Save an API key for B in Settings");
+}
 fn temp() -> PathBuf {
     let p = std::env::temp_dir().join(format!("nu-pi-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&p).unwrap();
@@ -1164,7 +1178,7 @@ fn every_provider_and_auth_config_is_secret_free() {
             let id = config::provider_id(&registry[0], &registry);
             assert_eq!(models["providers"][&id]["models"][0]["id"], "fake");
             let mut env = config::prepare(&dir, &registry, None).unwrap();
-            env.extend(config::credentials(&registry, &Keys).unwrap());
+            env.extend(config::credentials(&registry, &Keys, "local").unwrap());
             if auth["type"] == "apiKey" {
                 assert_eq!(env["NUCODE_PROVIDER_LOCAL_KEY"], "keychain-secret-canary");
                 assert_eq!(

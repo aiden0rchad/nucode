@@ -29,6 +29,14 @@ describe("diagnostics", () => {
     expect(send).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(2000);
     const events = send.mock.calls[0][0]; expect(events.map((e: { code: string }) => e.code)).toEqual(expect.arrayContaining(["ui.unhandled_rejection", "git.invoke_failed", "ipc.slow", "git.slow"])); expect(JSON.stringify(events)).not.toContain("private");
   });
+  it("records a repeating command failure once per minute, with the repeat count", async () => {
+    enable(); const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fail = () => instrumentInvoke("polled_command", async () => { throw new Error("x"); }).catch(() => {});
+    await fail(); await fail(); await fail(); clock.mockReturnValue(1_061_000); await fail();
+    await vi.advanceTimersByTimeAsync(2000);
+    const failures = send.mock.calls.flatMap(call => call[0]).filter((e: { code: string }) => e.code === "ipc.invoke_failed");
+    expect(failures).toHaveLength(2); expect(failures[1].metrics.count).toBe(3);
+  });
   it("recovers a panel and records its crash", async () => {
     enable(); vi.spyOn(console, "error").mockImplementation(() => {});
     let crash = true; function Child() { if (crash) throw new Error("secret"); return <p>Recovered</p>; }

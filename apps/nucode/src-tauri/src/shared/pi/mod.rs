@@ -383,9 +383,9 @@ impl PiEngine {
             .join(if self.chat { "chats/agent".into() } else { format!("{}/agent", self.profile.id()) })
             .join(if self.chat { &id } else { &s.workspace });
         let (credentials, delivery) = {
-            let (registry, connectors, keys) = (registry.to_vec(), connectors.clone(), self.keys.clone());
+            let (registry, connectors, keys, required) = (registry.to_vec(), connectors.clone(), self.keys.clone(), provider.id.clone());
             tokio::task::spawn_blocking(move || -> Result<_, String> {
-                Ok((config::credentials(&registry, keys.as_ref())?, super::connectors::delivery(&connectors, keys.as_ref())?))
+                Ok((config::credentials(&registry, keys.as_ref(), &required)?, super::connectors::delivery(&connectors, keys.as_ref())?))
             }).await.map_err(|_| "Credential lookup failed".to_string())??
         };
         let mut env = config::prepare(&home, registry, self.graph.as_ref())?;

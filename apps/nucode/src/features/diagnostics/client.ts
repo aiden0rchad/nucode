@@ -45,17 +45,29 @@ export function configureDiagnostics(settings: Pick<AppSettings, "features" | "d
   for (const entry of performance.getEntriesByType("paint")) record({ kind: "perf", area: "startup", code: "startup.first_paint", message: "First paint", detail: { timeOriginMs: performance.timeOrigin }, metrics: { durationMs: entry.startTime } });
   cleanup = () => { observer?.disconnect(); window.removeEventListener("error", onError); window.removeEventListener("unhandledrejection", onRejection); };
 }
+// A command polled every few seconds must not write one journal event per failure:
+// the first is recorded, repeats within a minute are counted into the next one.
+const REPEAT_WINDOW_MS = 60_000;
+const repeats = new Map<string, { at: number; suppressed: number }>();
+function recordRepeatable(event: Parameters<typeof record>[0], command: string) {
+  const key = event.code + ":" + command;
+  const now = Date.now();
+  const seen = repeats.get(key);
+  if (seen && now - seen.at < REPEAT_WINDOW_MS) { seen.suppressed += 1; return; }
+  repeats.set(key, { at: now, suppressed: 0 });
+  record(seen?.suppressed ? { ...event, metrics: { ...event.metrics, count: seen.suppressed + 1 } } : event);
+}
 export async function instrumentInvoke<T>(command: string, call: () => Promise<T>): Promise<T> {
   if (!enabled || command === "diagnostics_request") return call();
   const start = performance.now();
   try { return await call(); }
   catch (error) {
     const area = command.includes("git") ? "git" : command.startsWith("browser") ? "browser" : command.startsWith("computer") ? "computer" : command.startsWith("checkpoint") ? "checkpoints" : "ipc";
-    record({ kind: "error", area, code: area + ".invoke_failed", message: "Command failed: " + command, detail: { command, errorClass: error instanceof Error ? error.name : "CommandError" } });
+    recordRepeatable({ kind: "error", area, code: area + ".invoke_failed", message: "Command failed: " + command, detail: { command, errorClass: error instanceof Error ? error.name : "CommandError" } }, command);
     throw error;
   } finally {
     const durationMs = performance.now() - start;
-    if (durationMs > 300) record({ kind: "perf", area: "ipc", code: "ipc.slow", message: "Slow command: " + command, detail: { command }, metrics: { durationMs } });
+    if (durationMs > 300) recordRepeatable({ kind: "perf", area: "ipc", code: "ipc.slow", message: "Slow command: " + command, detail: { command }, metrics: { durationMs } }, command);
     if (command.includes("git") && durationMs > 500) record({ kind: "perf", area: "git", code: "git.slow", message: "Slow git operation", detail: { command }, metrics: { durationMs } });
   }
 }

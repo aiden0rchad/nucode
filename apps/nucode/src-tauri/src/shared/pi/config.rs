@@ -318,8 +318,16 @@ pub(super) fn prepare(
     Ok(env)
 }
 // No file writes: this may outlive a cancelled startup while macOS awaits approval.
-pub(super) fn credentials(registry: &[ProviderEntry], keys: &dyn KeyStore) -> Result<HashMap<String, String>, String> {
-    registry.iter().filter(|p| p.enabled && matches!(p.auth, ProviderAuth::ApiKey))
-        .map(|p| Ok((key_env(&p.id), keys.get(&p.id)?.ok_or_else(|| format!("Save an API key for {} in Settings", p.name))?)))
-        .collect()
+// Only the provider this session starts on must have a key; another enabled provider
+// without one must not block the send.
+pub(super) fn credentials(registry: &[ProviderEntry], keys: &dyn KeyStore, required: &str) -> Result<HashMap<String, String>, String> {
+    let mut env = HashMap::new();
+    for p in registry.iter().filter(|p| p.enabled && matches!(p.auth, ProviderAuth::ApiKey)) {
+        match keys.get(&p.id)? {
+            Some(key) => { env.insert(key_env(&p.id), key); }
+            None if p.id == required => return Err(format!("Save an API key for {} in Settings", p.name)),
+            None => {}
+        }
+    }
+    Ok(env)
 }
