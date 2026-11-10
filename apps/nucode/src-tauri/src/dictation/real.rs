@@ -1003,8 +1003,9 @@ pub(crate) async fn dictation_stop(
 
         let preferred = preferred_language.clone();
 
+        let abort = Arc::clone(&cancel_flag);
         let result = tokio::task::spawn_blocking(move || {
-            transcribe_audio(samples, sample_rate, &context, preferred)
+            transcribe_audio(samples, sample_rate, &context, preferred, abort)
         })
         .await;
 
@@ -1334,6 +1335,7 @@ fn transcribe_audio(
     sample_rate: u32,
     context: &WhisperContext,
     preferred_language: Option<String>,
+    cancel: Arc<AtomicBool>,
 ) -> Result<String, String> {
     if samples.is_empty() {
         return Ok(String::new());
@@ -1383,10 +1385,22 @@ fn transcribe_audio(
     let mut state = context
         .create_state()
         .map_err(|error| format!("Failed to initialize Whisper: {error}"))?;
+    // More threads than performance cores slows Whisper down.
     let threads = std::thread::available_parallelism()
         .map(|value| value.get())
-        .unwrap_or(4);
+        .unwrap_or(4)
+        .min(8);
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    // A cancelled transcription must stop, not keep the CPU busy behind the next one.
+    // whisper-rs 0.12's safe setter reads the closure through the wrong pointer type and
+    // aborts every run; pass the flag itself. `cancel` outlives `state.full` below.
+    unsafe extern "C" fn aborted(flag: *mut std::ffi::c_void) -> bool {
+        (*(flag as *const AtomicBool)).load(Ordering::Relaxed)
+    }
+    unsafe {
+        params.set_abort_callback(Some(aborted));
+        params.set_abort_callback_user_data(Arc::as_ptr(&cancel) as *mut std::ffi::c_void);
+    }
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);

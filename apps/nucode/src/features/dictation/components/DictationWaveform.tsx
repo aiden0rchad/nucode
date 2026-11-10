@@ -13,7 +13,8 @@ function normalizeLevel(level: number) {
   if (!Number.isFinite(level)) {
     return 0;
   }
-  return Math.min(1, Math.max(0, level));
+  // Speech sits low in the linear range; the square root keeps a quiet voice visible.
+  return Math.sqrt(Math.min(1, Math.max(0, level)));
 }
 
 export function DictationWaveform({

@@ -396,33 +396,26 @@
 }
 
 .composer-waveform {
-  margin-top: 10px;
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--border-muted);
-  background: var(--surface-card);
+  margin-top: 6px;
+  padding: 0 8px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
   gap: 3px;
-  height: 40px;
+  height: 28px;
   position: relative;
-}
-
-.composer-waveform.is-processing {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, rgb(100, 200, 255) 15%, var(--surface-app)),
-    color-mix(in srgb, rgb(120, 235, 190) 15%, var(--surface-app))
-  );
+  overflow: hidden;
 }
 
 .composer-waveform-bar {
-  flex: 1;
-  min-width: 2px;
+  flex: 0 0 3px;
+  min-height: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, rgb(180, 220, 255) 70%, var(--surface-app));
+  background: var(--text-primary);
   transition: height 0.12s ease;
 }
+
+.composer-waveform.is-processing .composer-waveform-bar { opacity: 0.25; }
 
 .composer-waveform-label {
   position: absolute;
@@ -436,6 +429,20 @@
   color: var(--text-subtle);
   pointer-events: none;
 }
+
+/* Chat and Work show the wave in the action row, beside the mic button. */
+.composer-dictation-inline .composer-waveform {
+  margin: 0;
+  width: 100px;
+  height: 24px;
+  padding: 0 4px;
+  /* The bars are wider than the row: keep the newest and clip the oldest, never the buttons. */
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.composer-dictation-inline .composer-waveform-bar { flex-basis: 2px; }
+/* The wave takes the paperclip's place until the transcript lands. */
+.composer-shell-actions:has(.composer-dictation-inline) .composer-add { display: none; }
 
 .composer-dictation-error {
   margin-top: 8px;

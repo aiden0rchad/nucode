@@ -5,6 +5,7 @@ import { Mic, Square, X } from "lucide-react";
 import type { AppSettings } from "@/types";
 import { useDictationController } from "@app/hooks/useDictationController";
 import { useComposerDictationControls } from "../hooks/useComposerDictationControls";
+import { DictationWaveform } from "../../dictation/components/DictationWaveform";
 
 type Props = {
   settings: AppSettings;
@@ -47,7 +48,7 @@ function EnabledDictation({ settings, disabled, onTranscript, onBusyChange, onEr
     if (latest.current.dictationState !== "idle") void latest.current.cancelDictation().catch(() => {});
     onBusyChange(false);
   }, [onBusyChange]);
-  return <IconButton type="button" className={`composer-action composer-action--mic${controls.isDictationBusy ? " is-active" : ""}`} aria-label={controls.micAriaLabel} title={controls.micTitle} disabled={controls.micDisabled} onClick={controls.handleMicClick}>
+  return <>{controls.isDictationBusy && <span className="composer-dictation-inline" role="status" aria-label={controls.isDictationProcessing ? "Transcribing" : "Listening"}><DictationWaveform active={controls.isDictating} processing={controls.isDictationProcessing} level={dictation.dictationLevel} /></span>}<IconButton type="button" className={`composer-action composer-action--mic${controls.isDictationBusy ? " is-active" : ""}`} aria-label={controls.micAriaLabel} title={controls.micTitle} disabled={controls.micDisabled} onClick={controls.handleMicClick}>
     {controls.isDictationProcessing ? <X aria-hidden /> : controls.isDictating ? <Square aria-hidden /> : <Mic aria-hidden />}
-  </IconButton>;
+  </IconButton></>;
 }
