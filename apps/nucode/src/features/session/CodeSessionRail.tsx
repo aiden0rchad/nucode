@@ -116,7 +116,7 @@ function ContextReportView({ report, onCompact }: { report: ContextReport; onCom
       {report.deferred.map(row => <div key={`deferred-${row.id}`} style={{ display: "contents" }}><dt><i data-context-row={row.id} />{rowLabels[row.id]} (deferred)</dt><dd>{formatK(row.tokens)}</dd><dd>—</dd></div>)}
     </dl>
     <details className="code-session-nested"><summary>MCP tools <span>{report.mcpTools.length}</span></summary>{report.mcpTools.length ? <ul className="code-context-tools">{report.mcpTools.map(name => <li key={name}>{name}</li>)}</ul> : <p className="code-session-muted">None declared</p>}</details>
-    <div className="code-context-footer"><span>{report.autoCompact ? `${formatK(report.untilCompact)} until auto-compact` : "Auto-compact is off"}</span>{onCompact && <button className="code-session-link" onClick={onCompact}>Compact session</button>}</div>
+    <div className="code-context-footer"><span>{report.autoCompact ? (report.untilCompact === null ? "Auto-compact is on" : `${formatK(report.untilCompact)} until auto-compact`) : "Auto-compact is off"}</span>{onCompact && <button className="code-session-link" onClick={onCompact}>Compact session</button>}</div>
   </>;
 }
 

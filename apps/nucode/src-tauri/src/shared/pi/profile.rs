@@ -23,7 +23,7 @@ impl EngineProfile {
         }
         config
     }
-    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, env: &mut HashMap<String,String>) -> Result<(), String> {
+    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, auto_compact: &AutoCompact, env: &mut HashMap<String,String>) -> Result<(), String> {
         if let Some(key) = &self.definition.config_dir_env { env.insert(key.clone(), home.to_string_lossy().into()); }
         env.extend(self.definition.env.clone());
         if self.omp() {
@@ -32,7 +32,9 @@ impl EngineProfile {
             env.insert("OTEL_SDK_DISABLED".into(), "true".into());
             // JSON is a YAML subset, avoiding a serializer dependency.
             config::write_json(&home.join("models.yml"), &omp_models(registry))?;
-            config::write_json(&home.join("config.yml"), &json!({"startup":{"checkUpdate":false,"setupWizard":false},"marketplace":{"autoUpdate":false},"telemetry":{"otlpExportEnabled":false},"mcp":{"enableProjectConfig":false},"browser":{"enabled":false},"tools":{"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]},"lsp":{"enabled":true,"lazy":true},"task":{"maxRecursionDepth":0}}))?;
+            let mut compaction = json!({"enabled": auto_compact.enabled});
+            if let Some(percent) = auto_compact.percent { compaction["thresholdPercent"] = json!(percent); }
+            config::write_json(&home.join("config.yml"), &json!({"compaction":compaction,"startup":{"checkUpdate":false,"setupWizard":false},"marketplace":{"autoUpdate":false},"telemetry":{"otlpExportEnabled":false},"mcp":{"enableProjectConfig":false},"browser":{"enabled":false},"tools":{"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]},"lsp":{"enabled":true,"lazy":true},"task":{"maxRecursionDepth":0}}))?;
             let origins: Vec<_> = registry.iter().filter(|p| p.enabled).filter_map(|p| reqwest::Url::parse(&providers::base_url(p)).ok().map(|url|url.origin().ascii_serialization())).collect();
             config::write_json(&home.join("nucode/network.json"), &json!(origins))?;
             // The gate uses the compatible tool_call API; only explicitly gated
@@ -40,6 +42,7 @@ impl EngineProfile {
             let gate = include_str!("../../../../engines/pi/extensions/nucode-gate.ts");
             std::fs::write(home.join("extensions/nucode-gate.ts"), gate).map_err(|e| e.to_string())?;
         }
+        env.insert("NUCODE_AUTOCOMPACT".into(), json!({"enabled":auto_compact.enabled,"percent":auto_compact.percent}).to_string());
         env.insert("NUCODE_FEATURES".into(), serde_json::to_string(features).map_err(|e|e.to_string())?);
         Ok(())
     }

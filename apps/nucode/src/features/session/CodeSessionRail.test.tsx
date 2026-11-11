@@ -172,6 +172,10 @@ it("keeps empty sections compact, opens new output, and remembers explicit discl
       expect(screen.getByText("— used")).toBeTruthy();
       expect(screen.queryByRole("meter", { name: "Session context usage" })).toBeNull();
     });
+    it("says auto-compact is on without a number when the threshold is unknown", () => {
+      render(<CodeSessionRail {...props()} contextReport={{ ...report, reserve: null, untilCompact: null }} onCompact={vi.fn()} />);
+      expect(screen.getByText("Auto-compact is on")).toBeTruthy();
+    });
     it("keeps today's view when there is no report", () => {
       const last = { totalTokens: 420, inputTokens: 420, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
       render(<CodeSessionRail {...props()} contextReport={null} usage={{ last, total: last, modelContextWindow: 1000 }} />);

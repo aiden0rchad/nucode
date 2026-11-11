@@ -47,3 +47,16 @@ test("usage below the fixed cost clamps messages to zero and untilCompact never 
   assert.equal(over.untilCompact, 0);
   assert.equal(row(over, "free"), 0);
 });
+
+test("omp-style input: tools without exposure, no contextFiles or skills, and an unknown reserve", () => {
+  const tools = [{ name: "read", description: "r" }, { name: "inactive", description: "i" }] as any[];
+  const report = contextReport({ systemPrompt: "s".repeat(400), contextFiles: [], skills: [], tools, activeTools: ["read"], usedTokens: 1000, window: 100000, reserve: null, autoCompact: true });
+  assert.equal(report.autoCompact, true);
+  assert.equal(row(report, "buffer"), null);
+  assert.equal(row(report, "free"), 99000);
+  assert.equal(report.untilCompact, null);
+  assert.equal(row(report, "memory"), 0);
+  assert.deepEqual(report.deferred, []);
+  assert.ok(row(report, "systemTools")! > 0);
+  assert.equal(report.used, 1000);
+});

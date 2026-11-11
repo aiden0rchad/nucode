@@ -2116,8 +2116,15 @@ fn omp_models_are_yaml_compatible_and_do_not_contain_credentials() {
     std::fs::create_dir_all(dir.join("extensions")).unwrap();
     std::fs::create_dir_all(dir.join("nucode")).unwrap();
     let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
-    profile.prepare(&dir, &providers, &crate::types::Features::default(), &mut HashMap::new()).unwrap();
+    let mut env = HashMap::new();
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &mut env).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":true,"percent":80}));
     let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
+    assert_eq!(config["compaction"], json!({"enabled":true,"thresholdPercent":80}));
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &mut env).unwrap();
+    let off: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
+    assert_eq!(off["compaction"], json!({"enabled":false}));
+    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":false,"percent":null}));
     assert_eq!(config["tools"], json!({"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]}));
     assert_eq!(config["browser"]["enabled"], false);
     assert_eq!(config["mcp"]["enableProjectConfig"], false);

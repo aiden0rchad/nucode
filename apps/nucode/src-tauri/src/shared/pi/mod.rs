@@ -392,7 +392,7 @@ impl PiEngine {
         let mut env = config::prepare(&home, registry, self.graph.as_ref(), &settings.auto_compact)?;
         env.extend(credentials);
         let features = super::engine_registry::features(self.data.as_deref());
-        self.profile.prepare(&home, registry, &features, &mut env)?;
+        self.profile.prepare(&home, registry, &features, &settings.auto_compact, &mut env)?;
         for p in registry.iter().filter(|p| p.enabled) {
             if let crate::types::ProviderAuth::Env { var } = &p.auth {
                 env.insert(var.clone(), std::env::var(var).map_err(|_| format!("Missing provider environment variable {var}"))?);

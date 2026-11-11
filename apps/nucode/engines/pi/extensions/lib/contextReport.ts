@@ -1,6 +1,6 @@
 export type ContextRowId = "messages" | "mcpTools" | "systemTools" | "systemPrompt" | "skills" | "memory" | "buffer" | "free";
 export type ContextReport = {
-  window: number; used: number | null; reserve: number; autoCompact: boolean;
+  window: number; used: number | null; reserve: number | null; autoCompact: boolean;
   rows: { id: ContextRowId; tokens: number | null }[];
   deferred: { id: "mcpTools" | "systemTools"; tokens: number }[];
   mcpTools: string[];
@@ -12,7 +12,7 @@ const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 
 export function contextReport(input: {
   systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[];
-  tools: Tool[]; activeTools: string[]; usedTokens: number | null; window: number; reserve: number; autoCompact: boolean;
+  tools: Tool[]; activeTools: string[]; usedTokens: number | null; window: number; reserve: number | null; autoCompact: boolean;
 }): ContextReport {
   const memory = sum(input.contextFiles.map(file => est(file.content)));
   const skills = sum(input.skills.map(skill => est(`${skill.name} ${skill.description ?? ""}`)));
@@ -28,7 +28,7 @@ export function contextReport(input: {
   const messages = input.usedTokens === null ? null : Math.max(0, input.usedTokens - fixed);
   const used = messages === null ? null : messages + fixed;
   const buffer = input.autoCompact ? input.reserve : 0;
-  const free = used === null ? null : Math.max(0, input.window - used - buffer);
+  const free = used === null ? null : Math.max(0, input.window - used - (buffer ?? 0));
   return {
     window: input.window, used, reserve: input.reserve, autoCompact: input.autoCompact,
     rows: [
@@ -40,6 +40,6 @@ export function contextReport(input: {
       { id: "mcpTools" as const, tokens: total(deferred, true) }, { id: "systemTools" as const, tokens: total(deferred, false) },
     ].filter(row => row.tokens > 0),
     mcpTools: declared.filter(mcp).map(tool => tool.name).sort(),
-    untilCompact: input.autoCompact && used !== null ? Math.max(0, input.window - input.reserve - used) : null,
+    untilCompact: input.autoCompact && used !== null && input.reserve !== null ? Math.max(0, input.window - input.reserve - used) : null,
   };
 }

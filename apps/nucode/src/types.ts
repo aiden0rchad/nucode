@@ -632,7 +632,7 @@ export type ContextRowId = "messages" | "mcpTools" | "systemTools" | "systemProm
 export type ContextReport = {
   window: number;
   used: number | null;
-  reserve: number;
+  reserve: number | null;
   autoCompact: boolean;
   rows: { id: ContextRowId; tokens: number | null }[];
   deferred: { id: "mcpTools" | "systemTools"; tokens: number }[];
