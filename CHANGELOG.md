@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.1 — November 11, 2026
+
+- **Layout fix:** a checkpoint warning could push the whole window down, hiding the composer buttons and Settings behind an empty box at the top that could not be closed. The warning now floats under the title bar with a working Dismiss button.
+- **Response style:** Settings → Composer has a Response style: Concise, Standard (the new default) or In depth. Standard and In depth tell pi and omp agents to keep working until the request is handled, check their work and write as much as the work needs, in place of pi's built-in "be concise" rule.
+- **Steer queued messages:** during a running turn, hover a queued message and choose Steer to send it into that turn right away. The row's menu has Steer now too.
+- **Context:** the session rail shows what fills the context window and how far it is from auto-compact, with a Compact session button. `/context-size` sets the window nucode assumes for the current model, and `/autocompact` sets when pi and omp compact.
+- **Web search:** agents have background `web_search` and `web_fetch` tools that work without opening the browser pane. Search goes through the provider chosen in Settings → Browser, SearXNG first.
+- **Dictation:** transcription runs on Metal, Cancel stops it, and it says when it hears nothing. The voice wave shows in Chat and Work.
+- **Errors:** a reply the provider stops with a content filter says so, as does a model your proxy has paused for a cooldown. Stopping an engine on purpose is no longer logged as a crash, and only the selected provider's key is required.
+- **Title bar:** the session rail toggle is a list icon at the start of the pane toggles, and the browser toggle is the panel icon at the end. Log has its own icon and Run names the launch script.
+
+### Release status
+
+Published as a macOS Apple Silicon release, with a DMG installer, build manifest and SHA-256 checksums. Windows remains on 0.8.0. This remains an early-development release; the macOS package is development-signed and not notarized.
+
 ## 0.8.0 — November 9, 2026
 
 - **New name:** the app is now called nucode, with bundle identifier `dev.nucode.desktop` and a new GitHub home at [aiden0rchad/nucode](https://github.com/aiden0rchad/nucode).

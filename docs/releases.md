@@ -2,11 +2,11 @@
 
 nucode is in **early development**. The source is available for inspection and building; published test artifacts are experimental. A package version or a passing build is not a stable-release or feature-parity guarantee.
 
-The source version is **0.8.0**, prepared on **November 9, 2026**. It includes the nucode rename and bundle privacy checks in the [changelog](https://github.com/aiden0rchad/nucode/blob/main/CHANGELOG.md). The [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0) is the first under the nucode name. See [GitHub Releases](https://github.com/aiden0rchad/nucode/releases) for the assets actually published and the commit behind each build.
+The source version is **0.8.1**, prepared on **November 11, 2026**. Its changes are in the [changelog](https://github.com/aiden0rchad/nucode/blob/main/CHANGELOG.md). The [v0.8.1 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1) is a macOS-only release; the [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0), the first under the nucode name, has the current Windows package. See [GitHub Releases](https://github.com/aiden0rchad/nucode/releases) for the assets actually published and the commit behind each build.
 
 ## Installable artifacts
 
-The [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0) provides the macOS and Windows packages. For step-by-step installation and help choosing a file, use [Installation & first run](getting-started.md#_1-install-the-app).
+The [v0.8.1 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1) provides the macOS package and the [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0) the Windows package. For step-by-step installation and help choosing a file, use [Installation & first run](getting-started.md#_1-install-the-app).
 
 ### Windows x64 test build
 
@@ -15,11 +15,11 @@ The [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0) 
 - `nucode_0.8.0_x64-setup.exe`
 - `SHA256SUMS`
 
-It is an **unsigned early-development build** for 64-bit Intel/AMD Windows, produced by the repository's Windows workflow, which compiles the app, builds the installer and smoke-tests it. Full provider, browser, tool, credential, and task verification is still needed.
+It is an **unsigned early-development build** for 64-bit Intel/AMD Windows, produced by the repository's Windows workflow, which compiles the app, builds the installer and smoke-tests it. That workflow now runs only when started by hand. Full provider, browser, tool, credential, and task verification is still needed.
 
 ### macOS
 
-The [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0) includes **nucode_0.8.0_aarch64.dmg** for **Apple Silicon Macs**, `macos-arm64-release-manifest.json`, and `SHA256SUMS`.
+The [v0.8.1 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1) includes **nucode_0.8.1_aarch64.dmg** for **Apple Silicon Macs**, `macos-arm64-release-manifest.json`, and `SHA256SUMS`.
 
 The package passed the release script's bundle contents, signing, entitlement, bundled-runtime and daemon start-up checks. It uses a **local development signing identity** and is **not notarized**. These checks do not make it a stable release or guarantee opening on every Mac. Follow the [installation steps](getting-started.md#macos-apple-silicon).
 
