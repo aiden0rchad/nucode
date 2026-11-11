@@ -1281,3 +1281,7 @@ label.code-session-field { column-gap: 0; } /* the select's own 6px inset is the
 /* Chat's list runs to the sidebar edge, so its rows give the scrollbar lane back. */
 .chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .mode-row { margin-right: -4px; }
 .chat-layout:not(.work-layout) .chat-sidebar.sidebar .chat-list .sidebar-section-header { margin-inline-end: 0; }
+/* Session rail toggle leads the panel toggles (list icon); the browser, shown as the right-panel icon, ends the bar. */
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"] { order: -1; margin-left: 0; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="session"]::before { content: none; }
+.workspace-titlebar .dock-toolbar > [data-pane-toggle="browser"] { order: 10; }

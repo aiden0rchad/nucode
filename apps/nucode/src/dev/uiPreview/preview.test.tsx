@@ -120,7 +120,7 @@ it.each(["code", "chat", "work"])("opens and restores Browser through the %s wor
     const toggle = within(views).getByRole("button", { name: "Toggle Browser" });
     fireEvent.click(toggle);
     expect(await waitFor(visibleBrowser)).toBeTruthy();
-    expect(document.querySelectorAll(".workspace-titlebar .lucide-globe")).toHaveLength(1);
+    expect(toggle.querySelector(".lucide-panel-right")).toBeTruthy();
     expect(document.querySelector('.dock-pane[data-dock-pane="browser"]')?.hasAttribute("hidden")).toBe(false);
     await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(toggle);

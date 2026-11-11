@@ -3,7 +3,7 @@ import { useSidebarReorder } from "@app/hooks/useSidebarReorder";
 import { tabLabel } from "./tabLabel";
 import { flushSync } from "react-dom";
 import { TITLEBAR_THREAD_TOOLS_ID } from "@/features/app/components/MainTopbar";
-import { ArrowLeft, ArrowRight, FileDiff, Folder, Globe, LayoutGrid, Maximize2, MessageSquare, Minimize2, Plus, Terminal, X, PanelRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileDiff, Folder, LayoutGrid, List, Maximize2, MessageSquare, Minimize2, Plus, Terminal, X, PanelRight } from "lucide-react";
 import { isMacPlatform } from "@utils/platformPaths";
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { DiagnosticBoundary } from "@/features/diagnostics/DiagnosticBoundary";
@@ -26,7 +26,7 @@ const secondaryTools = new Set<string>();
 const toolIcons = panelToolIcons;
 const toolOrder = ["git", "terminal", "sidechat", "files", "agents", "prompts", "background"];
 const defaultShortcuts: Record<string, string> = isMacPlatform() ? { git: "⌃⇧G", files: "⌘P" } : { git: "Ctrl+Shift+G", files: "Ctrl+P" };
-const quickTools = [{ id: "terminal", label: "Terminal", icon: Terminal }, { id: "git", label: "Changes", icon: FileDiff }, { id: "browser", label: "Browser", icon: Globe }, { id: "files", label: "Files", icon: Folder }];
+const quickTools = [{ id: "terminal", label: "Terminal", icon: Terminal }, { id: "git", label: "Changes", icon: FileDiff }, { id: "browser", label: "Browser", icon: PanelRight }, { id: "files", label: "Files", icon: Folder }];
 const full: DockBox = { x: 0, y: 0, w: 100, h: 100 };
 // Docking the rail (288px) below this width would leave the conversation under ~670px, so the rail floats instead.
 const RAIL_DOCK_MIN = 960;
@@ -206,7 +206,7 @@ export function DockWorkspace({ children, scope, title, tools = [], searchUrl, o
       {actions.length > 0 && <RowMenu label="thread" size="md" actions={actions}><span /></RowMenu>}
       <div className="dock-toolbar" role="toolbar" aria-label="Workspace views" data-tauri-drag-region="false">
         {compact && <IconButton className="ghost" aria-label="Show conversation" title="Conversation" aria-pressed={focused === "conversation"} onClick={() => setDock(layout => ({ ...layout, expanded: null, focused: "conversation" }))}><MessageSquare aria-hidden /></IconButton>}
-        {sessionRail && <IconButton className="ghost" data-pane-toggle="session" aria-label="Session rail" title="Session rail" aria-expanded={sessionShown} aria-pressed={sessionShown} onClick={() => toggle("session")}><PanelRight aria-hidden /></IconButton>}
+        {sessionRail && <IconButton className="ghost" data-pane-toggle="session" aria-label="Session rail" title="Session rail" aria-expanded={sessionShown} aria-pressed={sessionShown} onClick={() => toggle("session")}><List aria-hidden /></IconButton>}
         {/* Terminal and Changes are always one click away; Browser and Files show a toggle only while open and otherwise live in View options. */}
         {(() => {
           const shownTools = quickTools.filter(tool => available.has(tool.id) && (!secondaryTools.has(tool.id) || visible.has(tool.id)));
