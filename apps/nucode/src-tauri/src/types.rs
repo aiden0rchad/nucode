@@ -423,6 +423,16 @@ impl Default for AutoCompact {
     fn default() -> Self { Self { enabled: true, percent: None } }
 }
 
+/// How far agents carry a task and how much they write; sent to the engine as `NUCODE_RESPONSE_STYLE`.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ResponseStyle { Concise, #[default] Standard, Detailed }
+impl ResponseStyle {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self { Self::Concise => "concise", Self::Standard => "standard", Self::Detailed => "detailed" }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct AppSettings {
     #[serde(default, rename = "chatImport")]
@@ -454,6 +464,8 @@ pub(crate) struct AppSettings {
     pub(crate) codegraph_enabled: bool,
     #[serde(default, rename = "autoCompact")]
     pub(crate) auto_compact: AutoCompact,
+    #[serde(default, rename = "responseStyle")]
+    pub(crate) response_style: ResponseStyle,
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
@@ -1224,6 +1236,7 @@ impl Default for AppSettings {
             chat_default_model: None,
             codegraph_enabled: true,
             auto_compact: AutoCompact::default(),
+            response_style: ResponseStyle::default(),
             codex_bin: None,
             codex_args: None,
             backend_mode: default_backend_mode(),

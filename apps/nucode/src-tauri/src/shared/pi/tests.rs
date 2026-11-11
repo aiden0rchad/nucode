@@ -2117,14 +2117,16 @@ fn omp_models_are_yaml_compatible_and_do_not_contain_credentials() {
     std::fs::create_dir_all(dir.join("nucode")).unwrap();
     let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
     let mut env = HashMap::new();
-    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &mut env).unwrap();
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &crate::types::ResponseStyle::Detailed, &mut env).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":true,"percent":80}));
+    assert_eq!(env["NUCODE_RESPONSE_STYLE"], "detailed");
     let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(config["compaction"], json!({"enabled":true,"thresholdPercent":80}));
-    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &mut env).unwrap();
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &crate::types::ResponseStyle::default(), &mut env).unwrap();
     let off: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(off["compaction"], json!({"enabled":false}));
     assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":false,"percent":null}));
+    assert_eq!(env["NUCODE_RESPONSE_STYLE"], "standard");
     assert_eq!(config["tools"], json!({"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]}));
     assert_eq!(config["browser"]["enabled"], false);
     assert_eq!(config["mcp"]["enableProjectConfig"], false);
@@ -2600,6 +2602,21 @@ fn auto_compact_settings_reach_pi_settings_json() {
     let compaction = &read(&dir)["compaction"];
     assert_eq!(compaction["enabled"], true);
     assert_eq!(compaction["modelOverrides"], json!({"nucode-provider-a/model-b":{"reserveTokens":40000}}));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn response_style_defaults_to_standard_for_old_settings_and_round_trips() {
+    let settings: crate::types::AppSettings = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(settings.response_style, crate::types::ResponseStyle::Standard);
+    assert_eq!(serde_json::to_value(&settings).unwrap()["responseStyle"], "standard");
+    let detailed: crate::types::AppSettings = serde_json::from_value(json!({"responseStyle":"detailed"})).unwrap();
+    assert_eq!(detailed.response_style.as_str(), "detailed");
+}
+#[test]
+fn response_style_library_is_written_next_to_the_gate() {
+    let dir = temp();
+    config::prepare(&dir, &[], None, &Default::default()).unwrap();
+    assert!(dir.join("extensions/lib/responseStyle.ts").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
 #[test]

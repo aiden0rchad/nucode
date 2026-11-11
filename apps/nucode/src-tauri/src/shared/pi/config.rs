@@ -306,6 +306,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/contextReport.ts"),
         ),
         (
+            "lib/responseStyle.ts",
+            include_str!("../../../../engines/pi/extensions/lib/responseStyle.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),

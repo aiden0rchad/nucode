@@ -56,6 +56,30 @@ export function SettingsComposerSection({
         )}
       </SettingsRow>
       <div className="settings-divider" />
+      <SettingsRow className="settings-field">
+        <label className="settings-field-label" htmlFor="response-style">
+          Response style
+        </label>
+        <SettingsSelect
+          id="response-style"
+          className="settings-select"
+          value={appSettings.responseStyle ?? "standard"}
+          onChange={(event) =>
+            void onUpdateAppSettings({
+              ...appSettings,
+              responseStyle: event.target.value as NonNullable<AppSettings["responseStyle"]>,
+            })
+          }
+        >
+          <option value="concise">Concise</option>
+          <option value="standard">Standard</option>
+          <option value="detailed">In depth</option>
+        </SettingsSelect>
+        <div className="settings-help">
+          How much agents explain and how far they carry a task before stopping. Applies from the next turn.
+        </div>
+      </SettingsRow>
+      <div className="settings-divider" />
       <div className="settings-subsection-title">Presets</div>
       <div className="settings-subsection-subtitle">
         Choose a starting point and fine-tune the toggles below.

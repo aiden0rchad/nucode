@@ -323,6 +323,7 @@ export type AppSettings = {
   providers?: ProviderEntry[];
   agentPolicy?: AgentPolicy;
   autoCompact?: { enabled: boolean; percent?: number | null };
+  responseStyle?: "concise" | "standard" | "detailed";
   codegraphEnabled: boolean;
   codexBin: string | null;
   codexArgs: string | null;

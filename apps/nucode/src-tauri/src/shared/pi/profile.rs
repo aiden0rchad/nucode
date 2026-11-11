@@ -23,7 +23,7 @@ impl EngineProfile {
         }
         config
     }
-    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, auto_compact: &AutoCompact, env: &mut HashMap<String,String>) -> Result<(), String> {
+    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, auto_compact: &AutoCompact, response_style: &ResponseStyle, env: &mut HashMap<String,String>) -> Result<(), String> {
         if let Some(key) = &self.definition.config_dir_env { env.insert(key.clone(), home.to_string_lossy().into()); }
         env.extend(self.definition.env.clone());
         if self.omp() {
@@ -43,6 +43,7 @@ impl EngineProfile {
             std::fs::write(home.join("extensions/nucode-gate.ts"), gate).map_err(|e| e.to_string())?;
         }
         env.insert("NUCODE_AUTOCOMPACT".into(), json!({"enabled":auto_compact.enabled,"percent":auto_compact.percent}).to_string());
+        env.insert("NUCODE_RESPONSE_STYLE".into(), response_style.as_str().into());
         env.insert("NUCODE_FEATURES".into(), serde_json::to_string(features).map_err(|e|e.to_string())?);
         Ok(())
     }

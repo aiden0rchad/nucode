@@ -363,7 +363,7 @@ impl PiEngine {
         }
         let settings = super::engine_registry::settings(self.data.as_deref());
         let fingerprint =
-            serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact)).map_err(|e| e.to_string())?;
+            serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact, &settings.response_style)).map_err(|e| e.to_string())?;
         if let Some(p) = &s.process {
             if p.alive.load(Ordering::SeqCst) && s.configuration == fingerprint {
                 return Ok(p.clone());
@@ -392,7 +392,7 @@ impl PiEngine {
         let mut env = config::prepare(&home, registry, self.graph.as_ref(), &settings.auto_compact)?;
         env.extend(credentials);
         let features = super::engine_registry::features(self.data.as_deref());
-        self.profile.prepare(&home, registry, &features, &settings.auto_compact, &mut env)?;
+        self.profile.prepare(&home, registry, &features, &settings.auto_compact, &settings.response_style, &mut env)?;
         for p in registry.iter().filter(|p| p.enabled) {
             if let crate::types::ProviderAuth::Env { var } = &p.auth {
                 env.insert(var.clone(), std::env::var(var).map_err(|_| format!("Missing provider environment variable {var}"))?);

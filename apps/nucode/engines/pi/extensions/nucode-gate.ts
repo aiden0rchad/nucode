@@ -6,13 +6,17 @@ import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
+import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
   let captured: { systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[] } | undefined;
   pi.on("before_agent_start", async event => {
-    const prompt: string | string[] = event.systemPrompt;
+    const original: string | string[] = event.systemPrompt;
+    let prompt = original;
+    try { prompt = applyResponseStyle(original, parseResponseStyle(process.env.NUCODE_RESPONSE_STYLE)); } catch { prompt = original; }
     captured = { systemPrompt: Array.isArray(prompt) ? prompt.join("\n\n") : prompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
+    if (prompt !== original) return { systemPrompt: prompt as any };
   });
   const reportContext = async (_event: unknown, ctx: any) => {
     try {
