@@ -1,8 +1,7 @@
 name: Windows x64
 
+# Manual only: releases are macOS (Apple Silicon); run this by hand when a Windows build is wanted.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
