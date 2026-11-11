@@ -33,6 +33,9 @@ export function describeTurnError(message: string): { title: string; description
   if (/\b401\b|invalid.{0,10}api.?key|authentication|unauthorized/i.test(message)) {
     return { title: "Provider access needs attention", description: "Check this provider’s credentials in Settings, or choose another model." };
   }
+  if (/content.?filter|\brefusal\b/i.test(message)) {
+    return { title: "The model declined this request", description: "The provider stopped the reply with a content filter before the model wrote anything. Retry, or choose another model for this thread; the conversation is kept." };
+  }
   if (/context.{0,20}(?:length|limit|window)|too many tokens/i.test(message)) {
     return { title: "Conversation is too long", description: "Compact this conversation or start a new one, then try again." };
   }
