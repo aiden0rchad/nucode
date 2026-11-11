@@ -80,7 +80,7 @@ pub fn supported_tools() -> &'static [&'static str] {
     ]
 }
 
-pub fn filter_tools(response: &mut Value, native: bool) {
+pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::WebSearchProvider) {
     if native {
         if let Some(tools) = response.get_mut("result").and_then(|r| r.get_mut("tools")).and_then(Value::as_array_mut) {
             tools.retain(|tool| tool["name"].as_str().is_some_and(|name| supported_tools().contains(&name)));
@@ -102,8 +102,9 @@ pub fn filter_tools(response: &mut Value, native: bool) {
                 };
                 tool["description"] = json!(format!("{} {note}", tool["description"].as_str().unwrap_or("")));
             }
+            let search_advice = if provider == crate::types::WebSearchProvider::Off { "" } else { "use web_search, " };
             for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_navigate") {
-                tool["description"] = json!(format!("{} Returns once the page has loaded, followed by the page snapshot (as browser_snapshot gives it), so no browser_wait_for or browser_snapshot call is needed. This is the user's in-app browser; it keeps their sign-ins. If you don't know a site's exact address (say, an organisation's portal), check browser_tabs, use web_search, or ask; don't guess a generic domain. If a page wants the user to sign in, ask them to sign in in the browser panel; don't switch to another browser or computer use.", tool["description"].as_str().unwrap_or("")));
+                tool["description"] = json!(format!("{} Returns once the page has loaded, followed by the page snapshot (as browser_snapshot gives it), so no browser_wait_for or browser_snapshot call is needed. This is the user's in-app browser; it keeps their sign-ins. If you don't know a site's exact address (say, an organisation's portal), check browser_tabs, {search_advice}or ask; don't guess a generic domain. If a page wants the user to sign in, ask them to sign in in the browser panel; don't switch to another browser or computer use.", tool["description"].as_str().unwrap_or("")));
             }
             for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_tabs") {
                 tool["description"] = json!(format!("{} The list marks the active tab (\"active\":true), which the other browser tools act on. new and select return that tab's page snapshot.", tool["description"].as_str().unwrap_or("")));
@@ -121,14 +122,15 @@ pub fn filter_tools(response: &mut Value, native: bool) {
         }
     }
     if let Some(tools) = response.get_mut("result").and_then(|r| r.get_mut("tools")).and_then(Value::as_array_mut) {
+        let note = super::web::navigate_note(provider);
         tools.retain(|tool| tool["name"] != "web_search" && tool["name"] != "web_fetch");
         for tool in tools.iter_mut().filter(|tool| tool["name"] == "browser_navigate") {
             let description = tool["description"].as_str().unwrap_or("");
-            if !description.contains(super::web::NAVIGATE_NOTE) {
-                tool["description"] = json!(format!("{description} {}", super::web::NAVIGATE_NOTE));
+            if !description.contains(&note) {
+                tool["description"] = json!(format!("{description} {}", note));
             }
         }
-        tools.splice(0..0, super::web::tools());
+        tools.splice(0..0, super::web::tools(provider));
     }
 }
 
@@ -407,12 +409,12 @@ mod tests {
     fn native_listing_adds_scroll_missing_from_playwright() {
         let response = json!({"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"browser_snapshot"}]}});
         let mut cdp = response.clone();
-        filter_tools(&mut cdp, false);
+        filter_tools(&mut cdp, false, crate::types::WebSearchProvider::Searxng);
         assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
         assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
         assert_eq!(&cdp["result"]["tools"].as_array().unwrap()[2..], response["result"]["tools"].as_array().unwrap().as_slice());
         let mut native = response;
-        filter_tools(&mut native, true);
+        filter_tools(&mut native, true, crate::types::WebSearchProvider::Searxng);
         let scroll = native["result"]["tools"][3].clone();
         assert_eq!(scroll, json!({"name":"browser_scroll",
             "description":"Scroll the page by x/y pixels, or scroll an element (snapshot ref or selector) into view.",
@@ -421,7 +423,7 @@ mod tests {
                 "y":{"type":"number","description":"Vertical pixels (+down)"},
                 "ref":{"type":"string","description":"Snapshot ref or unique selector to scroll into view. With x/y, scroll inside the element instead."}
             },"additionalProperties":false}}));
-        filter_tools(&mut native, true);
+        filter_tools(&mut native, true, crate::types::WebSearchProvider::Searxng);
         assert_eq!(native["result"]["tools"].as_array().unwrap().iter().filter(|t| t["name"] == "browser_scroll").count(), 1);
         assert_eq!(native["result"]["tools"][3], scroll);
     }
@@ -443,17 +445,17 @@ mod tests {
         tools.push(json!({"name":null}));
         let response = json!({"jsonrpc":"2.0","id":5,"result":{"tools":tools,"nextCursor":"next"}});
         let mut cdp = response.clone();
-        filter_tools(&mut cdp, false);
+        filter_tools(&mut cdp, false, crate::types::WebSearchProvider::Searxng);
         assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
         assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
         for (actual, original) in cdp["result"]["tools"].as_array().unwrap()[2..].iter().zip(response["result"]["tools"].as_array().unwrap()) {
             if actual["name"] == "browser_navigate" {
-                assert_eq!(actual["description"], format!("Original description. {}", super::super::web::NAVIGATE_NOTE));
+                assert_eq!(actual["description"], format!("Original description. {}", super::super::web::navigate_note(crate::types::WebSearchProvider::Searxng)));
                 assert_eq!(actual["inputSchema"], original["inputSchema"]);
             } else { assert_eq!(actual, original); }
         }
         let mut native = response.clone();
-        filter_tools(&mut native, true);
+        filter_tools(&mut native, true, crate::types::WebSearchProvider::Searxng);
         for tool in native["result"]["tools"].as_array().unwrap() {
             if ["browser_click", "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form"].iter().any(|name| tool["name"] == *name) {
                 let description = tool["description"].as_str().unwrap();
@@ -484,7 +486,7 @@ mod tests {
         assert_eq!(native["id"], 5);
         let mut error = json!({"id":5,"error":{"message":"upstream failed"}});
         let original = error.clone();
-        filter_tools(&mut error, true);
+        filter_tools(&mut error, true, crate::types::WebSearchProvider::Off);
         assert_eq!(error, original);
     }
     #[tokio::test]

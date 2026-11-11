@@ -247,8 +247,9 @@ async fn proxy(
                     let mut line = line;
                     if let Ok(mut v) = serde_json::from_str::<Value>(&line) {
                         if v["result"]["tools"].is_array() {
-                            let native = cfg!(target_os = "macos") && browser.settings()?.engine == crate::types::BrowserEngine::Native;
-                            super::backend::filter_tools(&mut v, native);
+                            let settings = browser.settings()?;
+                            let native = cfg!(target_os = "macos") && settings.engine == crate::types::BrowserEngine::Native;
+                            super::backend::filter_tools(&mut v, native, settings.web_search.provider);
                             line = v.to_string();
                         }
                         if let Some(original) = v["id"].as_str().and_then(|id| pending.remove(id)) {
@@ -392,7 +393,7 @@ mod tests {
             json!({"id":7,"params":{"name":"web_search","arguments":{}}})), registration).boxed());
         let (id, result) = tokio::time::timeout(Duration::from_secs(1), requests.next()).await.unwrap().unwrap().unwrap();
         assert_eq!(id, 7);
-        assert_eq!(result["isError"], true);
+        assert_eq!(result, json!({"isError":true,"content":[{"type":"text","text":"Web search is not set up. Choose a provider in Settings → Browser."}]}));
         cancel.abort();
         assert!(requests.next().await.unwrap().is_err());
         assert!(requests.next().await.is_none());

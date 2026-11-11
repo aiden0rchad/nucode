@@ -2,6 +2,51 @@ use super::bridge::{Bridge, Transport};
 use super::*;
 use std::{collections::VecDeque, sync::Mutex as StdMutex};
 
+#[test]
+fn web_search_settings_default_round_trip_and_validate() {
+    use crate::types::{WebSearchProvider, WebSearchSettings};
+    let mut settings: Settings = serde_json::from_value(json!({"searchUrl":"https://example.test/?q={query}"})).unwrap();
+    assert_eq!(settings.web_search.provider, WebSearchProvider::Off);
+    assert!(settings.web_search.url.is_empty());
+    assert_eq!(serde_json::to_value(&settings).unwrap()["webSearch"], json!({"provider":"off","url":""}));
+    settings.web_search = WebSearchSettings { provider: WebSearchProvider::Searxng, url: "https://searx.example.org".into() };
+    let json = serde_json::to_value(&settings).unwrap();
+    assert_eq!(json["webSearch"], json!({"provider":"searxng","url":"https://searx.example.org"}));
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap().web_search.provider, WebSearchProvider::Searxng);
+    for url in ["https://searx.example.org", "http://searx.example.org/", "https://searx.example.org/path///"] {
+        settings.web_search.url = url.into();
+        assert!(validate(&settings).is_ok());
+    }
+    for url in ["", "searx.example.org", "file:///search", "ftp://searx.example.org", "https://"] {
+        settings.web_search.url = url.into();
+        assert_eq!(validate(&settings).unwrap_err(), "Enter the SearXNG instance URL (http or https)");
+    }
+    settings.web_search.provider = WebSearchProvider::Off;
+    assert!(validate(&settings).is_ok());
+    assert!(serde_json::from_value::<Settings>(json!({"webSearch":{"provider":"unknown"}})).is_err());
+    let settings: Settings = serde_json::from_value(json!({"webSearch":{"provider":"searxng"}})).unwrap();
+    assert!(settings.web_search.url.is_empty());
+}
+
+#[test]
+fn search_off_lists_only_fetch_and_never_mentions_search() {
+    use crate::types::WebSearchProvider;
+    for native in [false, true] {
+        for provider in [WebSearchProvider::Off, WebSearchProvider::Searxng] {
+            let mut response = json!({"result":{"tools":[{"name":"web_search"},{"name":"web_fetch"},{"name":"browser_navigate","description":"Navigate."}]}});
+            backend::filter_tools(&mut response, native, provider);
+            let tools = response["result"]["tools"].as_array().unwrap();
+            assert_eq!(tools[0]["name"], if provider == WebSearchProvider::Off { "web_fetch" } else { "web_search" });
+            assert_eq!(tools.iter().filter(|t| t["name"] == "web_fetch").count(), 1);
+            assert_eq!(tools.iter().filter(|t| t["name"] == "web_search").count(), usize::from(provider != WebSearchProvider::Off));
+            let navigate = tools.iter().find(|t| t["name"] == "browser_navigate").unwrap()["description"].as_str().unwrap();
+            assert!(navigate.contains("web_fetch"));
+            if provider == WebSearchProvider::Off { assert!(!response.to_string().contains("web_search")); }
+            else { assert!(navigate.contains("use web_search")); }
+        }
+    }
+}
+
 #[tokio::test]
 async fn pinned_playwright_lists_verified_schemas_without_a_browser_or_sockets() {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -35,13 +80,13 @@ async fn pinned_playwright_lists_verified_schemas_without_a_browser_or_sockets()
     assert!(tools.iter().any(|t| t["name"] == "browser_snapshot"));
     assert!(!tools.iter().any(|t| t["name"] == "browser_scroll"));
     let mut cdp = listed.clone();
-    backend::filter_tools(&mut cdp, false);
+    backend::filter_tools(&mut cdp, false, crate::types::WebSearchProvider::Searxng);
     assert_eq!(cdp["result"]["tools"][0]["name"], "web_search");
     assert_eq!(cdp["result"]["tools"][1]["name"], "web_fetch");
     let navigate = cdp["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "browser_navigate").unwrap();
-    assert!(navigate["description"].as_str().unwrap().ends_with(web::NAVIGATE_NOTE));
+    assert!(navigate["description"].as_str().unwrap().ends_with(&web::navigate_note(crate::types::WebSearchProvider::Searxng)));
     let mut native = listed;
-    backend::filter_tools(&mut native, true);
+    backend::filter_tools(&mut native, true, crate::types::WebSearchProvider::Searxng);
     let scroll = native["result"]["tools"].as_array().unwrap().iter()
         .find(|t| t["name"] == "browser_scroll").unwrap();
     assert_eq!(scroll["inputSchema"]["properties"]["y"]["type"], "number");

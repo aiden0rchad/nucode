@@ -1,4 +1,5 @@
 use super::{policy, Settings};
+use crate::types::{WebSearchProvider, WebSearchSettings};
 use futures_util::StreamExt;
 use regex::Regex;
 use reqwest::{Client, Url};
@@ -7,14 +8,22 @@ use std::{sync::LazyLock, time::Duration};
 
 const USER_AGENT: &str = concat!("Mozilla/5.0 (compatible; nucode/", env!("CARGO_PKG_VERSION"), ")");
 const BODY_LIMIT: usize = 5 * 1024 * 1024;
-pub(super) const SEARCH_ENDPOINT: &str = "https://html.duckduckgo.com/html/";
-pub(super) const NAVIGATE_NOTE: &str = "This opens the page in the user's visible in-app browser: use it only when the user asks for the browser, or a page needs sign-in, interaction or JavaScript. To look something up or read a public page, use web_search and web_fetch instead.";
+const SEARCH_OFF: &str = "Web search is not set up. Choose a provider in Settings → Browser.";
+pub(super) fn navigate_note(provider: WebSearchProvider) -> String {
+    let advice = match provider {
+        WebSearchProvider::Off => "To read a public page, use web_fetch instead.",
+        WebSearchProvider::Searxng => "To look something up or read a public page, use web_search and web_fetch instead.",
+    };
+    format!("This opens the page in the user's visible in-app browser: use it only when the user asks for the browser, or a page needs sign-in, interaction or JavaScript. {advice}")
+}
 
-pub fn tools() -> Vec<Value> {
-    vec![
+pub fn tools(provider: WebSearchProvider) -> Vec<Value> {
+    let mut tools = vec![
         json!({"name":"web_search","description":"Search the web in the background, without opening the browser. Returns result titles, URLs and snippets. Use this first whenever you need to look something up.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"count":{"type":"integer","minimum":1,"maximum":20}},"required":["query"],"additionalProperties":false}}),
         json!({"name":"web_fetch","description":"Fetch a public web page in the background, without opening the browser, and return its readable text. Use this to read search results, documentation and articles. It does not run JavaScript and does not use the user's sign-ins.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","minimum":0},"max_chars":{"type":"integer"}},"required":["url"],"additionalProperties":false}}),
-    ]
+    ];
+    if provider == WebSearchProvider::Off { tools.remove(0); }
+    tools
 }
 
 pub(super) fn client() -> Result<Client, String> {
@@ -28,8 +37,9 @@ pub(super) async fn call(client: &Client, settings: &Settings, name: &str, args:
     };
     match name {
         "web_search" => {
+            if settings.web_search.provider == WebSearchProvider::Off { return Err(SEARCH_OFF.into()); }
             let query = args["query"].as_str().filter(|s| !s.trim().is_empty()).ok_or("Missing search query")?;
-            search(client, SEARCH_ENDPOINT, query, integer("count", 8)?.clamp(1, 20) as usize).await
+            search(client, &settings.web_search, query, integer("count", 8)?.clamp(1, 20) as usize).await
         }
         "web_fetch" => {
             let max_chars = args.get("max_chars").map_or(Ok(20000), |v| v.as_i64()
@@ -54,20 +64,42 @@ async fn body(response: reqwest::Response) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-fn search_error(reason: impl std::fmt::Display) -> String {
-    format!("Web search is unavailable right now ({reason}). Try again, or use browser_navigate with a search URL.")
+fn search_error(reason: impl std::fmt::Display) -> String { format!("Web search failed: {reason}") }
+
+async fn searxng_response(response: reqwest::Response, count: usize) -> Result<String, String> {
+    match response.status() {
+        reqwest::StatusCode::OK => {},
+        reqwest::StatusCode::FORBIDDEN => return Err(search_error(r#"the SearXNG instance refused JSON output; enable "json" under search.formats in its settings.yml"#)),
+        status => return Err(search_error(status)),
+    }
+    let raw = body(response).await.map_err(search_error)?;
+    let json = serde_json::from_str(&raw).map_err(|_| search_error("the instance did not return JSON"))?;
+    Ok(searxng_results(&json, count))
 }
 
-pub async fn search(client: &Client, endpoint: &str, query: &str, count: usize) -> Result<String, String> {
-    tokio::time::timeout(Duration::from_secs(15), async {
-        let response = client.get(endpoint).query(&[("q", query)]).send().await.map_err(search_error)?;
-        if response.status() != reqwest::StatusCode::OK { return Err(search_error(response.status())); }
-        let html = body(response).await.map_err(search_error)?;
-        let results = parse_results(&html)?;
-        Ok(results.into_iter().take(count.clamp(1, 20)).enumerate()
-            .map(|(i, (title, url, snippet))| format!("{}. {title}\n   {url}\n   {snippet}", i + 1))
-            .collect::<Vec<_>>().join("\n\n"))
-    }).await.map_err(|_| search_error("request timed out"))?
+pub async fn search(client: &Client, settings: &WebSearchSettings, query: &str, count: usize) -> Result<String, String> {
+    match settings.provider {
+        WebSearchProvider::Off => Err(SEARCH_OFF.into()),
+        WebSearchProvider::Searxng => tokio::time::timeout(Duration::from_secs(15), async {
+            let response = client.get(format!("{}/search", settings.url.trim_end_matches('/')))
+                .query(&[("q", query), ("format", "json")]).header(reqwest::header::ACCEPT, "application/json")
+                .send().await.map_err(search_error)?;
+            searxng_response(response, count).await
+        }).await.map_err(|_| search_error("request timed out"))?,
+    }
+}
+
+fn searxng_results(json: &Value, count: usize) -> String {
+    let mut lines: Vec<_> = json["answers"].as_array().into_iter().flatten()
+        .filter_map(|v| v.as_str().or_else(|| v["answer"].as_str())).map(|s| format!("Answer: {s}")).collect();
+    lines.extend(json["results"].as_array().into_iter().flatten().filter_map(|result| {
+        let url = result["url"].as_str()?;
+        let parsed = Url::parse(url).ok()?;
+        if !matches!(parsed.scheme(), "http" | "https") || !parsed.has_host() { return None; }
+        Some((result["title"].as_str().unwrap_or(""), url, result["content"].as_str().unwrap_or("")))
+    }).take(count.clamp(1, 20)).enumerate()
+        .map(|(i, (title, url, snippet))| format!("{}. {title}\n   {url}\n   {snippet}", i + 1)));
+    if lines.is_empty() { "No results.".into() } else { lines.join("\n\n") }
 }
 
 fn check_url(url: &Url, settings: &Settings) -> Result<(), String> {
@@ -141,31 +173,6 @@ fn attr(tag: &str, name: &str) -> Option<String> {
         .and_then(|c| (2..=4).find_map(|n| c.get(n).map(|m| decode(m.as_str()))))
 }
 fn plain(html: &str) -> String { decode(&TAGS.replace_all(html, "")).split_whitespace().collect::<Vec<_>>().join(" ") }
-
-pub fn parse_results(html: &str) -> Result<Vec<(String, String, String)>, String> {
-    static ANCHORS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<a\b([^>]*)>(.*?)</a\s*>").unwrap());
-    static SNIPPET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?is)<[^>]*\bclass\s*=\s*["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>(.*?)</(?:a|div|span)\s*>"#).unwrap());
-    let lower = html.to_ascii_lowercase();
-    if lower.contains("anomaly.js") || lower.contains("challenge-form") || lower.contains("bots use duckduckgo") { return Err(search_error("challenge page")); }
-    let anchors: Vec<_> = ANCHORS.captures_iter(html).filter(|c| attr(&c[1], "class").is_some_and(|s| s.split_whitespace().any(|s| s == "result__a"))).collect();
-    let mut results = Vec::new();
-    for (i, anchor) in anchors.iter().enumerate() {
-        let Some(href) = attr(&anchor[1], "href") else { continue; };
-        let Ok(mut url) = Url::parse("https://duckduckgo.com").unwrap().join(&href) else { continue; };
-        if url.path().ends_with("y.js") || url.query_pairs().any(|(k, _)| k == "ad_domain") { continue; }
-        if let Some(target) = url.query_pairs().find(|(key, _)| key == "uddg").map(|(_, v)| v.into_owned()) {
-            let Ok(target) = Url::parse(&target) else { continue; };
-            url = target;
-        }
-        if url.path().ends_with("y.js") || url.query_pairs().any(|(k, _)| k == "ad_domain") { continue; }
-        if !matches!(url.scheme(), "http" | "https") { continue; }
-        let end = anchors.get(i + 1).map_or(html.len(), |c| c.get(0).unwrap().start());
-        let snippet = SNIPPET.captures(&html[anchor.get(0).unwrap().end()..end]).map_or(String::new(), |c| plain(&c[1]));
-        results.push((plain(&anchor[2]), url.to_string(), snippet));
-    }
-    if results.is_empty() { return Err(search_error("no results")); }
-    Ok(results)
-}
 
 fn append_page_text(text: &mut String, raw: &str, pre: bool, separator: &mut &'static str) {
     for ch in decode(raw).chars() {
@@ -286,7 +293,10 @@ mod tests {
     #[tokio::test]
     async fn invalid_arguments_fail_without_network_access() {
         let client = client().unwrap();
-        let settings = Settings::default();
+        let mut settings = Settings::default();
+        assert_eq!(call(&client, &settings, "web_search", &json!({})).await.unwrap_err(), SEARCH_OFF);
+        assert_eq!(search(&client, &settings.web_search, "query", 8).await.unwrap_err(), SEARCH_OFF);
+        settings.web_search.provider = WebSearchProvider::Searxng;
         for args in [json!({}), json!({"query":" "}), json!({"query":"query","count":1.5})] {
             assert!(call(&client, &settings, "web_search", &args).await.is_err());
         }
@@ -295,15 +305,38 @@ mod tests {
         }
         assert_eq!(call(&client, &settings, "web_fetch", &json!({"url":"file:///page","max_chars":-1})).await.unwrap_err(), "Only HTTP(S) URLs are supported");
         assert_eq!(call(&client, &settings, "web_fetch", &json!({"url":"file:///page","max_chars":u64::MAX})).await.unwrap_err(), "Only HTTP(S) URLs are supported");
-        assert!(search(&client, "invalid endpoint", "query", 8).await.unwrap_err().starts_with("Web search is unavailable right now ("));
+        assert!(search(&client, &settings.web_search, "query", 8).await.unwrap_err().starts_with("Web search failed: "));
     }
     #[test]
-    fn search_results_decode_redirects_and_skip_ads() {
-        let html = r#"<a class="result__a" href="//duckduckgo.com/y.js?ad_domain=ads.test">Ad</a><a class='result__snippet'>Ad snippet</a>
-            <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.test%2F%3Fx%3D1%26y%3D2&amp;rut=abc" class="result__a">An <b>example</b> &amp; &#x754c;</a><div class="result__snippet">A <b>useful</b> snippet&#33;</div>
-            <a class="other result__a" href="https://docs.test/">Docs</a><a class="result__snippet">Read docs</a>"#;
-        assert_eq!(parse_results(html).unwrap(), vec![("An example & 界".into(), "https://example.test/?x=1&y=2".into(), "A useful snippet!".into()), ("Docs".into(), "https://docs.test/".into(), "Read docs".into())]);
-        for html in ["<p>No results</p>", "<form id='challenge-form'></form>"] { assert!(parse_results(html).unwrap_err().contains("use browser_navigate")); }
+    fn searxng_formats_answers_and_valid_results() {
+        let json = json!({"answers":["Direct answer", {"answer":"Another answer"}, 42, {}, {"answer":false}], "results":[
+            {"title":"Bad", "url":"javascript:alert(1)"}, {"url":"/relative"}, {"url":42}, {}, {"url":"ftp://example.test/"},
+            {"title":"Docs 界", "url":"https://example.test/docs", "content":"A snippet"},
+            {"title":"More", "url":"http://example.test/"}, {"title":42, "url":"https://example.test/last", "content":false}
+        ]});
+        assert_eq!(searxng_results(&json, 2), "Answer: Direct answer\n\nAnswer: Another answer\n\n1. Docs 界\n   https://example.test/docs\n   A snippet\n\n2. More\n   http://example.test/\n   ");
+        assert!(searxng_results(&json, 0).ends_with("A snippet"));
+        assert!(searxng_results(&json, 8).contains("3. \n   https://example.test/last\n   "));
+        for json in [json!({}), json!({"results":[]}), json!({"results":[{"url":"invalid"}]}), json!(null)] {
+            assert_eq!(searxng_results(&json, 8), "No results.");
+        }
+        assert_eq!(searxng_results(&json!({"answers":["Only answer"]}), 8), "Answer: Only answer");
+        let many = json!({"results": (0..25).map(|i| json!({"title":i.to_string(),"url":"https://example.test/"})).collect::<Vec<_>>()});
+        assert_eq!(searxng_results(&many, 8).split("\n\n").count(), 8);
+        assert_eq!(searxng_results(&many, usize::MAX).split("\n\n").count(), 20);
+    }
+    #[tokio::test]
+    async fn searxng_responses_handle_json_and_status_errors_without_network() {
+        let response = |status, body: &'static str| reqwest::Response::from(tauri::http::Response::builder().status(status).body(body).unwrap());
+        assert_eq!(searxng_response(response(200, r#"{"results":[]}"#), 8).await.unwrap(), "No results.");
+        assert_eq!(searxng_response(response(200, r#"{"results":[{"title":"Docs","url":"https://example.test/","content":"Read"}]}"#), 8).await.unwrap(), "1. Docs\n   https://example.test/\n   Read");
+        for raw in ["<html>Not JSON</html>", "", "{\"results\":"] {
+            assert_eq!(searxng_response(response(200, raw), 8).await.unwrap_err(), "Web search failed: the instance did not return JSON");
+        }
+        assert_eq!(searxng_response(response(403, "Forbidden"), 8).await.unwrap_err(), r#"Web search failed: the SearXNG instance refused JSON output; enable "json" under search.formats in its settings.yml"#);
+        for status in [301, 302, 429, 500] {
+            assert!(searxng_response(response(status, "Not JSON"), 8).await.unwrap_err().starts_with(&format!("Web search failed: {status}")));
+        }
     }
     #[test]
     fn readable_html_omits_hidden_content_and_preserves_links_and_blocks() {

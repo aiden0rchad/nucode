@@ -41,6 +41,11 @@ pub const READ_TOOLS: &[&str] = &[
 ];
 
 pub fn validate(settings: &Settings) -> Result<(), String> {
+    if settings.web_search.provider == crate::types::WebSearchProvider::Searxng
+        && !reqwest::Url::parse(&settings.web_search.url).is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.has_host())
+    {
+        return Err("Enter the SearXNG instance URL (http or https)".into());
+    }
     if settings.binary.as_ref().is_some_and(|s| s.contains('\0')) {
         return Err("Invalid browser binary path".into());
     }

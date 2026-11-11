@@ -1863,7 +1863,17 @@ pub(crate) struct BrowserSettings {
     pub blocked_origins: Vec<String>,
     pub approval: crate::types::McpApproval,
     pub search_url: String,
+    pub web_search: WebSearchSettings,
 }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct WebSearchSettings {
+    pub provider: WebSearchProvider,
+    pub url: String,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum WebSearchProvider { #[default] Off, Searxng }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum BrowserEngine { #[default] Native, Cdp }
@@ -1880,6 +1890,7 @@ impl Default for BrowserSettings {
             blocked_origins: vec![],
             approval: crate::types::McpApproval::Ask,
             search_url: "https://www.google.com/search?q={query}".into(),
+            web_search: WebSearchSettings::default(),
         }
     }
 }

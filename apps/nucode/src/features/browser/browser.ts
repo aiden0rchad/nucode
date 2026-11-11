@@ -1,6 +1,6 @@
 import type { BrowserSettings } from "@/types";
 
-export const defaultBrowserSettings: BrowserSettings = { engine: "native", privateBrowsing: false, keepSessions: true, offerToSavePasswords: true, requireAuthToFill: true, binary: null, allowedOrigins: [], blockedOrigins: [], approval: "ask", searchUrl: "https://www.google.com/search?q={query}" };
+export const defaultBrowserSettings: BrowserSettings = { engine: "native", privateBrowsing: false, keepSessions: true, offerToSavePasswords: true, requireAuthToFill: true, binary: null, allowedOrigins: [], blockedOrigins: [], approval: "ask", webSearch: { provider: "off", url: "" }, searchUrl: "https://www.google.com/search?q={query}" };
 export type BrowserState = {
   passwordOffer?: { origin: string; username: string; update: boolean } | null;
   capabilities?: { screenshot: boolean; evaluate: boolean };

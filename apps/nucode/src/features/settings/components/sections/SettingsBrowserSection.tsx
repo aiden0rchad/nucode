@@ -1,7 +1,7 @@
 import { SettingsPage, SettingsGroup, SettingsTextField, SettingsTextArea, SettingsSelect, SettingsButton, SettingsFieldRow, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { SettingsRuntimeSetup } from "./SettingsRuntimeSetup";
 import { useEffect, useRef, useState } from "react";
-import type { AppSettings } from "@/types";
+import type { AppSettings, WebSearchProvider } from "@/types";
 import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, browserPasswordUnblock, type BrowserPasswordIndex, browserRequest } from "@services/tauri";
 import { defaultBrowserSettings } from "@/features/browser/browser";
 import "./registry.css";
@@ -29,6 +29,11 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
     <form onSubmit={e => { e.preventDefault(); void run(async () => {
       const url = new URL(draft.searchUrl.split("{query}").join("test"));
       if (!["http:","https:"].includes(url.protocol) || !draft.searchUrl.includes("{query}")) throw new Error("Search URL must use HTTP(S) and contain {query}");
+      if (draft.webSearch.provider === "searxng") {
+        let instance: URL | undefined;
+        try { instance = new URL(draft.webSearch.url); } catch { /* Show the same validation message below. */ }
+        if (!instance || !["http:", "https:"].includes(instance.protocol) || !instance.hostname) throw new Error("Enter the SearXNG instance URL (http or https)");
+      }
       const lines = (v: string) => v.split("\n").map(s => s.trim()).filter(Boolean);
       await onUpdateAppSettings({ ...appSettings, browser: { ...draft, allowedOrigins: lines(allow), blockedOrigins: lines(block) } });
       setMessage("Saved. Engine and private browsing changes apply immediately. Browser binary and origin changes apply to new browser sessions.");
@@ -44,8 +49,12 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
         <SettingsToggleRow title="Stay signed in after restart" subtitle="Keeps sites’ session cookies in your macOS Keychain"><SettingsToggleSwitch pressed={draft.keepSessions ?? true} onClick={() => setDraft({ ...draft, keepSessions: !(draft.keepSessions ?? true) })} /></SettingsToggleRow>
         <SettingsToggleRow title="Offer to save passwords"><SettingsToggleSwitch pressed={draft.offerToSavePasswords ?? true} onClick={() => setDraft({ ...draft, offerToSavePasswords: !(draft.offerToSavePasswords ?? true) })} /></SettingsToggleRow>
         <SettingsToggleRow title="Require authentication to fill"><SettingsToggleSwitch pressed={draft.requireAuthToFill ?? true} onClick={() => setDraft({ ...draft, requireAuthToFill: !(draft.requireAuthToFill ?? true) })} /></SettingsToggleRow>
-        <SettingsButton type="submit">Save browser settings</SettingsButton>
       </SettingsGroup>
+      <SettingsGroup disabled={busy} title="Web search" subtitle="Lets agents search in the background without opening the browser.">
+        <SettingsFieldRow title="Provider"><SettingsSelect value={draft.webSearch.provider} onChange={e => setDraft({ ...draft, webSearch: { ...draft.webSearch, provider: e.target.value as WebSearchProvider } })}><option value="off">Off</option><option value="searxng">SearXNG</option></SettingsSelect></SettingsFieldRow>
+        {draft.webSearch.provider === "searxng" && <SettingsFieldRow title="Instance URL"><SettingsTextField value={draft.webSearch.url} placeholder="https://searx.example.org" onChange={e => setDraft({ ...draft, webSearch: { ...draft.webSearch, url: e.target.value } })} /></SettingsFieldRow>}
+      </SettingsGroup>
+      <SettingsButton type="submit">Save browser settings</SettingsButton>
     </form>
     <SettingsGroup title="Saved passwords" disabled={busy}>
       {passwords.entries.map(entry => <SettingsFieldRow key={entry.id} title={entry.origin} help={entry.username}><SettingsButton onClick={() => void run(async () => { await browserPasswordDelete(entry.id); await refreshPasswords(); })}>Delete</SettingsButton></SettingsFieldRow>)}

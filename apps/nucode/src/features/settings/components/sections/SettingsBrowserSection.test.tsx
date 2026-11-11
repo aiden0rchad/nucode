@@ -6,6 +6,35 @@ import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, brows
 import type { AppSettings } from "@/types";
 vi.mock("@services/tauri", () => ({browserPasswordsList: vi.fn().mockResolvedValue({ entries: [], never: [] }), browserPasswordSave: vi.fn().mockResolvedValue(undefined), browserPasswordDelete: vi.fn().mockResolvedValue(undefined), browserPasswordUnblock: vi.fn().mockResolvedValue(undefined), engineRuntime: vi.fn().mockResolvedValue([{ engine: "browser", state: "ready", message: "Ready" }]), browserRequest:vi.fn().mockResolvedValue(undefined)}));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+it("defaults web search off and saves a SearXNG instance through browser settings", async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={save} />);
+  expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("off");
+  expect(screen.queryByLabelText("Instance URL")).toBeNull();
+  expect(screen.getByText("Lets agents search in the background without opening the browser.")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "searxng" } });
+  expect(screen.getByLabelText("Instance URL").getAttribute("placeholder")).toBe("https://searx.example.org");
+  fireEvent.click(screen.getByText("Save browser settings"));
+  expect((await screen.findByRole("alert")).textContent).toBe("Error: Enter the SearXNG instance URL (http or https)");
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Instance URL"), { target: { value: "https://searx.example.org" } });
+  fireEvent.click(screen.getByText("Save browser settings"));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ browser: expect.objectContaining({ webSearch: { provider: "searxng", url: "https://searx.example.org" } }) })));
+  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "off" } });
+  expect(screen.queryByLabelText("Instance URL")).toBeNull();
+  fireEvent.click(screen.getByText("Save browser settings"));
+  await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ browser: expect.objectContaining({ webSearch: { provider: "off", url: "https://searx.example.org" } }) })));
+});
+it("loads configured web search and rejects non-HTTP instance URLs", async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<SettingsBrowserSection appSettings={{ browser: { webSearch: { provider: "searxng", url: "https://searx.example.org" } } } as AppSettings} onUpdateAppSettings={save} />);
+  expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("searxng");
+  expect((screen.getByLabelText("Instance URL") as HTMLInputElement).value).toBe("https://searx.example.org");
+  fireEvent.change(screen.getByLabelText("Instance URL"), { target: { value: "file:///search" } });
+  fireEvent.click(screen.getByText("Save browser settings"));
+  expect((await screen.findByRole("alert")).textContent).toBe("Error: Enter the SearXNG instance URL (http or https)");
+  expect(save).not.toHaveBeenCalled();
+});
 it("saves browser settings and requires confirmation before deleting the profile", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={save} />);

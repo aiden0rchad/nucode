@@ -3,7 +3,26 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import gate from "../extensions/nucode-gate.ts";
+
+test("pinned pi accepts an unlisted web_search in --tools without warnings", () => {
+  const root = mkdtempSync(join(tmpdir(), "chat-tools-"));
+  const runtime = fileURLToPath(new URL("../", import.meta.url));
+  try {
+    writeFileSync(join(root, "models.json"), JSON.stringify({ providers: { offline: { api: "openai-completions", baseUrl: "https://example.test", apiKey: "unused", models: [{ id: "offline", name: "Offline" }] } } }));
+    const result = spawnSync(process.execPath, ["--import", join(runtime, "no-accounts.mjs"), join(runtime, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js"), "--mode", "rpc", "--no-session", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates", "--provider", "offline", "--model", "offline", "--no-tools", "--tools", "read,mcp__nucode_browser__web_search"], {
+      cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: root, PI_OFFLINE: "1" },
+      input: '{"id":"state","type":"get_state"}\n', encoding: "utf8", timeout: 15000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    const state = result.stdout.split("\n").filter(Boolean).map(line => JSON.parse(line)).find(event => event.id === "state");
+    assert.equal(state?.success, true, result.stdout);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test("chat gate blocks every tool, with explicit Web exceptions", async () => {
   const root = mkdtempSync(join(tmpdir(), "chat-gate-"));
