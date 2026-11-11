@@ -119,6 +119,14 @@ fn msg_send_rect(r: &Rect) -> objc2_foundation::NSRect {
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn check(_webview: &tauri::Webview, _reason: &'static str) {}
 
+/// Main-window events that can move the main view: check it against its superview (macOS only).
+pub(crate) fn after_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    use tauri::{Manager, WindowEvent};
+    if cfg!(target_os = "macos") && matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true)) {
+        if let Some(main) = window.app_handle().get_webview("main") { check(&main, "window event"); }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

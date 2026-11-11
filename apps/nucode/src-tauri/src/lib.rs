@@ -139,10 +139,8 @@ pub fn run() {
             if matches!(event, WindowEvent::Destroyed) {
                 window::remove_main_focus(window);
             }
-            #[cfg(target_os = "macos")]
-            if matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true)) {
-                if let Some(main) = window.app_handle().get_webview("main") { window_layout::check(&main, "window event"); }
-            }
+            // Only compares the main view with its superview and restores it if it drifted; never sizes it from the window.
+            window_layout::after_window_event(window, event);
             #[cfg(target_os = "macos")]
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
