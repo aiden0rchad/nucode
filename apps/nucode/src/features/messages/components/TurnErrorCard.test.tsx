@@ -7,6 +7,7 @@ afterEach(cleanup);
 it.each([
   ["429 chatgpt_quota_paused", "Account usage limit reached"],
   ["429 Too many requests", "Too many requests"],
+  ["429 No deployments available for selected model, all deployments in cooldown", "Model is paused at your proxy"],
   ["401 Unauthorized", "Provider access needs attention"],
   ["context_length_exceeded", "Conversation is too long"],
   ["fetch failed", "Couldn’t reach the provider"],

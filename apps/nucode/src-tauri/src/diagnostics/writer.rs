@@ -246,6 +246,29 @@ mod tests {
             assert!(!fs::read_to_string(file.path()).unwrap().contains("private panic payload"));
         }
     }
+    #[cfg(unix)]
+    #[test]
+    fn deliberate_stops_are_not_engine_failures() {
+        let _guard = WRITER_TEST.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        configure(true, dir.path().to_path_buf(), Options::default()).unwrap();
+        let run = |script: &str, stop: bool| {
+            let mut child = std::process::Command::new("/bin/sh").args(["-c", script]).spawn().unwrap();
+            crate::observe::child(Some(child.id()), "codex");
+            if stop { crate::observe::stopping(Some(child.id())); }
+            if script.starts_with("sleep") { child.kill().unwrap(); }
+            let status = child.wait().unwrap();
+            crate::observe::exited(Some(child.id()), status);
+        };
+        run("sleep 5", true);
+        run("sleep 5", false);
+        run("exit 3", false);
+        stop();
+        let exits = events(dir.path()).into_iter().filter(|e| e.code == "engine.exit_nonzero").collect::<Vec<_>>();
+        assert_eq!(exits.len(), 2, "only the unrequested kill and the failed exit count");
+        assert_eq!(exits[0].detail["signal"], 9);
+        assert_eq!(exits[1].detail["status"], 3);
+    }
     #[test]
     fn off_batching_overflow_and_private_files() {
         let _guard = WRITER_TEST.lock().unwrap();

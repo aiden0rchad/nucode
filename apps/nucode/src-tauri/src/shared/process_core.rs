@@ -32,6 +32,7 @@ pub(crate) fn std_command(program: impl AsRef<OsStr>) -> std::process::Command {
 }
 
 pub(crate) async fn kill_child_process_tree(child: &mut Child) {
+    nucode_diag_mcp::observe::stopping(child.id());
     #[cfg(windows)]
     {
         if let Some(pid) = child.id() {

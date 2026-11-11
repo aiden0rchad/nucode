@@ -244,6 +244,7 @@ pub fn sanitize(mut e: Event, options: &Options, home: &str, secrets: &[String])
                 "errorClass",
                 "command",
                 "status",
+                "signal",
                 "note",
                 "type",
                 "relatedFingerprint",

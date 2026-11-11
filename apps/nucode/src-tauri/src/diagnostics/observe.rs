@@ -231,8 +231,16 @@ pub fn clear() {
 struct Child {
     engine: String,
     tail: std::collections::VecDeque<String>,
+    stopping: bool,
 }
 static CHILDREN: OnceLock<Mutex<BTreeMap<u32, Child>>> = OnceLock::new();
+/// nucode is about to kill this child on purpose (settings changed, app closing), so its exit is not a failure.
+pub fn stopping(pid: Option<u32>) {
+    let Some(pid) = pid else { return };
+    if let Some(child) = CHILDREN.get_or_init(Default::default).lock().unwrap().get_mut(&pid) {
+        child.stopping = true;
+    }
+}
 pub fn child(pid: Option<u32>, engine: &str) {
     if !writer::enabled() {
         return;
@@ -279,7 +287,7 @@ pub fn exited(pid: Option<u32>, status: std::process::ExitStatus) {
             .unwrap()
             .remove(&pid)
     });
-    if !status.success() {
+    if !status.success() && !child.as_ref().is_some_and(|c| c.stopping) {
         writer::record(|| {
             let mut e = core::event(
                 "error",
@@ -288,6 +296,13 @@ pub fn exited(pid: Option<u32>, status: std::process::ExitStatus) {
                 "Engine exited unsuccessfully",
             );
             e.detail = json!({"status":status.code()});
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(signal) = status.signal() {
+                    e.detail["signal"] = json!(signal);
+                }
+            }
             if let Some(child) = child {
                 e.context = json!({"engine":child.engine});
                 if writer::snippets() {

@@ -24,6 +24,9 @@ export function describeTurnError(message: string): { title: string; description
   if (/chatgpt_quota_paused|requests are paused|quota.{0,30}(?:exceeded|exhausted)|insufficient_quota/i.test(message)) {
     return { title: "Account usage limit reached", description: "Choose another model or account, or retry when this account’s allowance is available." };
   }
+  if (/cooldown|no (?:healthy |available )?deployments?/i.test(message)) {
+    return { title: "Model is paused at your proxy", description: "Your proxy has taken this model offline for a short cooldown after upstream errors. Retry in a few minutes, or choose another model. The proxy’s logs say why it paused." };
+  }
   if (/\b429\b|rate.?limit|too many requests/i.test(message)) {
     return { title: "Too many requests", description: "The provider is limiting requests. Wait a moment and retry, or choose another model." };
   }
