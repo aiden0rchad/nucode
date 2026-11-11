@@ -1,4 +1,7 @@
+/* Never in the page flow: a viewport that forgets to place itself must not move the app. */
 .ds-toast-viewport {
+  position: fixed;
+  z-index: var(--z-toast);
   display: grid;
   gap: 12px;
 }

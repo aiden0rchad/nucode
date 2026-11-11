@@ -22,6 +22,17 @@ beforeEach(() => {
 afterEach(cleanup);
 const open = (message = true) => act(() => openCheckpoints({ workspaceId: "workspace", threadId: "thread", ...(message ? { userItemId: "user" } : {}) }));
 describe("checkpoints", () => {
+  it("keeps the warning banner out of the page flow", async () => {
+    const { readFileSync } = await vi.importActual<{ readFileSync: (path: string, encoding: "utf8") => string }>("node:fs");
+    const rule = (file: string, selector: string) => readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule("src/features/checkpoints/checkpoints.css", ".checkpoint-banner")).toMatch(/position:\s*fixed/);
+    expect(rule("src/styles/ds-toast.css", ".ds-toast-viewport")).toMatch(/position:\s*fixed/);
+    render(<Checkpoints running={{}} onChanged={vi.fn()} />);
+    act(() => onEvent({ workspace_id: "workspace", message: { method: "checkpoint/updated", params: { threadId: "thread", warning: "Snapshot skipped" } } }));
+    expect(screen.getByText(/Snapshot skipped/).closest(".checkpoint-banner")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss checkpoint warning" }));
+    expect(screen.queryByText(/Snapshot skipped/)).toBeNull();
+  });
   it("selects the second turn's before checkpoint by user item", async () => {
     const rows = ["before", "after", "before", "after"].map((kind, index) => ({
       ...row, id: `checkpoint-${index + 1}`,
