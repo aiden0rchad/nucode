@@ -898,6 +898,7 @@ describe("useThreads UX integration", () => {
         startMcp: threads.startMcp,
         startFast: threads.startFast,
         startStatus: threads.startStatus,
+        startContextCommand: threads.startContextCommand,
         clearActiveImages,
       });
       return { threads, queued };

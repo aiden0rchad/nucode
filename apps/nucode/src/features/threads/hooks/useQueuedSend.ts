@@ -42,6 +42,7 @@ type UseQueuedSendOptions = {
   startMcp: (text: string) => Promise<void>;
   startFast: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startContextCommand: (text: string) => Promise<void>;
   clearActiveImages: () => void;
 };
 
@@ -68,10 +69,12 @@ type SlashCommandKind =
   | "new"
   | "resume"
   | "review"
-  | "status";
+  | "status"
+  | "context-size"
+  | "autocompact";
 
 function parseSlashCommand(text: string): SlashCommandKind | null {
-  const match = /^\/(compact|fast|fork|mcp|new|resume|review|status)(?=\s|$)/i.exec(text);
+  const match = /^\/(compact|fast|fork|mcp|new|resume|review|status|context-size|autocompact)(?=\s|$)/i.exec(text);
   return match ? match[1].toLowerCase() as SlashCommandKind : null;
 }
 
@@ -97,6 +100,7 @@ export function useQueuedSend({
   startMcp,
   startFast,
   startStatus,
+  startContextCommand,
   clearActiveImages,
 }: UseQueuedSendOptions): UseQueuedSendResult {
   const [queuedByThread, setQueuedByThread] = useState<
@@ -180,6 +184,10 @@ export function useQueuedSend({
         await startStatus(trimmed);
         return;
       }
+      if (command === "context-size" || command === "autocompact") {
+        await startContextCommand(trimmed);
+        return;
+      }
       if (command === "new" && activeWorkspace) {
         const threadId = await startThreadForWorkspace(activeWorkspace.id);
         const rest = trimmed.replace(/^\/new\b/i, "").trim();
@@ -198,6 +206,7 @@ export function useQueuedSend({
       startMcp,
       startFast,
       startStatus,
+      startContextCommand,
       startThreadForWorkspace,
     ],
   );

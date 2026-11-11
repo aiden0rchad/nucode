@@ -5,9 +5,27 @@ import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type
 import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
+import { contextReport } from "./lib/contextReport.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
+  let captured: { systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[] } | undefined;
+  pi.on("before_agent_start", async event => {
+    captured = { systemPrompt: event.systemPrompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
+  });
+  const reportContext = async (_event: unknown, ctx: any) => {
+    try {
+      const usage = ctx.getContextUsage();
+      if (!captured || !usage?.contextWindow) return;
+      const compaction = pi.getSettings().compaction;
+      const reserve = compaction?.modelOverrides?.[`${ctx.model.provider}/${ctx.model.id}`]?.reserveTokens ?? compaction?.reserveTokens ?? 16384;
+      const report = contextReport({ ...captured, tools: pi.getAllTools(), activeTools: pi.getActiveTools(), usedTokens: usage.tokens, window: usage.contextWindow, reserve, autoCompact: compaction?.enabled !== false });
+      ctx.ui.setStatus("nucode-context", JSON.stringify(report));
+    } catch {}
+  };
+  pi.on("turn_end", reportContext);
+  pi.on("agent_end", reportContext);
+  pi.on("session_compact", reportContext);
   pi.on("session_start", async (_event, ctx) => {
     if (process.env.NUCODE_OMP === "1") {
       const features = JSON.parse(process.env.NUCODE_FEATURES || "{}");

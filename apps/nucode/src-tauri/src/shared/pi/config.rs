@@ -239,10 +239,22 @@ pub(super) fn write_access(home: &Path, id: &str, mode: Option<&str>) -> Result<
     write_json(&file, &value)
 }
 
+fn settings_value(registry: &[ProviderEntry], auto_compact: &AutoCompact) -> Value {
+    let enabled: Vec<_> = registry.iter().filter(|p| p.enabled).flat_map(|p| p.models.iter().filter(|m| m.enabled).map(move |m| (format!("{}/{}", provider_id(p, registry), m.id), m.context_window))).collect();
+    let mut compaction = json!({"enabled": auto_compact.enabled});
+    if let Some(percent) = auto_compact.percent {
+        // pi compacts when used > window - reserveTokens, so the reserve is the unused share.
+        let overrides: serde_json::Map<_, _> = enabled.iter().filter_map(|(key, window)| window.map(|w| (key.clone(), json!({"reserveTokens": (w - w * percent as u64 / 100).max(1024)})))).collect();
+        compaction["modelOverrides"] = Value::Object(overrides);
+    }
+    json!({"quietStartup":true,"enableInstallTelemetry":false,"enabledModels":enabled.iter().map(|(key, _)| key).collect::<Vec<_>>(),"compaction":compaction})
+}
+
 pub(super) fn prepare(
     home: &Path,
     registry: &[ProviderEntry],
     graph: Option<&CodegraphSetup>,
+    auto_compact: &AutoCompact,
 ) -> Result<HashMap<String, String>, String> {
     std::fs::create_dir_all(home.join("extensions")).map_err(|e| e.to_string())?;
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(home, std::fs::Permissions::from_mode(0o700)).map_err(|e|e.to_string())?; }
@@ -290,6 +302,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/executionLimits.ts"),
         ),
         (
+            "lib/contextReport.ts",
+            include_str!("../../../../engines/pi/extensions/lib/contextReport.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),
@@ -304,7 +320,7 @@ pub(super) fn prepare(
     write_json(&home.join("mcp.json"), &mcp(graph))?;
     write_json(
         &home.join("settings.json"),
-        &json!({"quietStartup":true,"enableInstallTelemetry":false,"enabledModels":registry.iter().filter(|p|p.enabled).flat_map(|p|p.models.iter().filter(|m|m.enabled).map(move |m|format!("{}/{}",provider_id(p,registry),m.id))).collect::<Vec<_>>()}),
+        &settings_value(registry, auto_compact),
     )?;
     let mut env = HashMap::new();
     env.insert(

@@ -5,6 +5,7 @@ import type {
   ThreadListSortKey,
   ThreadSummary,
   ThreadTokenUsage,
+  ContextReport,
   TurnPlan,
 } from "@/types";
 import { CHAT_SCROLLBACK_DEFAULT } from "@utils/chatScrollback";
@@ -46,6 +47,7 @@ export type ThreadState = {
   approvals: ApprovalRequest[];
   userInputRequests: RequestUserInputRequest[];
   tokenUsageByThread: Record<string, ThreadTokenUsage>;
+  contextByThread: Record<string, ContextReport>;
   planByThread: Record<string, TurnPlan | null>;
   lastAgentMessageByThread: Record<string, { text: string; timestamp: number }>;
 };
@@ -164,6 +166,7 @@ export type ThreadAction =
       workspaceId: string;
     }
   | { type: "setThreadTokenUsage"; threadId: string; tokenUsage: ThreadTokenUsage }
+  | { type: "setThreadContext"; threadId: string; context: ContextReport }
 
 
   | { type: "setActiveTurnId"; threadId: string; turnId: string | null }
@@ -197,6 +200,7 @@ export const initialState: ThreadState = {
   approvals: [],
   userInputRequests: [],
   tokenUsageByThread: {},
+  contextByThread: {},
   planByThread: {},
   lastAgentMessageByThread: {},
 };

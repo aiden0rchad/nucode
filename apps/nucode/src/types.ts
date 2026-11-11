@@ -322,6 +322,7 @@ export type AppSettings = {
   mcpServers?: McpServerEntry[];
   providers?: ProviderEntry[];
   agentPolicy?: AgentPolicy;
+  autoCompact?: { enabled: boolean; percent?: number | null };
   codegraphEnabled: boolean;
   codexBin: string | null;
   codexArgs: string | null;
@@ -623,6 +624,20 @@ export type ThreadTokenUsage = {
   total: TokenUsageBreakdown;
   last: TokenUsageBreakdown;
   modelContextWindow: number | null;
+};
+
+export type ContextRowId = "messages" | "mcpTools" | "systemTools" | "systemPrompt" | "skills" | "memory" | "buffer" | "free";
+
+/** What fills a pi thread's context window, measured by the engine extension after each turn. */
+export type ContextReport = {
+  window: number;
+  used: number | null;
+  reserve: number;
+  autoCompact: boolean;
+  rows: { id: ContextRowId; tokens: number | null }[];
+  deferred: { id: "mcpTools" | "systemTools"; tokens: number }[];
+  mcpTools: string[];
+  untilCompact: number | null;
 };
 
 export type LocalUsageDay = {

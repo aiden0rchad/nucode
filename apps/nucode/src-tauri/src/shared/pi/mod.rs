@@ -361,8 +361,9 @@ impl PiEngine {
                 connector.tool_allowlist = Some(allowed);
             }
         }
+        let settings = super::engine_registry::settings(self.data.as_deref());
         let fingerprint =
-            serde_json::to_string(&(registry, policy, &connectors, super::engine_registry::features(self.data.as_deref()))).map_err(|e| e.to_string())?;
+            serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact)).map_err(|e| e.to_string())?;
         if let Some(p) = &s.process {
             if p.alive.load(Ordering::SeqCst) && s.configuration == fingerprint {
                 return Ok(p.clone());
@@ -388,7 +389,7 @@ impl PiEngine {
                 Ok((config::credentials(&registry, keys.as_ref(), &required)?, super::connectors::delivery(&connectors, keys.as_ref())?))
             }).await.map_err(|_| "Credential lookup failed".to_string())??
         };
-        let mut env = config::prepare(&home, registry, self.graph.as_ref())?;
+        let mut env = config::prepare(&home, registry, self.graph.as_ref(), &settings.auto_compact)?;
         env.extend(credentials);
         let features = super::engine_registry::features(self.data.as_deref());
         self.profile.prepare(&home, registry, &features, &mut env)?;

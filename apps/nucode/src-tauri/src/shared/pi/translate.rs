@@ -589,6 +589,7 @@ impl Translator {
                     self.item(json!({"type":"agentMessage","id":format!("{}:execution-limit",self.turn_id()),"text":format!("**Execution limit reached**\n\n{message}")}), true, &mut out);
                 }
             },
+            "nucode_context" if m["record"].is_object() => out.push(self.event("thread/context/updated", json!({"context":m["record"]}))),
             "nucode_verification" if self.active && !self.aborted => {
                 let record = &m["record"];
                 if let (Some(status @ ("verified" | "unverified")), Some(message)) = (record["status"].as_str(), record["message"].as_str()) {

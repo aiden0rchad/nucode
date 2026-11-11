@@ -473,6 +473,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     threadListCursorByWorkspace,
     activeTurnIdByThread,
     tokenUsageByThread,
+    contextByThread,
     planByThread,
     lastAgentMessageByThread,
     pinnedThreadsVersion,
@@ -500,6 +501,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     startMcp,
     startFast,
     startStatus,
+    startContextCommand,
     reviewPrompt,
     closeReviewPrompt,
     showPresetStep,
@@ -532,6 +534,12 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     serviceTier: selectedServiceTier,
     collaborationMode: collaborationModePayload,
     onSelectServiceTier: handleSelectServiceTier,
+    contextCommands: {
+      providers: appSettings.providers ?? [],
+      autoCompact: appSettings.autoCompact,
+      model: selectedModel?.providerId && selectedModel.modelId ? { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: selectedModel.displayName } : null,
+      save: async patch => { const next = { ...appSettings, ...patch }; await queueSaveSettings(next); setAppSettings(next); },
+    },
     accessMode,
     ensureWorkspaceRuntimeCodexArgs,
     reviewDeliveryMode: appSettings.reviewDeliveryMode,
@@ -1070,6 +1078,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     getWorkspaceGroupName,
   });
 
+  const activeContextReport = activeThreadId ? contextByThread[activeThreadId] ?? null : null;
   const activeTokenUsage = activeThreadId
     ? tokenUsageByThread[activeThreadId] ?? null
     : null;
@@ -1135,6 +1144,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       startMcp,
       startFast,
       startStatus,
+      startContextCommand,
       addWorktreeAgent,
       handleWorktreeCreated,
       addDebugEntry,
@@ -1988,7 +1998,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     profiles={environments.profiles} engine={activeEngine} modelId={selectedModelId}
     onSaveEnvironment={environments.save} onSelectEnvironment={environments.select} onDeleteEnvironment={environments.remove}
     remote={{ mode: appSettings.backendMode, host: appSettings.remoteBackendHost }}
-    usage={activeTokenUsage} protocol={appSettings.engines?.find(engine => engine.id === activeEngine)?.protocol ?? (activeEngine === "claude" ? "acp" : activeEngine === "codex" ? "codex-app-server" : "pi-rpc")}
+    usage={activeTokenUsage} contextReport={activeContextReport} onCompact={() => { void startCompact("/compact"); }} protocol={appSettings.engines?.find(engine => engine.id === activeEngine)?.protocol ?? (activeEngine === "claude" ? "acp" : activeEngine === "codex" ? "codex-app-server" : "pi-rpc")}
     skills={skills} skillsAvailable={activeEngine === "codex"} memoryFiles={[...Object.entries(agentMdState.fileStatuses).filter(([, exists]) => exists).map(([path]) => path), ...agentMdState.detected]}
     {...sessionData} browserEnabled={features.browser}
     onOpenFile={path => {

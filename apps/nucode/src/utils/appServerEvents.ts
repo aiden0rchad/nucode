@@ -38,6 +38,7 @@ export const SUPPORTED_APP_SERVER_METHODS = [
   "thread/name/updated",
   "thread/status/changed",
   "thread/started",
+  "thread/context/updated",
   "thread/tokenUsage/updated",
   "thread/unarchived",
   "turn/completed",

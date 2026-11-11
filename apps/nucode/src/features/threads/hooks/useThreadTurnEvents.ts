@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import { extractEngineCapabilities } from "@threads/utils/threadSummary";
-import type { TurnPlan } from "@/types";
+import type { ContextReport, TurnPlan } from "@/types";
 import { interruptTurn as interruptTurnService } from "@services/tauri";
 import { getThreadTimestamp, previewThreadName } from "@utils/threadItems";
 import {
@@ -383,6 +383,14 @@ export function useThreadTurnEvents({
     [dispatch],
   );
 
+  const onThreadContextUpdated = useCallback(
+    (workspaceId: string, threadId: string, context: Record<string, unknown>) => {
+      dispatch({ type: "ensureThread", workspaceId, threadId });
+      dispatch({ type: "setThreadContext", threadId, context: context as unknown as ContextReport });
+    },
+    [dispatch],
+  );
+
   const onThreadTokenUsageUpdated = useCallback(
     (
       workspaceId: string,
@@ -460,6 +468,7 @@ export function useThreadTurnEvents({
     onTurnPlanUpdated,
     onTurnDiffUpdated,
     onThreadTokenUsageUpdated,
+    onThreadContextUpdated,
     onTurnError,
   };
 }

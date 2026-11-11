@@ -412,6 +412,17 @@ impl Default for ChatImport {
     fn default() -> Self { Self { auto: false, sources: vec!["claude".into(), "codex".into()], include_archived: false } }
 }
 
+/// When pi compacts a thread automatically; `percent` is how full the context may get (50..=95).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct AutoCompact {
+    pub(crate) enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) percent: Option<u8>,
+}
+impl Default for AutoCompact {
+    fn default() -> Self { Self { enabled: true, percent: None } }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct AppSettings {
     #[serde(default, rename = "chatImport")]
@@ -441,6 +452,8 @@ pub(crate) struct AppSettings {
     pub(crate) agent_policy: AgentPolicy,
     #[serde(default = "default_codegraph_enabled", rename = "codegraphEnabled")]
     pub(crate) codegraph_enabled: bool,
+    #[serde(default, rename = "autoCompact")]
+    pub(crate) auto_compact: AutoCompact,
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
@@ -1210,6 +1223,7 @@ impl Default for AppSettings {
             default_mode: None,
             chat_default_model: None,
             codegraph_enabled: true,
+            auto_compact: AutoCompact::default(),
             codex_bin: None,
             codex_args: None,
             backend_mode: default_backend_mode(),

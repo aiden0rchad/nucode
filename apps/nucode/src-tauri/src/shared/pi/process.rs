@@ -223,9 +223,9 @@ impl Process {
                 });
                 return;
             }
-            if method == "setStatus" && matches!(m["statusKey"].as_str(), Some("nucode-verification" | "nucode-execution-limit")) {
+            if method == "setStatus" && matches!(m["statusKey"].as_str(), Some("nucode-verification" | "nucode-execution-limit" | "nucode-context")) {
                 if let Some(record) = m["statusText"].as_str().and_then(|text| serde_json::from_str::<Value>(text).ok()) {
-                    let kind = if m["statusKey"] == "nucode-execution-limit" { "nucode_execution_limit" } else { "nucode_verification" };
+                    let kind = match m["statusKey"].as_str() { Some("nucode-execution-limit") => "nucode_execution_limit", Some("nucode-context") => "nucode_context", _ => "nucode_verification" };
                     for event in self.translator.lock().await.apply(&json!({"type":kind,"record":record})) {
                         (self.emit)(event);
                     }

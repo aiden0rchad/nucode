@@ -35,6 +35,7 @@ const makeOptions = (
   startMcp: vi.fn().mockResolvedValue(undefined),
   startFast: vi.fn().mockResolvedValue(undefined),
   startStatus: vi.fn().mockResolvedValue(undefined),
+  startContextCommand: vi.fn().mockResolvedValue(undefined),
   clearActiveImages: vi.fn(),
   ...overrides,
 });
@@ -48,6 +49,14 @@ describe("useQueuedSend", () => {
     expect(options.startThreadForWorkspace).not.toHaveBeenCalled();
     expect(options.startCompact).not.toHaveBeenCalled();
     expect(options.startReview).not.toHaveBeenCalled();
+  });
+
+  it.each(["/context-size 400k", "/autocompact 80", "/autocompact"])("routes %s to the context command handler", async text => {
+    const options = makeOptions();
+    const { result } = renderHook(() => useQueuedSend(options));
+    await act(async () => { await result.current.handleSend(text); });
+    expect(options.startContextCommand).toHaveBeenCalledWith(text);
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 
   it("sends queued messages one at a time after processing completes", async () => {

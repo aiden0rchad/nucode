@@ -96,6 +96,7 @@ type AppServerEventHandlers = {
     threadId: string,
     tokenUsage: Record<string, unknown> | null,
   ) => void;
+  onThreadContextUpdated?: (workspaceId: string, threadId: string, context: Record<string, unknown>) => void;
 };
 
 export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
@@ -120,6 +121,7 @@ export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
   "thread/name/updated",
   "thread/status/changed",
   "thread/started",
+  "thread/context/updated",
   "thread/tokenUsage/updated",
   "thread/unarchived",
   "turn/completed",
@@ -405,6 +407,15 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         const diff = String(params.diff ?? "");
         if (threadId && diff) {
           currentHandlers.onTurnDiffUpdated?.(workspace_id, threadId, diff);
+        }
+        return;
+      }
+
+      if (method === "thread/context/updated") {
+        const threadId = String(params.threadId ?? params.thread_id ?? "");
+        const context = params.context;
+        if (threadId && context && typeof context === "object") {
+          currentHandlers.onThreadContextUpdated?.(workspace_id, threadId, context as Record<string, unknown>);
         }
         return;
       }

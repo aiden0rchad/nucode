@@ -167,6 +167,7 @@ export function useThreadEventHandlers({
     onTurnPlanUpdated,
     onTurnDiffUpdated,
     onThreadTokenUsageUpdated,
+    onThreadContextUpdated,
     onTurnError,
   } = useThreadTurnEvents({
     dispatch,
@@ -279,6 +280,7 @@ export function useThreadEventHandlers({
       onTurnPlanUpdated,
       onTurnDiffUpdated,
       onThreadTokenUsageUpdated,
+      onThreadContextUpdated,
       onTurnError,
     }),
     [
@@ -311,6 +313,7 @@ export function useThreadEventHandlers({
       onTurnPlanUpdated,
       onTurnDiffUpdated,
       onThreadTokenUsageUpdated,
+      onThreadContextUpdated,
       onTurnError,
     ],
   );

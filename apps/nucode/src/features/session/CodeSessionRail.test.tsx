@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ContextReport } from "@/types";
 import { setupPointerEvents } from "@/test/pointerEvents";
 import { CodeSessionRail, type CodeSessionRailProps } from "./CodeSessionRail";
 const panel = vi.hoisted(() => ({ openTool: vi.fn(), openPage: vi.fn().mockResolvedValue(undefined) }));
@@ -142,4 +143,41 @@ it("keeps empty sections compact, opens new output, and remembers explicit discl
   fireEvent.click(screen.getByRole("button", { name: "Outputs (1)" }));
   view.unmount(); render(<CodeSessionRail {...data} />);
   expect(screen.queryByRole("button", { name: "result.md" })).toBeNull();
+  describe("context report", () => {
+    const report: ContextReport = { window: 500000, used: 309900, reserve: 33000, autoCompact: true, rows: [
+      { id: "messages", tokens: 238700 }, { id: "mcpTools", tokens: 24400 }, { id: "systemTools", tokens: 21200 }, { id: "systemPrompt", tokens: 12900 },
+      { id: "skills", tokens: 6500 }, { id: "memory", tokens: 2500 }, { id: "buffer", tokens: 33000 }, { id: "free", tokens: 157100 },
+    ], deferred: [{ id: "mcpTools", tokens: 65900 }, { id: "systemTools", tokens: 25500 }], mcpTools: ["mcp__a__one", "mcp__b__two"], untilCompact: 150000 };
+    it("renders rows, deferred rows, percent, tool names and until auto-compact, and compacts on click", () => {
+      const onCompact = vi.fn();
+      render(<CodeSessionRail {...props()} contextReport={report} onCompact={onCompact} />);
+      expect(screen.getByText("62% used")).toBeTruthy();
+      expect(screen.getByText("309.9k / 500k")).toBeTruthy();
+      const rows = Object.fromEntries([...document.querySelectorAll(".code-context-report > div")].map(row => [row.querySelector("dt")?.textContent, [...row.querySelectorAll("dd")].map(dd => dd.textContent)]));
+      expect(rows["Messages"]).toEqual(["238.7k", "47.7%"]);
+      expect(rows["Autocompact buffer"]).toEqual(["33k", "6.6%"]);
+      expect(rows["Free space"]).toEqual(["157.1k", "31.4%"]);
+      expect(rows["MCP tools (deferred)"]).toEqual(["65.9k", "—"]);
+      expect(rows["System tools (deferred)"]).toEqual(["25.5k", "—"]);
+      expect(document.querySelectorAll(".code-context-bar > span").length).toBe(7);
+      expect(screen.getByText("mcp__a__one")).toBeTruthy();
+      expect(screen.getByText("150k until auto-compact")).toBeTruthy();
+      expect(screen.getByRole("meter", { name: "Session context usage" }).textContent).toBe("62%");
+      fireEvent.click(screen.getByRole("button", { name: "Compact session" }));
+      expect(onCompact).toHaveBeenCalledTimes(1);
+    });
+    it("says auto-compact is off and shows unknown values as dashes", () => {
+      render(<CodeSessionRail {...props()} contextReport={{ ...report, used: null, autoCompact: false, untilCompact: null, rows: report.rows.map(row => row.id === "messages" || row.id === "free" ? { ...row, tokens: null } : row) }} onCompact={vi.fn()} />);
+      expect(screen.getByText("Auto-compact is off")).toBeTruthy();
+      expect(screen.getByText("— used")).toBeTruthy();
+      expect(screen.queryByRole("meter", { name: "Session context usage" })).toBeNull();
+    });
+    it("keeps today's view when there is no report", () => {
+      const last = { totalTokens: 420, inputTokens: 420, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
+      render(<CodeSessionRail {...props()} contextReport={null} usage={{ last, total: last, modelContextWindow: 1000 }} />);
+      expect(screen.getByText("Latest reported usage")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Compact session" })).toBeNull();
+      expect(document.querySelector(".code-context-report")).toBeNull();
+    });
+  });
 });

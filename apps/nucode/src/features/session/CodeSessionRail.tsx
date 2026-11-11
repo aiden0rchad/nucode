@@ -1,7 +1,8 @@
 import { useSidebarReorder } from "@app/hooks/useSidebarReorder";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, CircleStop, GripVertical, Folder, Laptop, FileOutput, GitBranch, Layers, Plug, RadioTower, X, Settings2, Play, Plus, ListTodo } from "lucide-react";
-import type { BranchInfo, CodeEnvironment, McpServerEntry, SkillOption, ThreadTokenUsage, WorkspaceInfo } from "@/types";
+import type { BranchInfo, CodeEnvironment, ContextReport, McpServerEntry, SkillOption, ThreadTokenUsage, WorkspaceInfo } from "@/types";
+import { formatK } from "@/features/threads/hooks/contextCommands";
 import type { ManagedTasksController } from "@/features/tasks/useManagedTasks";
 import { BackgroundTasks } from "@/features/tasks/BackgroundTasks";
 import { useSidePanel } from "@/features/panels/SidePanel";
@@ -40,6 +41,8 @@ export type CodeSessionRailProps = {
   onDeleteEnvironment: (id: string) => Promise<void>;
   remote: { mode: "local" | "remote"; host: string };
   usage: ThreadTokenUsage | null;
+  contextReport?: ContextReport | null;
+  onCompact?: () => void;
   protocol: string;
   skills: SkillOption[];
   skillsAvailable: boolean;
@@ -96,6 +99,26 @@ function SaveEnvironment({ workspace, workspaces, engine, modelId, onSave, onClo
 }
 
 const tokens = (value: number) => value.toLocaleString();
+
+const rowLabels = { messages: "Messages", mcpTools: "MCP tools", systemTools: "System tools", systemPrompt: "System prompt", skills: "Skills", memory: "Memory files", buffer: "Autocompact buffer", free: "Free space" } as const;
+const reportPercent = (report: ContextReport) => report.used === null || report.window <= 0 ? null : Math.min(100, Math.round(report.used / report.window * 100));
+
+function ContextReportView({ report, onCompact }: { report: ContextReport; onCompact?: () => void }) {
+  const percent = reportPercent(report);
+  const share = (value: number | null) => value === null || report.window <= 0 ? "—" : `${(value / report.window * 100).toFixed(1)}%`;
+  return <>
+    <div className="code-session-row"><span>{percent === null ? "— used" : `${percent}% used`}</span><strong>{formatK(report.used)} / {formatK(report.window)}</strong></div>
+    <div className="code-context-bar" role="meter" aria-label="Context usage" aria-valuemin={0} aria-valuemax={report.window} aria-valuenow={Math.min(report.used ?? 0, report.window)} aria-valuetext={`${formatK(report.used)} of ${formatK(report.window)} tokens`}>
+      {report.rows.filter(row => row.id !== "free" && row.tokens).map(row => <span key={row.id} data-context-row={row.id} style={{ width: `${Math.min(100, (row.tokens ?? 0) / Math.max(report.window, 1) * 100)}%` }} />)}
+    </div>
+    <dl className="code-context-report">
+      {report.rows.map(row => <div key={row.id} style={{ display: "contents" }}><dt><i data-context-row={row.id} />{rowLabels[row.id]}</dt><dd>{formatK(row.tokens)}</dd><dd>{share(row.tokens)}</dd></div>)}
+      {report.deferred.map(row => <div key={`deferred-${row.id}`} style={{ display: "contents" }}><dt><i data-context-row={row.id} />{rowLabels[row.id]} (deferred)</dt><dd>{formatK(row.tokens)}</dd><dd>—</dd></div>)}
+    </dl>
+    <details className="code-session-nested"><summary>MCP tools <span>{report.mcpTools.length}</span></summary>{report.mcpTools.length ? <ul className="code-context-tools">{report.mcpTools.map(name => <li key={name}>{name}</li>)}</ul> : <p className="code-session-muted">None declared</p>}</details>
+    <div className="code-context-footer"><span>{report.autoCompact ? `${formatK(report.untilCompact)} until auto-compact` : "Auto-compact is off"}</span>{onCompact && <button className="code-session-link" onClick={onCompact}>Compact session</button>}</div>
+  </>;
+}
 
 export function CodeSessionRail(props: CodeSessionRailProps) {
   const panel = useSidePanel();
@@ -162,14 +185,13 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
       <details className="code-session-nested"><summary><RadioTower aria-hidden />Remote access <span>{props.remote.mode === "remote" ? "Remote" : "Local"}</span></summary><p className="code-session-muted">{props.remote.mode === "remote" ? `Daemon · ${props.remote.host}` : "Local backend configured"}</p><button className="code-session-link" onClick={() => props.onOpenSettings("server")}>Settings</button></details>
     </>,
     Context: <>
-      {usage ? <><div className="code-session-row"><span>{usage.detailed ? "Latest reported usage" : "Context used"}</span><strong>{usage.percent === null ? "Capacity unknown" : `${usage.percent}%`}</strong></div>
+      {props.contextReport ? <ContextReportView report={props.contextReport} onCompact={props.onCompact} /> : usage ? <><div className="code-session-row"><span>{usage.detailed ? "Latest reported usage" : "Context used"}</span><strong>{usage.percent === null ? "Capacity unknown" : `${usage.percent}%`}</strong></div>
         <div className="code-context-bar" role="meter" aria-label={usage.detailed ? "Latest exchange relative to model capacity" : "Context usage"} aria-valuemin={0} aria-valuemax={usage.capacity ?? Math.max(usage.used, 1)} aria-valuenow={Math.min(usage.used, usage.capacity ?? usage.used)} aria-valuetext={`${tokens(usage.used)} tokens${usage.capacity ? ` of ${tokens(usage.capacity)}` : "; model capacity unavailable"}`}>
           {(usage.detailed ? [{ id: "input", value: usage.input }, { id: "cache", value: usage.cached }, { id: "output", value: usage.output }, { id: "other", value: usage.other }] : [{ id: "input", value: usage.used }]).map(segment => <span key={segment.id} data-kind={segment.id} style={{ width: `${Math.min(100, segment.value / Math.max(usage.capacity ?? usage.used, usage.used, 1) * 100)}%` }} />)}
         </div><p className="code-session-muted">{tokens(usage.used)}{usage.capacity ? ` / ${tokens(usage.capacity)}` : ""} tokens</p>
         {usage.detailed ? <dl className="code-context-breakdown"><dt><i data-kind="input" />Input</dt><dd>{tokens(usage.input)}</dd><dt><i data-kind="cache" />Cached input</dt><dd>{tokens(usage.cached)}</dd><dt><i data-kind="output" />Output</dt><dd>{tokens(usage.output)}</dd>{usage.other > 0 && <><dt>Other reported tokens</dt><dd>{tokens(usage.other)}</dd></>}<dt>Reasoning output</dt><dd>{usage.reasoning ? tokens(usage.reasoning) : "Not reported"}</dd></dl> : <p className="code-session-muted">Breakdown not reported</p>}
       </> : <p className="code-session-muted">Usage not reported yet</p>}
-      
-      <details className="code-session-nested"><summary>MCP tools</summary><p className="code-session-muted">{props.connectors.length} enabled connectors</p><button className="code-session-link" onClick={() => props.onOpenSettings("connectors")}>Manage connectors</button></details>
+      {!props.contextReport && <details className="code-session-nested"><summary>MCP tools</summary><p className="code-session-muted">{props.connectors.length} enabled connectors</p><button className="code-session-link" onClick={() => props.onOpenSettings("connectors")}>Manage connectors</button></details>}
       <details className="code-session-nested"><summary>Skills {props.skillsAvailable && <span>{props.skills.length}</span>}</summary>{props.skillsAvailable ? props.skills.length ? props.skills.map(skill => <button key={skill.path} className="code-session-file" title={skill.path} onClick={() => openFile(skill.path)}>{skill.name}</button>) : <p className="code-session-muted">No skills reported.</p> : <p className="code-session-muted">Skill inventory not reported</p>}<button className="code-session-link" onClick={() => props.onOpenSettings("agents")}>Agent settings</button></details>
       <details className="code-session-nested"><summary>Memory files <span>{props.memoryFiles.length}</span></summary>{props.memoryFiles.length ? props.memoryFiles.map(path => <button className="code-session-file" key={path} onClick={() => openFile(path)}>{path}</button>) : <p className="code-session-muted">None detected</p>}</details>
     </>,
@@ -192,21 +214,24 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
     "Background tasks": headerAction("Manage tasks", <ListTodo size={13} aria-hidden />, () => openTool("background")),
   };
   const counts: Partial<Record<Section, number>> = { Connectors: props.connectors.length, Outputs: props.outputs.length, Changes: props.git.files, Servers: servers.length, "Background tasks": backgroundTasks.length };
-  const isEmpty = (section: Section) => (section === "Context" && !usage) || counts[section] === 0 && !(section === "Connectors" && (props.connectorError || props.connectorsLoading)) && !(section === "Background tasks" && props.tasks.error) && !(section === "Changes" && props.git.error && !isMissingRepo(props.git.error));
+  const isEmpty = (section: Section) => (section === "Context" && !usage && !props.contextReport) || counts[section] === 0 && !(section === "Connectors" && (props.connectorError || props.connectorsLoading)) && !(section === "Background tasks" && props.tasks.error) && !(section === "Changes" && props.git.error && !isMissingRepo(props.git.error));
   // Sections with nothing to show fold into one muted line below instead of a row each, docked or floating. Docked,
   // Context stays: its skills and memory files are there even before usage is reported.
   const folds = (section: Section) => section !== "Environment" && isEmpty(section) && !preferences.expanded.includes(section) && (floating || section !== "Context");
   const foldedEmpty = preferences.order.filter(folds);
-  const headerValue = (section: Section) => section === "Context" ? (usage && usage.percent !== null ? `${usage.percent}%` : undefined) : counts[section];
+  const reportShare = props.contextReport ? reportPercent(props.contextReport) : null;
+  const headerValue = (section: Section) => section === "Context" ? (props.contextReport ? (reportShare === null ? undefined : `${reportShare}%`) : usage && usage.percent !== null ? `${usage.percent}%` : undefined) : counts[section];
+  const meter = props.contextReport && props.contextReport.used !== null && reportShare !== null ? { used: props.contextReport.used, capacity: props.contextReport.window, percent: reportShare }
+    : !props.contextReport && usage && usage.capacity !== null && usage.percent !== null ? { used: usage.used, capacity: usage.capacity, percent: usage.percent } : null;
   return <div ref={railRef} className="code-session-rail" role="region" aria-label="Session details" tabIndex={0}>
-    {usage && usage.capacity !== null && usage.percent !== null && <header className="code-session-rail-header">
+    {meter && <header className="code-session-rail-header">
       <span>Context</span>
-      <div className="code-session-context-usage ds-tooltip-trigger" data-warning={usage.used / usage.capacity >= 0.8}
-        role="meter" aria-label="Session context usage" aria-valuemin={0} aria-valuemax={usage.capacity} aria-valuenow={Math.min(usage.used, usage.capacity)}
-        aria-valuetext={`Context: ${usage.used} of ${usage.capacity} tokens`} title={`Context: ${usage.used} of ${usage.capacity} tokens`}
-        data-tooltip={`Context: ${usage.used} of ${usage.capacity} tokens`} data-tooltip-placement="bottom" tabIndex={0}>
-        <span>{usage.percent}%</span>
-        <span className="code-session-context-meter" aria-hidden><span style={{ width: `${usage.percent}%` }} /></span>
+      <div className="code-session-context-usage ds-tooltip-trigger" data-warning={meter.used / meter.capacity >= 0.8}
+        role="meter" aria-label="Session context usage" aria-valuemin={0} aria-valuemax={meter.capacity} aria-valuenow={Math.min(meter.used, meter.capacity)}
+        aria-valuetext={`Context: ${meter.used} of ${meter.capacity} tokens`} title={`Context: ${meter.used} of ${meter.capacity} tokens`}
+        data-tooltip={`Context: ${meter.used} of ${meter.capacity} tokens`} data-tooltip-placement="bottom" tabIndex={0}>
+        <span>{meter.percent}%</span>
+        <span className="code-session-context-meter" aria-hidden><span style={{ width: `${meter.percent}%` }} /></span>
       </div>
     </header>}
     {error && <p role="alert">{error}</p>}

@@ -1223,7 +1223,7 @@ fn every_provider_and_auth_config_is_secret_free() {
             let models = config::models(&registry);
             let id = config::provider_id(&registry[0], &registry);
             assert_eq!(models["providers"][&id]["models"][0]["id"], "fake");
-            let mut env = config::prepare(&dir, &registry, None).unwrap();
+            let mut env = config::prepare(&dir, &registry, None, &Default::default()).unwrap();
             env.extend(config::credentials(&registry, &Keys, "local").unwrap());
             if auth["type"] == "apiKey" {
                 assert_eq!(env["NUCODE_PROVIDER_LOCAL_KEY"], "keychain-secret-canary");
@@ -2378,7 +2378,7 @@ async fn managed_preview_bridge_serves_restarts_and_stops_without_user_dialogs()
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let root = temp();
     std::fs::write(root.join("package.json"), "{}").unwrap();
-    config::prepare(&root, &[], None).unwrap();
+    config::prepare(&root, &[], None, &Default::default()).unwrap();
     let guard = root.join("extensions/lib/commandGuard.ts");
     let access = root.join("access.json");
     std::fs::write(&access, r#"{"kind":"work","accessMode":"full-access"}"#).unwrap();
@@ -2566,4 +2566,42 @@ fn provider_retries_report_the_attempt() {
     assert_eq!(event["params"]["willRetry"], true);
     assert_eq!(event["params"]["error"]["message"], "Couldn't reach the host");
     assert_eq!(event["params"]["retry"], json!({"attempt":3,"maxAttempts":10,"delayMs":4000}));
+}
+
+#[test]
+fn nucode_context_records_become_thread_context_updates() {
+    let mut t = Translator::new("thread-a", "/workspace");
+    let record = json!({"window":100000,"used":5000,"rows":[{"id":"messages","tokens":5000}]});
+    let events = t.apply(&json!({"type":"nucode_context","record":record}));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["method"], "thread/context/updated");
+    assert_eq!(events[0]["params"]["threadId"], "thread-a");
+    assert_eq!(events[0]["params"]["context"], record);
+    assert!(t.apply(&json!({"type":"nucode_context","record":"nope"})).is_empty());
+}
+#[test]
+fn auto_compact_settings_reach_pi_settings_json() {
+    let provider: ProviderEntry = serde_json::from_value(json!({"id":"provider-a","name":"A","kind":"openai-compatible","enabled":true,"auth":{"type":"none"},"models":[{"id":"model-b","enabled":true,"contextWindow":200000},{"id":"model-c","enabled":true}]})).unwrap();
+    let registry = vec![provider];
+    let dir = temp();
+    let read = |dir: &PathBuf| serde_json::from_slice::<Value>(&std::fs::read(dir.join("settings.json")).unwrap()).unwrap();
+    config::prepare(&dir, &registry, None, &Default::default()).unwrap();
+    assert_eq!(read(&dir)["compaction"], json!({"enabled":true}));
+    config::prepare(&dir, &registry, None, &crate::types::AutoCompact { enabled: false, percent: None }).unwrap();
+    assert_eq!(read(&dir)["compaction"], json!({"enabled":false}));
+    config::prepare(&dir, &registry, None, &crate::types::AutoCompact { enabled: true, percent: Some(80) }).unwrap();
+    let compaction = &read(&dir)["compaction"];
+    assert_eq!(compaction["enabled"], true);
+    assert_eq!(compaction["modelOverrides"], json!({"nucode-provider-a/model-b":{"reserveTokens":40000}}));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn auto_compact_defaults_for_old_settings_and_validates_range() {
+    let settings: crate::types::AppSettings = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(settings.auto_compact, crate::types::AutoCompact { enabled: true, percent: None });
+    let mut bad = settings.clone();
+    bad.auto_compact.percent = Some(40);
+    assert!(crate::shared::engine_registry::validate_settings(&bad).is_err());
+    bad.auto_compact.percent = Some(80);
+    assert!(crate::shared::engine_registry::validate_settings(&bad).is_ok());
 }

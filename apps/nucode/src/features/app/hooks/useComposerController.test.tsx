@@ -12,7 +12,7 @@ const options: Parameters<typeof useComposerController>[0] = {
   connectWorkspace: vi.fn(), startThreadForWorkspace: vi.fn(),
   sendUserMessage: vi.fn(), sendUserMessageToThread: vi.fn(),
   startFork: vi.fn(), startReview: vi.fn(), startResume: vi.fn(), startCompact: vi.fn(),
-  startMcp: vi.fn(), startFast: vi.fn(), startStatus: vi.fn(), itemsByThread: {},
+  startMcp: vi.fn(), startFast: vi.fn(), startStatus: vi.fn(), startContextCommand: vi.fn(), itemsByThread: {},
 };
 const failure = (id: string, text: string): ConversationItem => ({
   id, kind: "message", role: "assistant", text: "Thread is running", isError: true, retryMessage: { text },

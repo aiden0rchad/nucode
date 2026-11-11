@@ -29,6 +29,7 @@ import {
   parseReviewTarget,
 } from "@threads/utils/threadNormalize";
 import type { ThreadAction, ThreadState } from "./useThreadsReducer";
+import { runContextCommand, type ContextCommandEnv } from "./contextCommands";
 import { useReviewPrompt } from "./useReviewPrompt";
 import {
   buildMcpStatusLines,
@@ -52,6 +53,7 @@ type UseThreadMessagingOptions = {
   serviceTier?: ServiceTier | null | undefined;
   collaborationMode?: Record<string, unknown> | null;
   onSelectServiceTier?: (tier: ServiceTier | null | undefined) => void;
+  contextCommands?: ContextCommandEnv;
   reviewDeliveryMode?: "inline" | "detached";
   steerEnabled: boolean;
   customPrompts: CustomPromptOption[];
@@ -106,6 +108,7 @@ export function useThreadMessaging({
   serviceTier,
   collaborationMode,
   onSelectServiceTier,
+  contextCommands,
   reviewDeliveryMode = "inline",
   steerEnabled,
   customPrompts,
@@ -718,6 +721,35 @@ export function useThreadMessaging({
     ],
   );
 
+  const startContextCommand = useCallback(
+    async (text: string) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      const threadId = await ensureThreadForActiveWorkspace();
+      if (!threadId) {
+        return;
+      }
+      let message: string;
+      try {
+        message = contextCommands ? await runContextCommand(text, contextCommands) : "Context settings are unavailable.";
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      recordThreadActivity(activeWorkspace.id, threadId, Date.now());
+      dispatch({ type: "addAssistantMessage", threadId, text: message });
+      safeMessageActivity();
+    },
+    [
+      activeWorkspace,
+      contextCommands,
+      dispatch,
+      ensureThreadForActiveWorkspace,
+      recordThreadActivity,
+      safeMessageActivity,
+    ],
+  );
+
   const startFast = useCallback(
     async (text: string) => {
       if (!activeWorkspace) {
@@ -917,6 +949,7 @@ export function useThreadMessaging({
     startMcp,
     startFast,
     startStatus,
+    startContextCommand,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,

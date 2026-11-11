@@ -112,6 +112,8 @@ describe("useComposerAutocompleteState slash commands", () => {
       "goal",
       "new",
       "compact",
+      "context-size",
+      "autocompact",
     ]);
   });
 

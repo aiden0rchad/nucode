@@ -15,6 +15,8 @@ export const basicCommands: AutocompleteItem[] = [
   { id: "goal", label: "goal", description: "Start a task with a clear outcome", insertText: taskDraft("goal"), cursorOffset: 6, replaceTrigger: true },
   { id: "new", label: "new", description: "Start a fresh conversation" },
   { id: "compact", label: "compact", description: "Summarize this conversation to free context" },
+  { id: "context-size", label: "context-size", description: "Set the context window assumed for this model (400k, 1m, default)" },
+  { id: "autocompact", label: "autocompact", description: "Choose how full the context gets before it compacts (80, on, off)" },
 ].map(command => ({ ...command, group: "Slash" }));
 
 /** Also handle commands pasted or typed with arguments, without selecting a suggestion. */

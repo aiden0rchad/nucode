@@ -54,6 +54,7 @@ type UseThreadsOptions = {
   collaborationMode?: Record<string, unknown> | null;
   accessMode?: "read-only" | "current" | "full-access";
   onSelectServiceTier?: (tier: ServiceTier | null | undefined) => void;
+  contextCommands?: import("./contextCommands").ContextCommandEnv;
   reviewDeliveryMode?: "inline" | "detached";
   steerEnabled?: boolean;
   threadTitleAutogenerationEnabled?: boolean;
@@ -86,6 +87,7 @@ export function useThreads({
   collaborationMode,
   accessMode,
   onSelectServiceTier,
+  contextCommands,
   reviewDeliveryMode = "inline",
   steerEnabled = false,
   threadTitleAutogenerationEnabled = false,
@@ -709,6 +711,7 @@ export function useThreads({
     startMcp,
     startFast,
     startStatus,
+    startContextCommand,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,
@@ -740,6 +743,7 @@ export function useThreads({
     serviceTier,
     collaborationMode,
     onSelectServiceTier,
+    contextCommands,
     reviewDeliveryMode,
     steerEnabled,
     customPrompts,
@@ -851,6 +855,7 @@ export function useThreads({
     activeTurnIdByThread: state.activeTurnIdByThread,
     turnDiffByThread: state.turnDiffByThread,
     tokenUsageByThread: state.tokenUsageByThread,
+    contextByThread: state.contextByThread,
     planByThread: state.planByThread,
     lastAgentMessageByThread: state.lastAgentMessageByThread,
     pinnedThreadsVersion,
@@ -880,6 +885,7 @@ export function useThreads({
     startMcp,
     startFast,
     startStatus,
+    startContextCommand,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,

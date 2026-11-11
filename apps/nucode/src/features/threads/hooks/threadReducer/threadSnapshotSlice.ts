@@ -26,6 +26,8 @@ export function reduceThreadSnapshots(
           [action.threadId]: action.tokenUsage,
         },
       };
+    case "setThreadContext":
+      return { ...state, contextByThread: { ...state.contextByThread, [action.threadId]: action.context } };
     case "setThreadTurnDiff":
       return {
         ...state,
