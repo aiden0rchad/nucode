@@ -49,6 +49,7 @@ mod tray;
 mod types;
 mod utils;
 mod window;
+mod window_layout;
 mod window_material;
 #[cfg(test)]
 mod multiwebview_tests;
@@ -137,6 +138,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if matches!(event, WindowEvent::Destroyed) {
                 window::remove_main_focus(window);
+            }
+            #[cfg(target_os = "macos")]
+            if matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(true)) {
+                if let Some(main) = window.app_handle().get_webview("main") { window_layout::check(&main, "window event"); }
             }
             #[cfg(target_os = "macos")]
             if let WindowEvent::CloseRequested { api, .. } = event {

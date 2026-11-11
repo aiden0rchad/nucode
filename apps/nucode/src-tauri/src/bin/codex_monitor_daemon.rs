@@ -29,6 +29,8 @@ mod rules;
 mod shared;
 #[path = "../storage.rs"]
 mod storage;
+#[path = "../window_layout.rs"]
+mod window_layout;
 #[path = "codex_monitor_daemon/transport.rs"]
 mod transport;
 #[allow(dead_code)]
