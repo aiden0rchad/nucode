@@ -71,6 +71,45 @@
   cursor: pointer;
 }
 
+.composer-queue-steer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-muted);
+  background: transparent;
+  color: var(--text-stronger);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.composer-queue-steer svg {
+  width: 12px;
+  height: 12px;
+}
+
+.composer-queue-steer:hover,
+.composer-queue-steer:focus-visible {
+  background: var(--surface-hover);
+}
+
+.composer-queue-item:hover .composer-queue-steer,
+.composer-queue-item:focus-within .composer-queue-steer {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .composer-queue-steer {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .composer-queue-menu-wrap {
   position: relative;
   flex: 0 0 auto;

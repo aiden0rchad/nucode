@@ -1,5 +1,5 @@
 import { IconButton } from "@/features/design-system/components/IconButton";
-import { Ellipsis } from "lucide-react";
+import { CornerDownRight, Ellipsis } from "lucide-react";
 import { useCallback } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { QueuedMessage } from "../../../types";
@@ -14,6 +14,7 @@ type ComposerQueueProps = {
   pausedReason?: string | null;
   onEditQueued?: (item: QueuedMessage) => void;
   onDeleteQueued?: (id: string) => void;
+  onSteerQueued?: (id: string) => void;
 };
 
 export function ComposerQueue({
@@ -21,6 +22,7 @@ export function ComposerQueue({
   pausedReason = null,
   onEditQueued,
   onDeleteQueued,
+  onSteerQueued,
 }: ComposerQueueProps) {
   if (queuedMessages.length === 0) {
     return null;
@@ -33,7 +35,9 @@ export function ComposerQueue({
         <div className="composer-queue-hint">{pausedReason}</div>
       ) : null}
       <div className="composer-queue-list">
-        {queuedMessages.map((item) => (
+        {queuedMessages.map((item) => {
+          const steerable = Boolean(onSteerQueued) && !item.text.trimStart().startsWith("/");
+          return (
           <div key={item.id} className="composer-queue-item">
             <span className="composer-queue-text">
               {item.text ||
@@ -46,13 +50,26 @@ export function ComposerQueue({
                 ? ` · ${item.images.length} image${item.images.length === 1 ? "" : "s"}`
                 : ""}
             </span>
+            {steerable ? (
+              <button
+                type="button"
+                className="composer-queue-steer"
+                title="Send now: the agent reads it at its next step"
+                aria-label="Steer: send this message now"
+                onClick={() => onSteerQueued?.(item.id)}
+              >
+                <CornerDownRight aria-hidden /> Steer
+              </button>
+            ) : null}
             <QueueMenuButton
               item={item}
               onEditQueued={onEditQueued}
               onDeleteQueued={onDeleteQueued}
+              onSteerQueued={steerable ? onSteerQueued : undefined}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -62,9 +79,10 @@ type QueueMenuButtonProps = {
   item: QueuedMessage;
   onEditQueued?: (item: QueuedMessage) => void;
   onDeleteQueued?: (id: string) => void;
+  onSteerQueued?: (id: string) => void;
 };
 
-function QueueMenuButton({ item, onEditQueued, onDeleteQueued }: QueueMenuButtonProps) {
+function QueueMenuButton({ item, onEditQueued, onDeleteQueued, onSteerQueued }: QueueMenuButtonProps) {
   const menu = useMenuController();
   const handleToggleMenu = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -85,6 +103,11 @@ function QueueMenuButton({ item, onEditQueued, onDeleteQueued }: QueueMenuButton
     onDeleteQueued?.(item.id);
   }, [item.id, menu, onDeleteQueued]);
 
+  const handleSteer = useCallback(() => {
+    menu.close();
+    onSteerQueued?.(item.id);
+  }, [item.id, menu, onSteerQueued]);
+
   return (
     <div className="composer-queue-menu-wrap" ref={menu.containerRef}>
       <IconButton
@@ -99,6 +122,9 @@ function QueueMenuButton({ item, onEditQueued, onDeleteQueued }: QueueMenuButton
       </IconButton>
       {menu.isOpen && (
         <PopoverSurface className="composer-queue-item-popover" role="menu">
+          {onSteerQueued ? (
+            <PopoverMenuItem onClick={handleSteer}>Steer now</PopoverMenuItem>
+          ) : null}
           <PopoverMenuItem onClick={handleEdit}>Edit</PopoverMenuItem>
           <PopoverMenuItem onClick={handleDelete}>Delete</PopoverMenuItem>
         </PopoverSurface>

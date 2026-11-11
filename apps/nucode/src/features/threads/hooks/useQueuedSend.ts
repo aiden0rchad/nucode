@@ -59,6 +59,7 @@ type UseQueuedSendResult = {
     images?: string[],
     ) => Promise<void>;
   removeQueuedMessage: (threadId: string, messageId: string) => void;
+  steerQueuedMessage: (threadId: string, messageId: string) => Promise<void>;
 };
 
 type SlashCommandKind =
@@ -395,11 +396,50 @@ export function useQueuedSend({
     sendUserMessage,
   ]);
 
+  const steerQueuedMessage = useCallback(
+    async (threadId: string, messageId: string) => {
+      if (
+        threadId !== activeThreadId ||
+        !(isProcessing && !isStopping && steerEnabled && Boolean(activeTurnId))
+      ) {
+        return;
+      }
+      const item = (queuedByThread[threadId] ?? []).find((entry) => entry.id === messageId);
+      if (!item || parseSlashCommand(item.text.trim()) !== null) {
+        return;
+      }
+      removeQueuedMessage(threadId, messageId);
+      try {
+        const result = await sendUserMessage(item.text, item.images ?? [], {
+          sendIntent: "steer",
+        });
+        if (result.status === "steer_failed") {
+          prependQueuedMessage(threadId, item);
+        }
+      } catch {
+        // The messaging layer reports the error; keep the message queued.
+        prependQueuedMessage(threadId, item);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      isProcessing,
+      isStopping,
+      prependQueuedMessage,
+      queuedByThread,
+      removeQueuedMessage,
+      sendUserMessage,
+      steerEnabled,
+    ],
+  );
+
   return {
     queuedByThread,
     activeQueue,
     handleSend,
     queueMessage,
     removeQueuedMessage,
+    steerQueuedMessage,
   };
 }

@@ -566,4 +566,99 @@ it("releases a rejected queued send so later messages can still be sent", async 
   await act(async () => { await result.current.queueMessage("Next"); });
   expect(options.sendUserMessage).toHaveBeenLastCalledWith("Next", []);
   expect(options.sendUserMessage).toHaveBeenCalledTimes(2);
+
+  describe("steerQueuedMessage", () => {
+    const queueOne = async (
+      overrides: Partial<Parameters<typeof useQueuedSend>[0]>,
+      text = "Please also check X",
+      images: string[] = ["img-1"],
+    ) => {
+      const options = makeOptions({ isProcessing: true, steerEnabled: true, ...overrides });
+      const hook = renderHook((props) => useQueuedSend(props), { initialProps: options });
+      await act(async () => {
+        await hook.result.current.handleSend(text, images);
+      });
+      expect(hook.result.current.activeQueue).toHaveLength(1);
+      return { options, ...hook };
+    };
+
+    it("removes the item and steers with its text and images", async () => {
+      const { options, result } = await queueOne({});
+      const id = result.current.activeQueue[0]!.id;
+      await act(async () => {
+        await result.current.steerQueuedMessage("thread-1", id);
+      });
+      expect(options.sendUserMessage).toHaveBeenCalledWith("Please also check X", ["img-1"], {
+        sendIntent: "steer",
+      });
+      expect(result.current.activeQueue).toHaveLength(0);
+    });
+
+    it("puts the item back first when the steer fails", async () => {
+      const sendUserMessage = vi.fn().mockResolvedValue({ status: "steer_failed" });
+      const { result } = await queueOne({ sendUserMessage });
+      await act(async () => {
+        await result.current.handleSend("second", []);
+      });
+      const first = result.current.activeQueue[0]!;
+      await act(async () => {
+        await result.current.steerQueuedMessage("thread-1", first.id);
+      });
+      expect(result.current.activeQueue.map((entry) => entry.id)[0]).toBe(first.id);
+      expect(result.current.activeQueue).toHaveLength(2);
+    });
+
+    it("puts the item back when sending throws", async () => {
+      const sendUserMessage = vi.fn().mockRejectedValue(new Error("boom"));
+      const { result } = await queueOne({ sendUserMessage });
+      const id = result.current.activeQueue[0]!.id;
+      await act(async () => {
+        await result.current.steerQueuedMessage("thread-1", id);
+      });
+      expect(result.current.activeQueue[0]?.id).toBe(id);
+    });
+
+    it("does nothing when the turn is not steerable", async () => {
+      const { options, result, rerender } = await queueOne({});
+      const id = result.current.activeQueue[0]!.id;
+      const sendUserMessage = options.sendUserMessage as ReturnType<typeof vi.fn>;
+      sendUserMessage.mockClear();
+      for (const overrides of [
+        { isProcessing: false },
+        { steerEnabled: false },
+        { activeTurnId: null },
+      ]) {
+        await act(async () => {
+          rerender({ ...options, ...overrides });
+        });
+        await act(async () => {
+          await result.current.steerQueuedMessage("thread-1", id);
+        });
+      }
+      expect(sendUserMessage).not.toHaveBeenCalled();
+      expect(result.current.activeQueue).toHaveLength(1);
+    });
+
+    it("does nothing for another thread", async () => {
+      const { options, result } = await queueOne({});
+      const id = result.current.activeQueue[0]!.id;
+      (options.sendUserMessage as ReturnType<typeof vi.fn>).mockClear();
+      await act(async () => {
+        await result.current.steerQueuedMessage("thread-2", id);
+      });
+      expect(options.sendUserMessage).not.toHaveBeenCalled();
+      expect(result.current.activeQueue).toHaveLength(1);
+    });
+
+    it("does nothing for a queued slash command", async () => {
+      const { options, result } = await queueOne({}, "/compact now", []);
+      const queued = result.current.activeQueue;
+      expect(queued).toHaveLength(1);
+      await act(async () => {
+        await result.current.steerQueuedMessage("thread-1", queued[0]!.id);
+      });
+      expect(options.sendUserMessage).not.toHaveBeenCalled();
+      expect(result.current.activeQueue).toHaveLength(1);
+    });
+  });
 });

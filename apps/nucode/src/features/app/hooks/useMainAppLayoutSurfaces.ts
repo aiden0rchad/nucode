@@ -486,6 +486,10 @@ function buildPrimarySurface({
           },
           onEditQueued: composerWorkspaceState.handleEditQueued,
           onDeleteQueued: composerWorkspaceState.handleDeleteQueued,
+          onSteerQueued:
+            composerWorkspaceState.isProcessing && composerWorkspaceState.steerAvailable
+              ? composerWorkspaceState.handleSteerQueued
+              : undefined,
           collaborationModes,
           selectedCollaborationModeId,
           onSelectCollaborationMode,

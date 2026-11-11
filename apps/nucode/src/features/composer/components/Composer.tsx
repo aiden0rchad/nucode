@@ -92,6 +92,7 @@ type ComposerProps = {
   queuePausedReason?: string | null;
   onEditQueued?: (item: QueuedMessage) => void;
   onDeleteQueued?: (id: string) => void;
+  onSteerQueued?: (id: string) => void;
   sendLabel?: string;
   draftText?: string;
   onDraftChange?: (text: string) => void;
@@ -203,6 +204,7 @@ export const Composer = memo(function Composer({
   queuePausedReason = null,
   onEditQueued,
   onDeleteQueued,
+  onSteerQueued,
   sendLabel = "Send",
   draftText = "",
   onDraftChange,
@@ -583,6 +585,7 @@ export const Composer = memo(function Composer({
         pausedReason={queuePausedReason}
         onEditQueued={onEditQueued}
         onDeleteQueued={onDeleteQueued}
+        onSteerQueued={onSteerQueued}
       />
       {isProcessing && composerFollowUpHintEnabled && (
         <div className="composer-followup-hint" role="status" aria-live="polite">
