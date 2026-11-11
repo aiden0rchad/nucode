@@ -7,6 +7,7 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
+import { dropForeignReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
@@ -17,6 +18,13 @@ export default function (pi: ExtensionAPI) {
     try { prompt = applyResponseStyle(original, parseResponseStyle(process.env.NUCODE_RESPONSE_STYLE)); } catch { prompt = original; }
     captured = { systemPrompt: Array.isArray(prompt) ? prompt.join("\n\n") : prompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
     if (prompt !== original) return { systemPrompt: prompt as any };
+  });
+  // Before every model call: keep another model's reasoning out of the history (see dropForeignReasoning).
+  pi.on("context", async (event: any, ctx: any) => {
+    try {
+      const messages = dropForeignReasoning(event.messages, ctx.model);
+      if (messages) return { messages };
+    } catch {}
   });
   const reportContext = async (_event: unknown, ctx: any) => {
     try {

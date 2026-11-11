@@ -2617,6 +2617,7 @@ fn response_style_library_is_written_next_to_the_gate() {
     let dir = temp();
     config::prepare(&dir, &[], None, &Default::default()).unwrap();
     assert!(dir.join("extensions/lib/responseStyle.ts").exists());
+    assert!(dir.join("extensions/lib/foreignReasoning.ts").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
 #[test]

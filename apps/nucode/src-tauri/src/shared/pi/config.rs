@@ -310,6 +310,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/responseStyle.ts"),
         ),
         (
+            "lib/foreignReasoning.ts",
+            include_str!("../../../../engines/pi/extensions/lib/foreignReasoning.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),

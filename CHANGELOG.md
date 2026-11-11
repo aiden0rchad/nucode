@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Model switching:** a thread that switched to a Claude model after another model had reasoned in it could fail on every turn with a content-filter stop. The earlier model's reasoning is no longer replayed to the new model; its answers and tool results still are.
+
 ## 0.8.1 — November 11, 2026
 
 - **Layout fix:** a checkpoint warning could push the whole window down, hiding the composer buttons and Settings behind an empty box at the top that could not be closed. The warning now floats under the title bar with a working Dismiss button.
