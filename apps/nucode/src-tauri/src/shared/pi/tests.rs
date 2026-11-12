@@ -2889,3 +2889,66 @@ async fn file_operations_reject_ids_that_could_leave_the_sessions_folder() {
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn move_carries_the_conversation_team_to_the_target_workspace() {
+    let dir = temp();
+    let (engine, _events) = file_engine(&dir);
+    write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    let old_home = dir.join("pi/agent/workspace");
+    let new_home = dir.join("pi/agent/target");
+    let mut team = AgentPolicy::default().subagents;
+    team.max_run_minutes = 9;
+    config::write_team(&old_home, "thread-a", Some(&team)).unwrap();
+    engine.paths.lock().await.insert("target".into(), "/project-b".into());
+
+    engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"target"})).await.unwrap();
+
+    assert_eq!(config::read_team(&new_home, "thread-a").unwrap().unwrap().max_run_minutes, 9);
+    assert!(config::read_team(&old_home, "thread-a").unwrap().is_none(), "the old team goes after the move succeeded");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn a_rolled_back_move_keeps_the_old_team_and_leaves_no_copy_in_the_target() {
+    let dir = temp();
+    let (engine, _events) = file_engine(&dir);
+    let original = write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    let old_home = dir.join("pi/agent/workspace");
+    let new_home = dir.join("pi/agent/target");
+    config::write_team(&old_home, "thread-a", Some(&AgentPolicy::default().subagents)).unwrap();
+    engine.paths.lock().await.insert("target".into(), "/project-b".into());
+    // A non-empty folder of the same name in the target makes the sibling move fail.
+    let blocker = engine.directory("target").unwrap().join("thread-a");
+    std::fs::create_dir_all(&blocker).unwrap();
+    std::fs::write(blocker.join("x"), "x").unwrap();
+
+    assert!(engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"target"})).await.is_err());
+
+    assert!(original.is_file());
+    assert!(config::read_team(&old_home, "thread-a").unwrap().is_some());
+    assert!(config::read_team(&new_home, "thread-a").unwrap().is_none());
+    assert!(!engine.directory("target").unwrap().join("thread-a.jsonl").exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn move_rejects_an_unreadable_copy_before_touching_the_original() {
+    let dir = temp();
+    let (engine, events) = file_engine(&dir);
+    let original = write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    // A broken line in the middle parses as the header but not as a session.
+    let text = std::fs::read_to_string(&original).unwrap();
+    let (header, rest) = text.split_once('\n').unwrap();
+    std::fs::write(&original, format!("{header}\nnot json\n{rest}")).unwrap();
+    let before = std::fs::read(&original).unwrap();
+    engine.paths.lock().await.insert("target".into(), "/project-b".into());
+
+    assert!(engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"target"})).await.is_err());
+
+    assert_eq!(std::fs::read(&original).unwrap(), before);
+    assert!(engine.directory("workspace").unwrap().join("thread-a.jsonl.streams/a.txt").is_file());
+    assert!(!engine.directory("target").unwrap().join("thread-a.jsonl").exists());
+    assert!(events.lock().unwrap().is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}

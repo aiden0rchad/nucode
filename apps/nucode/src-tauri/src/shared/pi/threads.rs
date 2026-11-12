@@ -173,6 +173,16 @@ impl PiEngine {
             let _ = std::fs::remove_file(&temporary);
             return Err(error.to_string());
         }
+        // Parse the new copy before anything else moves, so a bad file leaves the original untouched.
+        let registry = self.registry.lock().await.get(target).cloned().unwrap_or_default().0;
+        let mut thread = match read_session(&moved[0], &registry) {
+            Ok((thread, _)) => thread,
+            Err(error) => {
+                let _ = std::fs::remove_file(&moved[0]);
+                return Err(error);
+            }
+        };
+        thread["engine"] = json!(self.profile.id());
         let metadata_from = data.join("thread-metadata").join(workspace).join(format!("{id}.json"));
         valid_part(target, "workspace ID")?;
         let metadata_to = data.join("thread-metadata").join(target).join(format!("{id}.json"));
@@ -188,16 +198,38 @@ impl PiEngine {
             let _ = std::fs::remove_file(&moved[0]);
             return Err(error);
         }
-        if let Err(error) = std::fs::remove_file(&file) {
-            // The original must stay authoritative: put everything back.
+        // The conversation team lives per workspace; copy it now, drop the old one at the end.
+        let engine_agent = data.join(format!("{}/agent", self.profile.id()));
+        let (old_home, new_home) = (engine_agent.join(workspace), engine_agent.join(target));
+        let team = match config::read_team(&old_home, id) {
+            Ok(team) => team,
+            Err(error) => {
+                let reversed: Vec<_> = pairs.iter().map(|(from, to)| (to.clone(), from.clone())).collect();
+                let _ = move_paths(&reversed);
+                let _ = std::fs::remove_file(&moved[0]);
+                return Err(error);
+            }
+        };
+        let undo = |pairs: &[(PathBuf, PathBuf)]| {
             let reversed: Vec<_> = pairs.iter().map(|(from, to)| (to.clone(), from.clone())).collect();
             let _ = move_paths(&reversed);
             let _ = std::fs::remove_file(&moved[0]);
+            let _ = config::write_team(&new_home, id, None);
+        };
+        if team.is_some() {
+            if let Err(error) = config::write_team(&new_home, id, team.as_ref()) {
+                undo(&pairs);
+                return Err(error);
+            }
+        }
+        if let Err(error) = std::fs::remove_file(&file) {
+            // The original must stay authoritative: put everything back.
+            undo(&pairs);
             return Err(error.to_string());
         }
-        let registry = self.registry.lock().await.get(target).cloned().unwrap_or_default().0;
-        let (mut thread, _) = read_session(&moved[0], &registry)?;
-        thread["engine"] = json!(self.profile.id());
+        if team.is_some() {
+            let _ = config::write_team(&old_home, id, None);
+        }
         {
             let mut sessions = self.sessions.lock().await;
             if let Some(session) = sessions.get_mut(id) {
