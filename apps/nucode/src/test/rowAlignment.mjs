@@ -2,7 +2,7 @@
  * jsdom has no layout: unmeasured counts distinguish markup checks from geometry checks.
  */
 export function assertRowAlignment(container) {
-  const selectors = ".workspace-titlebar, .main-header, .sidebar-header, .sidebar-bottom-actions, .sidebar-new-row, .composer-shell-toolbar, .composer-bar, .composer-meta, .composer-shell-left, .composer-shell-actions, .side-panel-tabbar, .settings-group-title, .setup-footer, .sidebar .mode-row";
+  const selectors = ".workspace-titlebar, .main-header, .sidebar-header, .sidebar-bottom-actions, .sidebar-new-row, .composer-shell-toolbar, .composer-bar, .composer-meta, .composer-shell-left, .composer-shell-actions, .side-panel-tabbar, .setup-footer, .sidebar .mode-row";
   const rows = [...container.querySelectorAll(selectors)];
   if (container.matches?.(selectors)) rows.unshift(container);
   const failures = [];

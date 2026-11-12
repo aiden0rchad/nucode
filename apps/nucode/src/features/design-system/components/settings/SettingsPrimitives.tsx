@@ -1,8 +1,10 @@
 import { Children, isValidElement, createContext, useContext, useId, useState, useRef, useEffect, useLayoutEffect, type CSSProperties, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { PopoverSurface } from "../popover/PopoverPrimitives";
-import Info from "lucide-react/dist/esm/icons/info";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import TriangleAlert from "lucide-react/dist/esm/icons/triangle-alert";
+import CircleAlert from "lucide-react/dist/esm/icons/circle-alert";
+import Info from "lucide-react/dist/esm/icons/info";
 const Disabled = createContext(false);
 const ControlId = createContext<string | undefined>(undefined);
 const ToggleLabel = createContext<string | undefined>(undefined);
@@ -17,6 +19,10 @@ export function SettingsIconButton({ disabled, ...props }: IconButtonProps) {
 type SettingsSectionProps = {
   title: ReactNode;
   subtitle?: ReactNode;
+  /** Right-aligned on the title line (for example a page's primary action). */
+  actions?: ReactNode;
+  /** Embeds a wide tool (tables, logs): the column grows from 720px to 880px. */
+  wide?: boolean;
   className?: string;
   children: ReactNode;
 };
@@ -24,35 +30,58 @@ type SettingsSectionProps = {
 export function SettingsPage({
   title,
   subtitle,
+  actions,
+  wide = false,
   className,
   children,
 }: SettingsSectionProps) {
   return (
-    <section className={joinClassNames("settings-section settings-page", className)}>
-      <h2 className="settings-section-title">{title}</h2>
-      {subtitle ? <div className="settings-section-subtitle">{subtitle}</div> : null}
+    <section className={joinClassNames("settings-section settings-page", wide && "is-wide", className)}>
+      <header className="settings-page-header">
+        <div className="settings-page-heading">
+          <h2 className="settings-section-title">{title}</h2>
+          {subtitle ? <div className="settings-section-subtitle">{subtitle}</div> : null}
+        </div>
+        {actions ? <div className="settings-page-actions">{actions}</div> : null}
+      </header>
       {children}
     </section>
   );
 }
 
+/** A page whose settings form one untitled group: the page title is enough. */
 export function SettingsSection({ children, ...props }: SettingsSectionProps) {
-  return <SettingsPage {...props}><SettingsGroup title="Preferences">{children}</SettingsGroup></SettingsPage>;
+  return <SettingsPage {...props}><SettingsGroup>{children}</SettingsGroup></SettingsPage>;
 }
 
 export function SettingsGroup({ title, subtitle, children, actions, disabled = false, collapsible = false, className, ...props }: Omit<ComponentPropsWithoutRef<"div">, "title"> & { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; disabled?: boolean; collapsible?: boolean }) {
   const inherited = useContext(Disabled);
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
+  const header = title || subtitle || actions;
   return <Disabled.Provider value={disabled || inherited}><div {...props} className={joinClassNames("settings-group", className)}>
-    {title && <h3 className="settings-group-title">{collapsible ? <button type="button" className="settings-group-disclosure" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(!expanded)}><ChevronRight size={16} aria-hidden />{title}</button> : title}{actions && <span className="settings-group-actions">{actions}</span>}</h3>}
-    {subtitle && <p className="settings-group-description">{subtitle}</p>}
+    {header && <div className="settings-group-header">
+      <div className="settings-group-heading">
+        {title && <h3 className="settings-group-title">{collapsible ? <button type="button" className="settings-group-disclosure" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(!expanded)}><ChevronRight size={14} aria-hidden />{title}</button> : title}</h3>}
+        {subtitle && <p className="settings-group-description">{subtitle}</p>}
+      </div>
+      {actions && <div className="settings-group-actions">{actions}</div>}
+    </div>}
     <div id={contentId} className="settings-group-card" aria-disabled={disabled || inherited || undefined} hidden={collapsible && !expanded}>{children}</div>
   </div></Disabled.Provider>;
 }
 
-export function SettingsRow({ children, className, ...props }: ComponentPropsWithoutRef<"div">) {
-  return <div {...props} className={joinClassNames("settings-row", className)}>{children}</div>;
+/** The one row recipe: text on the left, the control on the right. `stacked` puts the control under the text. */
+export function SettingsRow({ children, className, stacked = false, ...props }: ComponentPropsWithoutRef<"div"> & { stacked?: boolean }) {
+  return <div {...props} className={joinClassNames("settings-row", stacked && "is-stacked", className)}>{children}</div>;
+}
+
+/** Label and description of a row. */
+export function SettingsRowText({ title, subtitle, titleId, className }: { title: ReactNode; subtitle?: ReactNode; titleId?: string; className?: string }) {
+  return <div className={joinClassNames("settings-row-text", className)}>
+    <div id={titleId} className="settings-toggle-title">{title}</div>
+    {subtitle ? <div className="settings-toggle-subtitle">{subtitle}</div> : null}
+  </div>;
 }
 
 export function SettingsSelect({ children, className, onChange, value, defaultValue, disabled, multiple, ...props }: ComponentPropsWithoutRef<"select">) {
@@ -98,7 +127,8 @@ export function SettingsSelect({ children, className, onChange, value, defaultVa
     setActive(null);
     anchor.current.focus();
   };
-  return <span className={joinClassNames("settings-select-control", multiple && "is-multiple")}>
+  const longest = options.map(item => text(item.label)).reduce((a, b) => b.length > a.length ? b : a, "");
+  return <span className={joinClassNames("settings-select-control", multiple && "is-multiple")} data-longest={multiple ? undefined : longest}>
     {!multiple && <span className="settings-select-value" aria-hidden="true"><span className="settings-select-label">{option?.label}</span><ChevronRight className="settings-select-chevron" size={14} /></span>}
     <select id={id} {...props} ref={anchor} title={[text(option?.label), option?.recommended && "Recommended", option?.description].filter(Boolean).join(" — ")} aria-expanded={multiple ? undefined : open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${listId}-${active}` : undefined} className={joinClassNames("settings-select", className)} value={value} defaultValue={defaultValue} multiple={multiple} disabled={disabled || inherited}
       onMouseDown={event => { if (!multiple) { event.preventDefault(); anchor.current?.focus(); setActive(open ? null : Math.max(0, selectedIndex)); } }}
@@ -168,6 +198,8 @@ type SettingsToggleRowProps = {
   title: ReactNode;
   subtitle?: ReactNode;
   className?: string;
+  /** Dependent rows are disabled, not hidden. */
+  disabled?: boolean;
   children: ReactNode;
 };
 
@@ -175,19 +207,24 @@ export function SettingsToggleRow({
   title,
   subtitle,
   className,
+  disabled = false,
   children,
 }: SettingsToggleRowProps) {
   const labelId = useId();
+  const inherited = useContext(Disabled);
   return (
+    <Disabled.Provider value={disabled || inherited}>
     <ToggleLabel.Provider value={labelId}>
-    <SettingsRow className={joinClassNames("settings-toggle-row", className)}>
-      <div>
-        <div id={labelId} className="settings-toggle-title">{title}</div>
-        {subtitle ? <div className="settings-toggle-subtitle">{subtitle}</div> : null}
-      </div>
+    <SettingsRow className={joinClassNames("settings-toggle-row", (disabled || inherited) && "is-disabled", className)}>
+      <SettingsRowText title={title} subtitle={subtitle} titleId={labelId} />
       {children}
-    </SettingsRow></ToggleLabel.Provider>
+    </SettingsRow></ToggleLabel.Provider></Disabled.Provider>
   );
+}
+
+/** A row with one switch: the most common setting. */
+export function SettingsSwitchRow({ title, subtitle, pressed, onClick, disabled, className, switchProps }: { title: ReactNode; subtitle?: ReactNode; pressed: boolean; onClick: () => void; disabled?: boolean; className?: string; switchProps?: Omit<ComponentPropsWithoutRef<"button">, "onClick" | "type" | "children" | "className" | "aria-pressed"> }) {
+  return <SettingsToggleRow title={title} subtitle={subtitle} disabled={disabled} className={className}><SettingsToggleSwitch {...switchProps} pressed={pressed} onClick={onClick} /></SettingsToggleRow>;
 }
 
 type SettingsToggleSwitchProps = Omit<
@@ -219,8 +256,49 @@ export function SettingsToggleSwitch({
   );
 }
 
-export function SettingsFieldRow({ title, subtitle, help, children, className, ...props }: Omit<ComponentPropsWithoutRef<"label">, "title"> & { title: ReactNode; subtitle?: ReactNode; help?: ReactNode }) {
+export function SettingsFieldRow({ title, subtitle, help, children, className, stacked = false, disabled = false, ...props }: Omit<ComponentPropsWithoutRef<"label">, "title"> & { title: ReactNode; subtitle?: ReactNode; help?: ReactNode; stacked?: boolean; disabled?: boolean }) {
   const generatedId = useId();
   const id = props.htmlFor ?? generatedId;
-  return <SettingsRow className="settings-control-row"><div className={joinClassNames("settings-field-row", className)}><div className="settings-field-info"><label {...props} htmlFor={id} className="settings-toggle-title">{title}</label>{subtitle && <span className="settings-toggle-subtitle">{subtitle}</span>}</div><ControlId.Provider value={id}>{children}</ControlId.Provider></div>{help && <div className="settings-control-help settings-callout"><Info size={14} aria-hidden />{help}</div>}</SettingsRow>;
+  const inherited = useContext(Disabled);
+  return <Disabled.Provider value={disabled || inherited}><SettingsRow className={joinClassNames("settings-control-row", (disabled || inherited) && "is-disabled")}><div className={joinClassNames("settings-field-row", stacked && "settings-field-row-long", className)}><div className="settings-field-info"><label {...props} htmlFor={id} className="settings-toggle-title">{title}</label>{subtitle && <span className="settings-toggle-subtitle">{subtitle}</span>}{help && <span className="settings-toggle-subtitle">{help}</span>}</div><ControlId.Provider value={id}>{children}</ControlId.Provider></div></SettingsRow></Disabled.Provider>;
+}
+
+type Tone = "info" | "warning" | "error";
+/** Only for something that needs attention: a warning, an error or a required next step. */
+export function SettingsCallout({ tone = "warning", children, className, ...props }: ComponentPropsWithoutRef<"div"> & { tone?: Tone }) {
+  const Icon = tone === "info" ? Info : tone === "error" ? CircleAlert : TriangleAlert;
+  return <div role={tone === "error" ? "alert" : "status"} {...props} className={joinClassNames("settings-callout", `is-${tone}`, className)}><Icon size={16} aria-hidden /><div>{children}</div></div>;
+}
+
+/** One small dot plus a short text: "Ready · v1.4.0", "Not tested", "Stopped". */
+export function SettingsStatus({ tone = "idle", children, className, ...props }: ComponentPropsWithoutRef<"span"> & { tone?: "ready" | "idle" | "busy" | "warning" | "error" }) {
+  return <span {...props} className={joinClassNames("settings-status", `is-${tone}`, className)}><span className="settings-status-dot" aria-hidden />{children}</span>;
+}
+
+/** A list row for engines, providers, connectors, projects and apps. */
+export function SettingsListRow({ icon, title, badge, meta, children, className, ...props }: Omit<ComponentPropsWithoutRef<"div">, "title"> & { icon?: ReactNode; title: ReactNode; badge?: ReactNode; meta?: ReactNode }) {
+  return <div {...props} className={joinClassNames("settings-row settings-list-row", className)}>
+    <div className="settings-list-identity">
+      {icon ? <span className="settings-list-icon" aria-hidden>{icon}</span> : null}
+      <div className="settings-list-copy">
+        <div className="settings-list-name"><span className="settings-list-title">{title}</span>{badge}</div>
+        {meta ? <div className="settings-list-meta">{meta}</div> : null}
+      </div>
+    </div>
+    {children ? <div className="settings-list-actions">{children}</div> : null}
+  </div>;
+}
+
+export function SettingsBadge({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={joinClassNames("settings-badge", className)}>{children}</span>;
+}
+
+/** Empty list: one calm sentence and (optionally) one secondary action. */
+export function SettingsEmpty({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return <div className="settings-empty-state"><p>{children}</p>{action}</div>;
+}
+
+/** A shortcut as one keycap per key. */
+export function SettingsKeycaps({ keys, className }: { keys: string[]; className?: string }) {
+  return <span className={joinClassNames("settings-keycaps", className)}>{keys.map((key, index) => <kbd key={`${key}-${index}`} className="settings-keycap">{key}</kbd>)}</span>;
 }

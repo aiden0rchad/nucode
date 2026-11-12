@@ -1,17 +1,17 @@
 /* Toolbar geometry is shared by Code, Chat and Work. Popovers have their own layout. */
 :is(.workspace-titlebar, .main-header, .sidebar-header, .sidebar-bottom-actions, .sidebar-new-row,
     .composer-shell-toolbar, .composer-bar, .composer-meta, .composer-shell-left, .composer-shell-actions,
-    .side-panel-tabbar, .settings-group-title, .setup-footer) {
+    .side-panel-tabbar, .setup-footer) {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   box-sizing: border-box;
 }
-:is(.main-header, .sidebar-header, .sidebar-bottom-actions, .settings-group-title) { height: 32px; }
+:is(.main-header, .sidebar-header, .sidebar-bottom-actions) { height: 32px; }
 .sidebar-new-row { height: 28px; }
 :is(.composer-shell-left, .composer-shell-actions, .composer-shell .composer-bar, .composer-shell .composer-meta) { height: 28px; }
 :is(.workspace-titlebar, .main-header, .sidebar-header, .sidebar-bottom-actions, .sidebar-new-row,
-    .composer-shell-toolbar, .side-panel-tabbar, .settings-group-title, .setup-footer)
+    .composer-shell-toolbar, .side-panel-tabbar, .setup-footer)
     button:not(.ds-icon-button):not(.ds-popover button):not([role="menuitem"]):not(.reasoning-chip) {
   display: inline-flex;
   align-items: center;

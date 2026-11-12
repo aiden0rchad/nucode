@@ -5,7 +5,7 @@ import MoreHorizontal from "lucide-react/dist/esm/icons/ellipsis";
 import { useMenuController } from "@app/hooks/useMenuController";
 import { PopoverMenuItem, PopoverSurface } from "@/features/design-system/components/popover/PopoverPrimitives";
 
-type Action = { label: string; icon?: ReactNode; disabled?: boolean; onClick: () => void };
+type Action = { label: string; icon?: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void };
 
 export function RowMenu({ label, actions, children, portal = false, size = "sm", icon }: { label: string; actions: Action[]; children: ReactNode; portal?: boolean; size?: "sm" | "md"; icon?: ReactNode }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -16,7 +16,7 @@ export function RowMenu({ label, actions, children, portal = false, size = "sm",
   }, [menu.isOpen]);
   const anchor = menu.isOpen ? trigger.current?.getBoundingClientRect() : undefined;
   const popover = menu.isOpen && <PopoverSurface ref={surface} className="mode-row-menu" role="menu" aria-label={`Actions for ${label}`} style={{ position: "fixed", ...(portal ? { zIndex: "var(--z-tooltip)", minWidth: 190 } : {}), left: Math.max(8, Math.min(anchor?.left ?? 0, window.innerWidth - 200)), right: "auto", top: Math.max(8, Math.min(anchor?.bottom ?? 0, window.innerHeight - actions.length * 36 - 16)) }}>
-      {actions.map(action => <PopoverMenuItem role="menuitem" icon={action.icon} key={action.label} disabled={action.disabled} onClick={() => { menu.setOpen(false); trigger.current?.focus(); action.onClick(); }}>{action.label}</PopoverMenuItem>)}
+      {actions.map(action => <PopoverMenuItem role="menuitem" className={action.danger ? "is-danger" : undefined} icon={action.icon} key={action.label} disabled={action.disabled} onClick={() => { menu.setOpen(false); trigger.current?.focus(); action.onClick(); }}>{action.label}</PopoverMenuItem>)}
     </PopoverSurface>;
   return <div className="mode-row" ref={menu.containerRef} onContextMenu={event => { event.preventDefault(); menu.setOpen(true); }} onKeyDown={event => {
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); menu.setOpen(true); }
