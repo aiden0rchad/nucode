@@ -5,11 +5,17 @@ export const STORAGE_KEY_PINNED_THREADS = "codexmonitor.pinnedThreads";
 export const STORAGE_KEY_CUSTOM_NAMES = "codexmonitor.threadCustomNames";
 export const STORAGE_KEY_THREAD_CODEX_PARAMS = "codexmonitor.threadCodexParams";
 export const STORAGE_KEY_DETACHED_REVIEW_LINKS = "codexmonitor.detachedReviewLinks";
+export const STORAGE_KEY_PINNED_PROJECTS = "codexmonitor.pinnedProjects";
+export const STORAGE_KEY_THREAD_SECTIONS = "codexmonitor.threadSections";
 export const MAX_PINS_SOFT_LIMIT = 5;
 
 export type ThreadActivityMap = Record<string, Record<string, number>>;
 export type PinnedThreadsMap = Record<string, number>;
 export type CustomNamesMap = Record<string, string>;
+// Workspace id -> pin timestamp.
+export type PinnedProjectsMap = Record<string, number>;
+// `${workspaceId}:${threadId}` -> sidebar section (workspace group) id.
+export type ThreadSectionsMap = Record<string, string>;
 type DetachedReviewLinksMap = Record<string, Record<string, string>>;
 
 // Per-thread Codex parameter overrides. Keyed by `${workspaceId}:${threadId}`.
@@ -206,6 +212,76 @@ export function saveDetachedReviewLinks(links: DetachedReviewLinksMap) {
     window.localStorage.setItem(
       STORAGE_KEY_DETACHED_REVIEW_LINKS,
       JSON.stringify(links),
+    );
+  } catch {
+    // Best-effort persistence; ignore write failures.
+  }
+}
+
+export function loadPinnedProjects(): PinnedProjectsMap {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(STORAGE_KEY_PINNED_PROJECTS) ?? "{}",
+    );
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => typeof value === "number"),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function savePinnedProjects(pinned: PinnedProjectsMap) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEY_PINNED_PROJECTS,
+      JSON.stringify(pinned),
+    );
+  } catch {
+    // Best-effort persistence; ignore write failures.
+  }
+}
+
+export function makeThreadSectionKey(workspaceId: string, threadId: string): string {
+  return `${workspaceId}:${threadId}`;
+}
+
+export function loadThreadSections(): ThreadSectionsMap {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(STORAGE_KEY_THREAD_SECTIONS) ?? "{}",
+    );
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => typeof value === "string"),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function saveThreadSections(sections: ThreadSectionsMap) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEY_THREAD_SECTIONS,
+      JSON.stringify(sections),
     );
   } catch {
     // Best-effort persistence; ignore write failures.

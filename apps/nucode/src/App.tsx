@@ -9,6 +9,7 @@ import "./styles/ds-toast.css";
 import "./styles/ds-panel.css";
 import "./styles/ds-diff.css";
 import "./styles/ds-popover.css";
+import "./styles/ds-context-menu.css";
 import "./styles/ds-tooltip.css";
 import "./styles/buttons.css";
 import "./styles/sidebar.css";
