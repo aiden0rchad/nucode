@@ -6,13 +6,15 @@ impl EventSink for Output {
  fn emit_terminal_output(&self,_:TerminalOutput){}
  fn emit_terminal_exit(&self,_:TerminalExit){}
 }
+// Counts delayed turns that have started. Only the cancellation test delays its turns.
+static INFLIGHT:AtomicUsize=AtomicUsize::new(0);
 struct Fake {root:PathBuf,sink:Sink,turns:AtomicUsize,stops:Arc<AtomicUsize>,delay:bool}
 impl Driver for Fake {
  fn request<'a>(&'a self,w:&'a str,m:&'a str,p:Value)->BoxFuture<'a,Result<Value,String>> { Box::pin(async move {
   if m=="thread/start" {assert!(matches!(workspace(w).unwrap().kind,WorkspaceKind::Eval));return Ok(json!({"result":{"thread":{"id":"fake"}}}));}
   assert_eq!(p["effort"],"low", "Every turn, including check retries, must use the requested reasoning");
   let n=self.turns.fetch_add(1,Ordering::SeqCst)+1;
-  if self.delay { tokio::time::sleep(Duration::from_secs(10)).await; }
+  if self.delay { INFLIGHT.fetch_add(1,Ordering::SeqCst); tokio::time::sleep(Duration::from_secs(10)).await; }
   if n>1 {
    assert!(p.to_string().contains("still fails"));
    let patch=Path::new(env!("CARGO_MANIFEST_DIR")).join("../evals/solutions/ts-bugfix-range.patch");
@@ -71,7 +73,9 @@ async fn finished(service:&Arc<Evals>,id:&str)->Run {
 #[tokio::test] async fn cancellation_stops_inflight_and_keep_flag() {
  let (service,_,stops)=fixture(true); let mut p=plan();p.keep_workdirs=Some(false);
  let id=start(&service,p).await;
- tokio::time::sleep(Duration::from_millis(300)).await;
+ // Cancel once the turn is in flight. Preparing the task repository can outlast any fixed wait on a busy machine,
+ // and a cancel that lands before the engine exists has nothing to stop.
+ tokio::time::timeout(Duration::from_secs(30),async { while INFLIGHT.load(Ordering::SeqCst)==0 { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
  service.request(&AppSettings::default(),"cancel",json!({"runId":id})).await.unwrap();
  let run=finished(&service,&id).await;assert_eq!(run.status,"cancelled"); assert_eq!(run.cells[0].status,"cancelled");
  assert_eq!(stops.load(Ordering::SeqCst),1); assert!(run.cells[0].workdir.is_none());
