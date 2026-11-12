@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Settings:** every Settings page has a new layout: named groups, plain labels with one line of help, collapsed rows that show their current value, and a Save changes button on the pages that stage edits. Server, Browser, Models & Agents, Shortcuts and Projects were reorganized around what you are trying to do.
+- **Attachments:** drag files from your file manager onto the composer to attach them. Images show as thumbnails above the message box instead of file names.
+- **Scrolling:** you can scroll up through a conversation while a reply is being written. The view follows new text only when you are at the bottom.
+- **Project menu:** right-click a project for Pin, Edit, Section, Reveal in Finder, Archive chats and Remove project. Sections group projects in the sidebar under names you choose.
+- **Thread menu:** right-click a thread for Rename, Pin, Mark as unread, Project, Section, Fork, Share, Copy, Open in new window, Archive and Permanently delete. Rename, Pin, Mark as unread and Archive have shortcuts you can change in Settings → Shortcuts. Moving a thread to another project and deleting it permanently work for pi and omp threads.
+- **Thread windows:** Open in new window shows one thread in its own window, with its transcript and composer. It closes when the thread is archived or deleted and follows the thread when it moves.
+- **Long titles:** a project or thread title too long for the sidebar scrolls to its end when you point at it.
+- **Session rail:** the Context row at the top is gone. The Context section already shows how full the window is.
 - **Model switching:** a thread that switched to a Claude model after another model had reasoned in it could fail on every turn with a content-filter stop. The earlier model's reasoning is no longer replayed to the new model; its answers and tool results still are.
 
 ## 0.8.1 — November 11, 2026
