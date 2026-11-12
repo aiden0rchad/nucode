@@ -375,3 +375,4 @@
 .settings-disclosure-body .settings-group-card { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .settings-disclosure-head > svg { transition: none; } }
 .settings-details-group { margin-top: 28px; }
+.settings-page form + .settings-group { margin-top: 28px; }
