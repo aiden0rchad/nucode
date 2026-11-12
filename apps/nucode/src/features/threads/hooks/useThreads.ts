@@ -38,6 +38,7 @@ import {
   buildThreadSummaryFromThread,
   extractThreadFromResponse,
 } from "@threads/utils/threadSummary";
+import { readThreadItems } from "@threads/utils/readThreadItems";
 import { getSubagentDescendantThreadIds } from "@threads/utils/subagentTree";
 
 type UseThreadsOptions = {
@@ -843,17 +844,19 @@ export function useThreads({
     [],
   );
 
-  // Items of any thread, loaded the way opening it would, without switching the visible thread.
+  // Items of any thread for export. A loaded thread is used as is only when its history is
+  // complete; otherwise the thread is read (never resumed) and paged to the start.
+  const historyCursorRef = useRef(historyCursorByThread);
+  historyCursorRef.current = historyCursorByThread;
   const loadThreadItems = useCallback(
     async (workspaceId: string, threadId: string): Promise<ConversationItem[]> => {
-      if (!hasLocalThreadSnapshot(threadId)) {
-        await resumeThreadForWorkspace(workspaceId, threadId);
-        // Let the dispatched history render so the items ref catches up.
-        await new Promise((resolve) => setTimeout(resolve, 50));
+      const loaded = itemsByThreadRef.current[threadId] ?? [];
+      if (loaded.length > 0 && !historyCursorRef.current[threadId]) {
+        return loaded;
       }
-      return itemsByThreadRef.current[threadId] ?? [];
+      return readThreadItems(workspaceId, threadId);
     },
-    [hasLocalThreadSnapshot, itemsByThreadRef, resumeThreadForWorkspace],
+    [itemsByThreadRef],
   );
 
   return {
