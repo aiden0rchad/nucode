@@ -323,7 +323,7 @@ export function SettingsServerSection({
               : <>
                 <SettingsFieldRow stacked title="Access token" subtitle="Your phone signs in with this token.">{tokenInput("Paste or generate a token", true)}</SettingsFieldRow>
                 {tokenMissing && <SettingsCallout tone="warning">Set an access token before starting phone access.</SettingsCallout>}
-                <SettingsFieldRow title="Listening address" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "Only the port is used: this computer listens on it on every network interface."}>{hostInput}</SettingsFieldRow>
+                <SettingsFieldRow title="Listening address" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "Only the port is used, on every network interface."}>{hostInput}</SettingsFieldRow>
               </>}
             <SettingsRow>
               <SettingsRowText title="Phone connects to" subtitle={suggested ? "Enter this address and the access token in the mobile app." : "Install Tailscale and sign in, then check again to get an address your phone can reach."} />

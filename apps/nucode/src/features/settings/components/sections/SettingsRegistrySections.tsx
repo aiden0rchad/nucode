@@ -220,7 +220,7 @@ export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, w
     }}><option value="project" disabled={!workspace || !onUpdateWorkspaceSettings}>This project{workspace ? ` — ${workspace.name}` : " (select a project first)"}</option><option value="all">All projects</option></SettingsSelect></SettingsFieldRow></SettingsGroup>}
     <AgentPolicyEditor tab={tab} scope={scope} policy={policy} providers={appSettings.providers ?? []} onChange={next => { setPolicy(next); setError(""); }} engineControl={scope === "all" ? "summary" : "select"} onManageEngines={onManageEngines} />
     {(validation || error) && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{validation || error}</SettingsCallout>}
-    <SettingsGroup title="Details">
+    <SettingsGroup title="Details" className="settings-details-group">
       <SettingsDisclosureRow label="What each engine supports">
         pi applies every setting on these pages. Codex applies concurrency, depth, the default subagent model and roles. Chat and Work always use one model; chain of command is only in Code.
       </SettingsDisclosureRow>
