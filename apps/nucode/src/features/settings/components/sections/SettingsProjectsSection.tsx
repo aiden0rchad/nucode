@@ -200,7 +200,7 @@ export function SettingsProjectsSection({
       </SettingsGroup>
       <SettingsGroup
         title="Project placement"
-        subtitle="Each project's section in the sidebar. Use ⋯ to move a project up or down within its section, or to remove it from nucode."
+        subtitle="Each project's section in the sidebar. Use ⋯ to reorder a project within its section or to remove it."
       >
         {groupedWorkspaces.map((group) => (
           <Fragment key={group.id ?? "ungrouped"}>

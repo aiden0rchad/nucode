@@ -59,7 +59,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
         </SettingsFieldRow>
       </SettingsGroup>
       <SettingsGroup disabled={busy} title="Access">
-        <SettingsFieldRow title="Agent actions" subtitle="Agents read pages, including sites you're signed in to, without asking. This sets whether they ask before clicking, typing or running scripts.">
+        <SettingsFieldRow title="Agent actions" subtitle="Opening and reading pages never asks, even on sites you're signed in to. This covers clicks, typing and scripts.">
           <SettingsSelect value={draft.approval} onChange={e => setDraft({ ...draft, approval: e.target.value as "ask" | "auto" })}><option value="ask">Ask before changes</option><option value="auto">Automatic</option></SettingsSelect>
         </SettingsFieldRow>
         <SettingsDisclosureRow label="Site rules" summary={siteSummary}>
