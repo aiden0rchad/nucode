@@ -19,6 +19,11 @@ vi.mock("@tauri-apps/api/webview", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ onDragDropEvent: windowListen }),
 }));
+const platform = vi.hoisted(() => ({ mac: false }));
+vi.mock("../../../utils/platformPaths", async (importActual) => ({
+  ...(await importActual<typeof import("../../../utils/platformPaths")>()),
+  isMacPlatform: () => platform.mac,
+}));
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `tauri://${path}`,
 }));
@@ -92,6 +97,7 @@ const textarea = () => container.querySelector("textarea") as HTMLTextAreaElemen
 beforeEach(() => {
   webviewHandlers.length = 0;
   windowListen.mockReset();
+  platform.mac = false;
   frames.length = 0;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
 });
@@ -151,6 +157,25 @@ describe("ComposerInput native drops", () => {
     webviewHandlers.length = 0;
     await mount({ projectPath: "/projects/demo", onAttachImages, disabled: true });
     expect(webviewHandlers).toHaveLength(0);
+  });
+
+  it("takes the reported position as CSS pixels on macOS, even at a pixel ratio of 2", async () => {
+    vi.stubGlobal("devicePixelRatio", 2);
+    platform.mac = true;
+    await mount({ projectPath: "/projects/demo", onAttachImages: vi.fn() });
+    drop(["/projects/demo/a.ts"], { x: 300, y: 150 });
+    expect(textarea().value).toBe("a.ts ");
+    drop(["/projects/demo/b.ts"], { x: 300, y: 350 });
+    expect(textarea().value).toBe("a.ts ");
+  });
+
+  it("converts physical pixels by the pixel ratio on other platforms", async () => {
+    vi.stubGlobal("devicePixelRatio", 2);
+    await mount({ projectPath: "/projects/demo", onAttachImages: vi.fn() });
+    drop(["/projects/demo/a.ts"], { x: 600, y: 300 });
+    expect(textarea().value).toBe("a.ts ");
+    drop(["/projects/demo/b.ts"], { x: 900, y: 500 });
+    expect(textarea().value).toBe("a.ts ");
   });
 
   it("shows the drop highlight for non-image files too", async () => {

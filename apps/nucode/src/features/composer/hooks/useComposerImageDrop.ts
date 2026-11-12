@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeWindowDragDrop } from "../../../services/dragDrop";
+import { isMacPlatform } from "../../../utils/platformPaths";
 import { isImagePath } from "../utils/dropPaths";
 
 function isDragFileTransfer(types: readonly string[] | undefined) {
@@ -29,15 +30,17 @@ function readFilesAsDataUrls(files: File[]) {
 }
 
 /**
- * Tauri reports physical pixels. Without a DOM drag position to compare against (the DOM drag
- * events do not fire while Tauri owns file drops), convert by the device pixel ratio.
+ * Tauri types drop positions as physical pixels, but on macOS wry reports view points and Tauri
+ * passes them through unscaled, so they already are CSS pixels. Elsewhere, without a DOM drag
+ * position to compare against (the DOM drag events do not fire while Tauri owns file drops),
+ * convert by the device pixel ratio.
  */
 export function normalizeDragPosition(
   position: { x: number; y: number },
   lastClientPosition: { x: number; y: number } | null,
 ) {
   const scale = window.devicePixelRatio || 1;
-  if (scale === 1) {
+  if (scale === 1 || isMacPlatform()) {
     return position;
   }
   const scaled = { x: position.x / scale, y: position.y / scale };

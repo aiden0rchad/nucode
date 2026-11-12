@@ -52,18 +52,18 @@ export function useStickToBottom<T extends HTMLElement>(
 
   const handlers = useMemo(() => ({
     onWheel: (event: WheelEvent<T>) => {
-      if (event.deltaY < 0 && !nestedScrollerCanScrollUp(event.target, event.currentTarget)) attachedRef.current = false;
+      if (event.deltaY < 0 && event.currentTarget.scrollTop > 0 && !nestedScrollerCanScrollUp(event.target, event.currentTarget)) attachedRef.current = false;
     },
     onTouchStart: (event: TouchEvent<T>) => { touchY.current = event.touches[0]?.clientY ?? null; },
     onTouchMove: (event: TouchEvent<T>) => {
       const y = event.touches[0]?.clientY;
       if (y === undefined) return;
       // A finger moving down drags the content down, which scrolls the view up.
-      if (touchY.current !== null && y > touchY.current && !nestedScrollerCanScrollUp(event.target, event.currentTarget)) attachedRef.current = false;
+      if (touchY.current !== null && y > touchY.current && event.currentTarget.scrollTop > 0 && !nestedScrollerCanScrollUp(event.target, event.currentTarget)) attachedRef.current = false;
       touchY.current = y;
     },
     onKeyDown: (event: KeyboardEvent<T>) => {
-      if (DETACH_KEYS.has(event.key) && !isEditable(event.target)) attachedRef.current = false;
+      if (DETACH_KEYS.has(event.key) && event.currentTarget.scrollTop > 0 && !isEditable(event.target)) attachedRef.current = false;
     },
     onScroll: (event: SyntheticEvent<T>) => {
       const node = event.currentTarget;

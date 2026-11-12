@@ -65,6 +65,7 @@ describe("useStickToBottom", () => {
 
   it("detaches on touch drag down and on navigation keys, except in fields", () => {
     const { node, getByLabelText } = setup();
+    node.scrollTop = 500;
     fireEvent.touchStart(node, { touches: [{ clientY: 100 }] });
     fireEvent.touchMove(node, { touches: [{ clientY: 90 }] });
     expect(stick.isAttached()).toBe(true);
@@ -82,6 +83,20 @@ describe("useStickToBottom", () => {
     act(() => stick.attach());
     fireEvent.keyDown(node, { key: "ArrowDown" });
     expect(stick.isAttached()).toBe(true);
+  });
+
+  it("ignores gestures that cannot move anything, so a short thread keeps following as it grows", () => {
+    const { node, metrics } = setup();
+    metrics.height = 150; // fits the 200px viewport
+    node.scrollTop = 0;
+    fireEvent.wheel(node, { deltaY: -40 });
+    fireEvent.touchStart(node, { touches: [{ clientY: 100 }] });
+    fireEvent.touchMove(node, { touches: [{ clientY: 160 }] });
+    for (const key of ["PageUp", "Home", "ArrowUp"]) fireEvent.keyDown(node, { key });
+    expect(stick.isAttached()).toBe(true);
+    metrics.height = 900;
+    expect(stick.followIfAttached()).toBe(true);
+    expect(node.scrollTop).toBe(900);
   });
 
   it("does not detach when content shrinks at the bottom", () => {

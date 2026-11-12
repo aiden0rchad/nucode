@@ -59,8 +59,8 @@ describe("Messages auto-scroll while streaming", () => {
 
   it("returns to the bottom when the user sends a message", () => {
     const { node, update } = mount([user("first"), assistant("answer")]);
-    fireEvent.wheel(node, { deltaY: -30 });
     node.scrollTop = 100;
+    fireEvent.wheel(node, { deltaY: -30 });
     update([user("first"), assistant("answer more")], 1200);
     expect(node.scrollTop).toBe(100);
     update([user("first"), assistant("answer more"), user("second")], 1300);

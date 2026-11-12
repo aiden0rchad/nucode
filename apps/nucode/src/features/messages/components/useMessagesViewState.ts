@@ -129,7 +129,14 @@ export function useMessagesViewState({
       return;
     }
     // Sending a message brings the view back to the bottom.
-    const lastUser = [...items].reverse().find((item) => item.kind === "message" && item.role === "user");
+    let lastUser: ConversationItem | undefined;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item.kind === "message" && item.role === "user") {
+        lastUser = item;
+        break;
+      }
+    }
     if (lastUser && lastUserIdRef.current !== undefined && lastUser.id !== lastUserIdRef.current) {
       stick.attach();
     }
