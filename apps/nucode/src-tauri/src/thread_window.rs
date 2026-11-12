@@ -35,7 +35,7 @@ pub(crate) fn target_script(workspace_id: &str, thread_id: &str) -> Result<Strin
 #[cfg(all(desktop, not(target_os = "macos")))]
 pub(crate) fn close_all<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
-    for (label, window) in app.webview_windows() {
+    for (label, window) in app.windows() {
         if is_thread_window_label(&label) {
             let _ = window.destroy();
         }
@@ -55,7 +55,7 @@ pub(crate) async fn open_thread_window(
         return Err("Missing thread id".into());
     }
     let label = thread_window_label(&thread_id);
-    if let Some(window) = app.get_webview_window(&label) {
+    if let Some(window) = app.get_window(&label) {
         let _ = window.unminimize();
         let _ = window.show();
         window.set_focus().map_err(|error| error.to_string())?;
@@ -80,7 +80,7 @@ pub(crate) async fn open_thread_window(
 #[tauri::command]
 pub(crate) async fn close_thread_window(app: tauri::AppHandle, thread_id: String) -> Result<(), String> {
     use tauri::Manager;
-    if let Some(window) = app.get_webview_window(&thread_window_label(&thread_id)) {
+    if let Some(window) = app.get_window(&thread_window_label(&thread_id)) {
         window.destroy().map_err(|error| error.to_string())?;
     }
     Ok(())

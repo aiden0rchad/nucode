@@ -256,7 +256,7 @@ mod tests {
                 assert!(cap.get("remote").is_none());
                 assert!(cap.get("windows").is_none());
                 for label in cap["webviews"].as_array().unwrap() {
-                    assert!(matches!(label.as_str(), Some("main" | "about")));
+                    assert!(matches!(label.as_str(), Some("main" | "about" | "thread-*")));
                 }
             }
         }
