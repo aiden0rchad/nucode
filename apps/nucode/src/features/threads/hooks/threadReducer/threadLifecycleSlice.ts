@@ -175,6 +175,45 @@ export function reduceThreadLifecycle(
         },
       };
     }
+    case "restoreThread": {
+      // A failed archive puts the row back where it was.
+      const list = state.threadsByWorkspace[action.workspaceId] ?? [];
+      if (list.some((thread) => thread.id === action.thread.id)) {
+        return state;
+      }
+      const next = list.slice();
+      next.splice(Math.min(Math.max(action.index, 0), next.length), 0, action.thread);
+      return {
+        ...state,
+        threadsByWorkspace: { ...state.threadsByWorkspace, [action.workspaceId]: next },
+      };
+    }
+    case "moveThread": {
+      // The thread keeps its items and status; only its project changes.
+      if (action.fromWorkspaceId === action.toWorkspaceId) {
+        return state;
+      }
+      const from = state.threadsByWorkspace[action.fromWorkspaceId] ?? [];
+      const remaining = from.filter((thread) => thread.id !== action.thread.id);
+      const to = (state.threadsByWorkspace[action.toWorkspaceId] ?? []).filter(
+        (thread) => thread.id !== action.thread.id,
+      );
+      return {
+        ...state,
+        threadsByWorkspace: {
+          ...state.threadsByWorkspace,
+          [action.fromWorkspaceId]: remaining,
+          [action.toWorkspaceId]: [action.thread, ...to],
+        },
+        activeThreadIdByWorkspace: {
+          ...state.activeThreadIdByWorkspace,
+          [action.fromWorkspaceId]:
+            state.activeThreadIdByWorkspace[action.fromWorkspaceId] === action.thread.id
+              ? remaining[0]?.id ?? null
+              : state.activeThreadIdByWorkspace[action.fromWorkspaceId] ?? null,
+        },
+      };
+    }
     case "setThreadParent": {
       if (!action.parentId || action.parentId === action.threadId) {
         return state;

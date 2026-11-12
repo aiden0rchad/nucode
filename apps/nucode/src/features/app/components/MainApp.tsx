@@ -44,6 +44,8 @@ import { usePlanReadyActions } from "@app/hooks/usePlanReadyActions";
 import { useThreadRows } from "@app/hooks/useThreadRows";
 import { useInterruptShortcut } from "@app/hooks/useInterruptShortcut";
 import { useArchiveShortcut } from "@app/hooks/useArchiveShortcut";
+import { useThreadShortcuts } from "@app/hooks/useThreadShortcuts";
+import { pushErrorToast } from "@services/toasts";
 import { useCopyThread } from "@threads/hooks/useCopyThread";
 import { useTerminalController } from "@/features/terminal/hooks/useTerminalController";
 import { useWorkspaceLaunchScript } from "@app/hooks/useWorkspaceLaunchScript";
@@ -458,7 +460,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     setActiveThreadId,
     hasLocalThreadSnapshot,
     historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
-    markThreadUnread, loadThreadItems, forkThreadForWorkspace,
+    markThreadUnread, loadThreadItems, forkThreadForWorkspace, deleteThreadPermanently, moveThread,
     activeThreadId,
     activeItems,
     itemsByThread,
@@ -908,6 +910,38 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     setSelectedDiffPath,
   });
 
+  // "Fork into a new worktree" opens the worktree prompt for the thread's project. Once
+  // the worktree exists, the thread is forked and the fork moves into it. The pending
+  // request is dropped when the prompt closes, so a cancelled one cannot fire later.
+  const pendingWorktreeFork = useRef<{ workspaceId: string; threadId: string } | null>(null);
+  const handleWorktreeCreatedAndFork = useCallback(
+    async (worktree: WorkspaceInfo, parentWorkspace?: WorkspaceInfo) => {
+      await handleWorktreeCreated(worktree, parentWorkspace);
+      const pending = pendingWorktreeFork.current;
+      pendingWorktreeFork.current = null;
+      if (!pending || pending.workspaceId !== parentWorkspace?.id) {
+        return;
+      }
+      const forkId = await forkThreadForWorkspace(pending.workspaceId, pending.threadId, { activate: false });
+      if (!forkId) {
+        pushErrorToast({ title: "Couldn't fork chat", message: "The chat was not forked, so nothing was moved into the new worktree." });
+        return;
+      }
+      const moved = await moveThread(pending.workspaceId, forkId, worktree.id, (message) =>
+        pushErrorToast({
+          title: "Forked, but couldn't move the fork",
+          message: `The fork stays in ${parentWorkspace?.name ?? "the original project"}. ${message}`,
+        }),
+      );
+      if (moved) {
+        exitDiffView();
+        selectWorkspace(worktree.id);
+        setActiveThreadId(forkId, worktree.id);
+      }
+    },
+    [exitDiffView, forkThreadForWorkspace, handleWorktreeCreated, moveThread, selectWorkspace, setActiveThreadId],
+  );
+
   const resolveCloneProjectContext = useCallback(
     (workspace: WorkspaceInfo) => {
       const groupId = workspace.settings.groupId ?? null;
@@ -984,7 +1018,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       connectWorkspace,
       updateWorkspaceSettings,
       selectWorkspace,
-      handleWorktreeCreated,
+      handleWorktreeCreated: handleWorktreeCreatedAndFork,
       resolveCloneProjectContext,
       persistProjectCopiesFolder,
       onCompactActivate: isCompact ? () => setActiveTab("codex") : undefined,
@@ -1476,6 +1510,34 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     shortcut: appSettings.archiveThreadShortcut,
     onTrigger: handleArchiveActiveThread,
   });
+  useEffect(() => {
+    if (!appModalsProps.worktreePrompt) {
+      pendingWorktreeFork.current = null;
+    }
+  }, [appModalsProps.worktreePrompt]);
+  useThreadShortcuts({
+    isEnabled: isThreadOpen && Boolean(activeWorkspaceId && activeThreadId),
+    shortcuts: [
+      {
+        shortcut: appSettings.renameThreadShortcut,
+        onTrigger: () => { if (activeWorkspaceId && activeThreadId) handleRenameThread(activeWorkspaceId, activeThreadId); },
+      },
+      {
+        shortcut: appSettings.pinThreadShortcut,
+        onTrigger: () => {
+          if (!activeWorkspaceId || !activeThreadId) return;
+          const thread = threadsByWorkspace[activeWorkspaceId]?.find(entry => entry.id === activeThreadId);
+          if (thread?.isSubagent || thread?.sideOf || threadParentById[activeThreadId]) return;
+          if (isThreadPinned(activeWorkspaceId, activeThreadId)) unpinThread(activeWorkspaceId, activeThreadId);
+          else pinThread(activeWorkspaceId, activeThreadId);
+        },
+      },
+      {
+        shortcut: appSettings.markThreadUnreadShortcut,
+        onTrigger: () => { if (activeThreadId) markThreadUnread(activeThreadId, !threadStatusById[activeThreadId]?.hasUnread); },
+      },
+    ],
+  });
   const showCompactCodexThreadActions =
     Boolean(activeWorkspace) &&
     isCompact &&
@@ -1826,6 +1888,20 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         onEditProject: () => modalActions.openSettings("projects"),
         onSetThreadUnread: (_workspaceId, threadId, unread) => markThreadUnread(threadId, unread),
         onForkThread: (workspaceId, threadId) => { void forkThreadForWorkspace(workspaceId, threadId); },
+        onMoveThread: moveThread,
+        onDeleteThreadPermanently: deleteThreadPermanently,
+        onForkIntoWorktree: (workspaceId, threadId) => {
+          const workspace = workspaces.find(entry => entry.id === workspaceId);
+          if (!workspace) return;
+          pendingWorktreeFork.current = { workspaceId, threadId };
+          void handleAddWorktreeAgent(workspace);
+        },
+        threadShortcuts: {
+          rename: appSettings.renameThreadShortcut,
+          pin: appSettings.pinThreadShortcut,
+          markUnread: appSettings.markThreadUnreadShortcut,
+          archive: appSettings.archiveThreadShortcut,
+        },
         loadThreadItems,
         onSelectThread: (workspaceId, threadId) => {
           const thread = threadsByWorkspace[workspaceId]?.find(t => t.id === threadId);

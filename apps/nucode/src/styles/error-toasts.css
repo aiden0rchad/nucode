@@ -20,6 +20,11 @@
   --ds-toast-enter-duration: 0.18s;
 }
 
+.error-toast.is-info {
+  background: var(--ds-toast-bg);
+  border-color: var(--ds-toast-border);
+}
+
 .error-toast-title {
   font-weight: 600;
   font-size: 13px;

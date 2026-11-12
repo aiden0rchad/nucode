@@ -2,6 +2,9 @@ import { openCheckpoints } from "@services/events";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import Archive from "lucide-react/dist/esm/icons/archive";
+import ArrowRightLeft from "lucide-react/dist/esm/icons/arrow-right-left";
+import GitBranch from "lucide-react/dist/esm/icons/git-branch";
+import TrashPermanent from "lucide-react/dist/esm/icons/trash-2";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import FolderOpen from "lucide-react/dist/esm/icons/folder-open";
 import GitFork from "lucide-react/dist/esm/icons/git-fork";
@@ -26,18 +29,31 @@ import {
 import { engineCapabilities } from "../../threads/utils/engineCapabilities";
 import type { ConversationItem, ThreadSummary, WorkspaceInfo } from "../../../types";
 import { exportMarkdownFile } from "../../../services/tauri";
-import { pushErrorToast } from "../../../services/toasts";
+import { pushErrorToast, pushInfoToast } from "../../../services/toasts";
 import {
   fileManagerName,
   revealInFileManagerLabel,
 } from "../../../utils/platformPaths";
 import type { ThreadStatusById } from "../../../utils/threadStatus";
+import { formatShortcut } from "../../../utils/shortcuts";
 import { buildThreadTranscript } from "../../../utils/threadText";
 
 export type SidebarSection = { id: string; name: string };
 
+/** Raw shortcut strings; a missing or cleared one shows no hint. */
+export type SidebarMenuShortcuts = {
+  rename?: string | null;
+  pin?: string | null;
+  markUnread?: string | null;
+  archive?: string | null;
+};
+
+const MOVABLE_ENGINES = new Set(["pi", "omp"]);
+const RUNNING_REASON = "Finish or interrupt the turn first";
+
 export type SidebarMenuHandlers = {
-  onDeleteThread: (workspaceId: string, threadId: string) => void;
+  /** Resolves to false when the backend refused (the row is restored); void callers count as success. */
+  onDeleteThread: (workspaceId: string, threadId: string) => void | Promise<boolean>;
   onSyncThread: (workspaceId: string, threadId: string) => void;
   onPinThread: (workspaceId: string, threadId: string) => void;
   onUnpinThread: (workspaceId: string, threadId: string) => void;
@@ -65,6 +81,13 @@ export type SidebarMenuHandlers = {
   onForkThread?: (workspaceId: string, threadId: string) => void;
   /** Loads a thread's items without switching the visible thread. */
   loadThreadItems?: (workspaceId: string, threadId: string) => Promise<ConversationItem[]>;
+  onMoveThread?: (workspaceId: string, threadId: string, targetWorkspaceId: string) => Promise<boolean>;
+  onDeleteThreadPermanently?: (workspaceId: string, threadId: string) => Promise<boolean>;
+  onForkIntoWorktree?: (workspaceId: string, threadId: string) => void;
+  /** Whether worktrees are available (the same gate as "New worktree agent"). */
+  canForkIntoWorktree?: boolean;
+  onSelectThread?: (workspaceId: string, threadId: string) => void;
+  shortcuts?: SidebarMenuShortcuts;
 };
 
 type OpenMenu = {
@@ -99,6 +122,10 @@ function tidy(entries: MenuEntry[]): ContextMenuItem[] {
     result.pop();
   }
   return result;
+}
+
+function hint(shortcut: string | null | undefined) {
+  return shortcut && shortcut.trim() ? formatShortcut(shortcut) : undefined;
 }
 
 function describeError(error: unknown) {
@@ -149,6 +176,12 @@ export function useSidebarMenus({
   onSetThreadUnread,
   onForkThread,
   loadThreadItems,
+  onMoveThread,
+  onDeleteThreadPermanently,
+  onForkIntoWorktree,
+  canForkIntoWorktree = true,
+  onSelectThread,
+  shortcuts = {},
 }: SidebarMenuHandlers) {
   const [open, setOpen] = useState<OpenMenu | null>(null);
   const nextId = useRef(0);
@@ -248,9 +281,59 @@ export function useSidebarMenus({
         !thread?.sideOf &&
         !threadParentById[threadId] &&
         Boolean(onSetThreadSection);
+      const engine = thread?.engine ?? "codex";
       const forkSupported = thread
-        ? engineCapabilities(thread.engine ?? "codex", thread.capabilities).forkLatest
+        ? engineCapabilities(engine, thread.capabilities).forkLatest
         : true;
+      const running = Boolean(threadStatusById[threadId]?.isProcessing);
+      const isTopLevelProject = (entry: WorkspaceInfo) =>
+        (entry.kind ?? "main") === "main" && !entry.settings.cloneSourceWorkspaceId?.trim();
+      const otherProjects = workspaces.filter((entry) => isTopLevelProject(entry) && entry.id !== workspaceId);
+      const moveReason = !onMoveThread
+        ? undefined
+        : running
+          ? RUNNING_REASON
+          : thread?.isSubagent || thread?.sideOf || threadParentById[threadId]
+            ? "Sub-agent and side chats move with their parent"
+            : !MOVABLE_ENGINES.has(engine)
+              ? "Moving is only available for pi and omp chats"
+              : !workspace || !isTopLevelProject(workspace)
+                ? "Chats in worktrees and clones stay with them"
+                : otherProjects.length === 0
+                  ? "There is no other project to move to"
+                  : undefined;
+      const moveTo = async (target: WorkspaceInfo) => {
+        if (await onMoveThread?.(workspaceId, threadId, target.id)) {
+          onSelectThread?.(target.id, threadId);
+          pushInfoToast({ title: `Moved to ${target.name}`, message: thread?.name ?? "The chat was moved." });
+        }
+      };
+      const worktreeReason = !canForkIntoWorktree
+        ? "Worktrees are turned off in Settings"
+        : !workspace || !isTopLevelProject(workspace)
+          ? "Fork from the project's own chat to use a new worktree"
+          : undefined;
+      const deleteReason = running
+        ? RUNNING_REASON
+        : engine === "codex"
+          ? "Not available for Codex threads"
+          : undefined;
+      const deletePermanently = async () => {
+        let confirmed = false;
+        try {
+          confirmed = await ask(`Permanently delete "${thread?.name ?? "this chat"}"? This cannot be undone.`, {
+            title: "Delete chat",
+            kind: "warning",
+            okLabel: "Delete",
+          });
+        } catch (error) {
+          pushErrorToast({ title: "Couldn't delete chat", message: describeError(error) });
+          return;
+        }
+        if (confirmed) {
+          await onDeleteThreadPermanently?.(workspaceId, threadId);
+        }
+      };
       const withItems = async (use: (items: ConversationItem[]) => Promise<void>, what: string) => {
         try {
           const items = loadThreadItems ? await loadThreadItems(workspaceId, threadId) : [];
@@ -272,18 +355,39 @@ export function useSidebarMenus({
       };
 
       show(event, thread?.name ?? "Chat actions", [
-        { id: "rename", label: "Rename", icon: <Pencil size={16} />, onSelect: () => onRenameThread(workspaceId, threadId) },
+        {
+          id: "rename",
+          label: "Rename",
+          icon: <Pencil size={16} />,
+          shortcut: hint(shortcuts.rename),
+          onSelect: () => onRenameThread(workspaceId, threadId),
+        },
         canPin && {
           id: "pin",
           label: isPinned ? "Unpin" : "Pin",
           icon: isPinned ? <PinOff size={16} /> : <Pin size={16} />,
+          shortcut: hint(shortcuts.pin),
           onSelect: () => (isPinned ? onUnpinThread(workspaceId, threadId) : onPinThread(workspaceId, threadId)),
         },
         onSetThreadUnread && {
           id: "unread",
           label: unread ? "Mark as read" : "Mark as unread",
           icon: unread ? <MailOpen size={16} /> : <Mail size={16} />,
+          shortcut: hint(shortcuts.markUnread),
           onSelect: () => onSetThreadUnread(workspaceId, threadId, !unread),
+        },
+        onMoveThread && {
+          kind: "submenu",
+          id: "project",
+          label: "Project",
+          icon: <ArrowRightLeft size={16} />,
+          disabled: Boolean(moveReason),
+          disabledReason: moveReason,
+          items: workspaces.filter(isTopLevelProject).map((entry): ContextMenuItem =>
+            entry.id === workspaceId
+              ? { id: `project:${entry.id}`, label: entry.name, checked: true, disabled: true, disabledReason: "The chat is already in this project", onSelect: () => {} }
+              : { id: `project:${entry.id}`, label: entry.name, onSelect: () => void moveTo(entry) },
+          ),
         },
         separator("sep-organize"),
         canSection &&
@@ -297,7 +401,7 @@ export function useSidebarMenus({
           id: "fork",
           label: "Fork",
           icon: <GitFork size={16} />,
-          items: [
+          items: tidy([
             {
               id: "fork-here",
               label: "Fork in this project",
@@ -305,7 +409,15 @@ export function useSidebarMenus({
               disabledReason: "Fork is not supported for this engine",
               onSelect: () => onForkThread(workspaceId, threadId),
             },
-          ],
+            onForkIntoWorktree && {
+              id: "fork-worktree",
+              label: "Fork into a new worktree",
+              icon: <GitBranch size={16} />,
+              disabled: Boolean(worktreeReason) || !forkSupported,
+              disabledReason: worktreeReason ?? "Fork is not supported for this engine",
+              onSelect: () => onForkIntoWorktree(workspaceId, threadId),
+            },
+          ]),
         },
         {
           id: "checkpoints",
@@ -357,7 +469,23 @@ export function useSidebarMenus({
           ]),
         },
         separator("sep-archive"),
-        { id: "archive", label: "Archive", icon: <Archive size={16} />, onSelect: () => onDeleteThread(workspaceId, threadId) },
+        {
+          id: "archive",
+          label: "Archive",
+          icon: <Archive size={16} />,
+          shortcut: hint(shortcuts.archive),
+          onSelect: () => void onDeleteThread(workspaceId, threadId),
+        },
+        onDeleteThreadPermanently && separator("sep-delete"),
+        onDeleteThreadPermanently && {
+          id: "delete",
+          label: "Permanently delete",
+          icon: <TrashPermanent size={16} />,
+          danger: true,
+          disabled: Boolean(deleteReason),
+          disabledReason: deleteReason,
+          onSelect: () => void deletePermanently(),
+        },
       ]);
     },
     [
@@ -365,6 +493,12 @@ export function useSidebarMenus({
       isThreadPinned,
       loadThreadItems,
       onDeleteThread,
+      onDeleteThreadPermanently,
+      onForkIntoWorktree,
+      onMoveThread,
+      onSelectThread,
+      canForkIntoWorktree,
+      shortcuts,
       onForkThread,
       onPinThread,
       onRenameThread,
@@ -402,8 +536,24 @@ export function useSidebarMenus({
           pushErrorToast({ title: "Couldn't archive chats", message: describeError(error) });
           return;
         }
-        if (confirmed) {
-          roots.forEach((thread) => onDeleteThread(workspaceId, thread.id));
+        if (!confirmed) {
+          return;
+        }
+        const results = await Promise.all(
+          roots.map(async (thread) => (await onDeleteThread(workspaceId, thread.id)) !== false),
+        );
+        const failed = results.filter((ok) => !ok).length;
+        const archivedCount = results.length - failed;
+        if (failed === 0) {
+          pushInfoToast({
+            title: `Archived ${archivedCount} chat${archivedCount === 1 ? "" : "s"}`,
+            message: workspace?.name ?? "The project's chats were archived.",
+          });
+        } else {
+          pushErrorToast({
+            title: `Archived ${archivedCount} chat${archivedCount === 1 ? "" : "s"}, ${failed} failed`,
+            message: "The chats that failed were put back in the list.",
+          });
         }
       };
 

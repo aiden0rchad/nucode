@@ -30,5 +30,20 @@ export function useThreadSections() {
     [],
   );
 
-  return { getThreadSection, setThreadSection, version };
+  /** A moved thread keeps its section under its new workspace id. */
+  const moveThreadSection = useCallback(
+    (fromWorkspaceId: string, toWorkspaceId: string, threadId: string) => {
+      const sectionId = sectionsRef.current[makeThreadSectionKey(fromWorkspaceId, threadId)];
+      if (!sectionId) {
+        return;
+      }
+      const { [makeThreadSectionKey(fromWorkspaceId, threadId)]: _removed, ...rest } = sectionsRef.current;
+      sectionsRef.current = { ...rest, [makeThreadSectionKey(toWorkspaceId, threadId)]: sectionId };
+      saveThreadSections(sectionsRef.current);
+      setVersion((value) => value + 1);
+    },
+    [],
+  );
+
+  return { getThreadSection, setThreadSection, moveThreadSection, version };
 }

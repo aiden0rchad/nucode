@@ -60,6 +60,8 @@ export type ThreadAction =
   | { type: "ensureThread"; workspaceId: string; threadId: string }
   | { type: "hideThread"; workspaceId: string; threadId: string }
   | { type: "removeThread"; workspaceId: string; threadId: string }
+  | { type: "restoreThread"; workspaceId: string; thread: ThreadSummary; index: number }
+  | { type: "moveThread"; fromWorkspaceId: string; toWorkspaceId: string; thread: ThreadSummary }
   | { type: "setThreadParent"; threadId: string; parentId: string }
   | {
       type: "markProcessing";

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn(async () => true) }));
+vi.mock("@services/toasts", () => ({ pushErrorToast: vi.fn(), pushInfoToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn() }));
 
 const baseProps = {
@@ -311,5 +312,77 @@ describe("unread chats", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "Plan" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Mark as unread" }));
     expect(onSetThreadUnread).toHaveBeenCalledWith("a", "t1", true);
+  });
+});
+
+describe("sections follow a thread through move, archive and delete", () => {
+  const alpha = project("a", "Alpha");
+  const beta = project("b", "Beta");
+  const base = {
+    ...baseProps,
+    workspaces: [alpha, beta],
+    groupedWorkspaces: [{ id: null, name: "Ungrouped", workspaces: [alpha, beta] }],
+    threadsByWorkspace: { a: [{ id: "t1", name: "Plan", updatedAt: 1, engine: "pi" }], b: [] },
+  };
+  const sections = () => JSON.parse(localStorage.getItem("codexmonitor.threadSections") ?? "{}");
+  const file = (value: Record<string, string>) =>
+    localStorage.setItem("codexmonitor.threadSections", JSON.stringify(value));
+  const openMenu = () => fireEvent.contextMenu(screen.getByRole("button", { name: "Plan" }));
+
+  it("moves the section assignment to the new workspace id and passes the ids on", async () => {
+    file({ "a:t1": "s1" });
+    const onMoveThread = vi.fn(async () => true);
+    render(<Sidebar {...base} onMoveThread={onMoveThread} workspaceSections={[{ id: "s1", name: "Work" }]} />);
+    openMenu();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Project" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Beta" }));
+    await waitFor(() => expect(sections()).toEqual({ "b:t1": "s1" }));
+    expect(onMoveThread).toHaveBeenCalledWith("a", "t1", "b");
+  });
+
+  it("keeps the assignment where it was when the move fails", async () => {
+    file({ "a:t1": "s1" });
+    const onMoveThread = vi.fn(async () => false);
+    render(<Sidebar {...base} onMoveThread={onMoveThread} workspaceSections={[{ id: "s1", name: "Work" }]} />);
+    openMenu();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Project" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Beta" }));
+    await waitFor(() => expect(onMoveThread).toHaveBeenCalled());
+    expect(sections()).toEqual({ "a:t1": "s1" });
+  });
+
+  it("drops the assignment when the thread is deleted for good, but not when the delete fails", async () => {
+    file({ "a:t1": "s1" });
+    const failing = vi.fn(async () => false);
+    const view = render(<Sidebar {...base} onDeleteThreadPermanently={failing} />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await waitFor(() => expect(failing).toHaveBeenCalled());
+    expect(sections()).toEqual({ "a:t1": "s1" });
+    view.unmount();
+
+    const deleting = vi.fn(async () => true);
+    render(<Sidebar {...base} onDeleteThreadPermanently={deleting} />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await waitFor(() => expect(sections()).toEqual({}));
+    expect(deleting).toHaveBeenCalledWith("a", "t1");
+  });
+
+  it("drops the assignment on a successful archive and keeps it when the archive fails", async () => {
+    file({ "a:t1": "s1" });
+    const failing = vi.fn(async () => false);
+    const view = render(<Sidebar {...base} onDeleteThread={failing} />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+    await waitFor(() => expect(failing).toHaveBeenCalledWith("a", "t1"));
+    expect(sections()).toEqual({ "a:t1": "s1" });
+    view.unmount();
+
+    const archiving = vi.fn(async () => true);
+    render(<Sidebar {...base} onDeleteThread={archiving} />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+    await waitFor(() => expect(sections()).toEqual({}));
   });
 });

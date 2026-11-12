@@ -897,17 +897,21 @@ export function useThreadActions({
   );
 
   const archiveThread = useCallback(
-    async (workspaceId: string, threadId: string) => {
+    /** Resolves to null on success, or the error message. */
+    async (workspaceId: string, threadId: string): Promise<string | null> => {
       try {
         await archiveThreadService(workspaceId, threadId);
+        return null;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         onDebug?.({
           id: `${Date.now()}-client-thread-archive-error`,
           timestamp: Date.now(),
           source: "error",
           label: "thread/archive error",
-          payload: error instanceof Error ? error.message : String(error),
+          payload: message,
         });
+        return message;
       }
     },
     [onDebug],

@@ -21,7 +21,7 @@ export function ErrorToasts({ toasts, onDismiss }: ErrorToastsProps) {
   return (
     <ToastViewport className="error-toasts" role="region" ariaLive="assertive">
       {toasts.map((toast) => (
-        <ToastCard key={toast.id} className="error-toast" role="alert">
+        <ToastCard key={toast.id} className={`error-toast${toast.tone === "info" ? " is-info" : ""}`} role={toast.tone === "info" ? "status" : "alert"}>
           <ToastHeader className="error-toast-header">
             <ToastTitle className="error-toast-title">{toast.title}</ToastTitle>
             <button

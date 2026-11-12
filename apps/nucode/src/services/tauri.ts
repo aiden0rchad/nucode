@@ -1065,6 +1065,14 @@ export async function archiveThread(workspaceId: string, threadId: string) {
   return invoke<any>("archive_thread", { workspaceId, threadId });
 }
 
+export async function deleteThread(workspaceId: string, threadId: string) {
+  return invoke<any>("delete_thread", { workspaceId, threadId });
+}
+
+export async function moveThread(workspaceId: string, threadId: string, targetWorkspaceId: string) {
+  return invoke<any>("move_thread", { workspaceId, threadId, targetWorkspaceId });
+}
+
 export async function setThreadName(
   workspaceId: string,
   threadId: string,

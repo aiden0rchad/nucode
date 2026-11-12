@@ -4,6 +4,8 @@ export type ErrorToast = {
   title: string;
   message: string;
   durationMs?: number;
+  /** "info" renders without the error tint, for confirmations. */
+  tone?: "error" | "info";
 };
 
 export type ErrorToastInput = Omit<ErrorToast, "id"> & {
@@ -25,6 +27,7 @@ export function pushErrorToast(input: ErrorToastInput) {
     title: input.title,
     message: input.message,
     durationMs: input.durationMs,
+    tone: input.tone,
   };
 
   for (const listener of errorToastListeners) {
@@ -45,3 +48,7 @@ export function subscribeErrorToasts(listener: ErrorToastListener) {
   };
 }
 
+
+export function pushInfoToast(input: Omit<ErrorToastInput, "tone">) {
+  pushErrorToast({ ...input, tone: "info" });
+}

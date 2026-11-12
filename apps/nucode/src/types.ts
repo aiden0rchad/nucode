@@ -345,6 +345,9 @@ export type AppSettings = {
   newWorktreeAgentShortcut: string | null;
   newCloneAgentShortcut: string | null;
   archiveThreadShortcut: string | null;
+  renameThreadShortcut: string | null;
+  pinThreadShortcut: string | null;
+  markThreadUnreadShortcut: string | null;
   toggleProjectsSidebarShortcut: string | null;
   toggleGitSidebarShortcut: string | null;
   branchSwitcherShortcut: string | null;

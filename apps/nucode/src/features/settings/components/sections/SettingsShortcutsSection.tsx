@@ -107,6 +107,24 @@ export function SettingsShortcutsSection({
             settingKey: "archiveThreadShortcut",
             help: `Default: ${formatShortcut(isMac ? "cmd+ctrl+a" : "ctrl+alt+a")}`,
           },
+          {
+            label: "Rename active thread",
+            draftKey: "renameThread",
+            settingKey: "renameThreadShortcut",
+            help: `Default: ${formatShortcut(isMac ? "cmd+alt+r" : "ctrl+alt+r")}`,
+          },
+          {
+            label: "Pin or unpin active thread",
+            draftKey: "pinThread",
+            settingKey: "pinThreadShortcut",
+            help: `Default: ${formatShortcut(isMac ? "cmd+alt+p" : "ctrl+alt+p")}`,
+          },
+          {
+            label: "Mark active thread as unread",
+            draftKey: "markThreadUnread",
+            settingKey: "markThreadUnreadShortcut",
+            help: `Default: ${formatShortcut(isMac ? "cmd+shift+u" : "ctrl+shift+u")}`,
+          },
         ],
       },
       {

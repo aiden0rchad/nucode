@@ -12,6 +12,8 @@ import {
   loadThreadActivity,
   makeCustomNameKey,
   makePinKey,
+  removeCustomName,
+  saveCustomName,
   savePinnedThreads,
   saveThreadActivity,
 } from "@threads/utils/threadStorage";
@@ -31,6 +33,8 @@ type UseThreadStorageResult = {
   unpinThread: (workspaceId: string, threadId: string) => void;
   isThreadPinned: (workspaceId: string, threadId: string) => boolean;
   getPinTimestamp: (workspaceId: string, threadId: string) => number | null;
+  /** Carries a thread's pin and custom name to its new workspace id. */
+  moveThreadStorage: (fromWorkspaceId: string, toWorkspaceId: string, threadId: string) => void;
 };
 
 export function useThreadStorage(): UseThreadStorageResult {
@@ -137,7 +141,30 @@ export function useThreadStorage(): UseThreadStorageResult {
     [],
   );
 
+  const moveThreadStorage = useCallback(
+    (fromWorkspaceId: string, toWorkspaceId: string, threadId: string) => {
+      const from = makePinKey(fromWorkspaceId, threadId);
+      const to = makePinKey(toWorkspaceId, threadId);
+      if (from in pinnedThreadsRef.current) {
+        const { [from]: pinnedAt, ...rest } = pinnedThreadsRef.current;
+        pinnedThreadsRef.current = { ...rest, [to]: pinnedAt };
+        savePinnedThreads(pinnedThreadsRef.current);
+        setPinnedThreadsVersion((version) => version + 1);
+      }
+      const fromName = makeCustomNameKey(fromWorkspaceId, threadId);
+      const name = customNamesRef.current[fromName];
+      if (name !== undefined) {
+        saveCustomName(toWorkspaceId, threadId, name);
+        const { [fromName]: _removed, ...rest } = customNamesRef.current;
+        customNamesRef.current = { ...rest, [makeCustomNameKey(toWorkspaceId, threadId)]: name };
+        removeCustomName(fromWorkspaceId, threadId);
+      }
+    },
+    [],
+  );
+
   return {
+    moveThreadStorage,
     customNamesRef,
     pinnedThreadsRef,
     threadActivityRef,

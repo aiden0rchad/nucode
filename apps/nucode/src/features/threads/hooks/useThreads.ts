@@ -8,6 +8,7 @@ import type {
   DebugEntry,
   ServiceTier,
   ThreadListSortKey,
+  ThreadSummary,
   WorkspaceInfo,
 } from "@/types";
 import { CHAT_SCROLLBACK_DEFAULT } from "@utils/chatScrollback";
@@ -26,6 +27,8 @@ import { useThreadTitleAutogeneration } from "./useThreadTitleAutogeneration";
 import { useDetachedReviewTracking } from "./useDetachedReviewTracking";
 import {
   archiveThread as archiveThreadService,
+  deleteThread as deleteThreadService,
+  moveThread as moveThreadService,
   readThread as readThreadService,
   setThreadName as setThreadNameService,
 } from "@services/tauri";
@@ -38,6 +41,7 @@ import {
   buildThreadSummaryFromThread,
   extractThreadFromResponse,
 } from "@threads/utils/threadSummary";
+import { pushErrorToast } from "@services/toasts";
 import { readThreadItems } from "@threads/utils/readThreadItems";
 import { getSubagentDescendantThreadIds } from "@threads/utils/subagentTree";
 
@@ -144,6 +148,7 @@ export function useThreads({
     unpinThread,
     isThreadPinned,
     getPinTimestamp,
+    moveThreadStorage,
   } = useThreadStorage();
 
   const activeWorkspaceId = activeWorkspace?.id ?? null;
@@ -828,13 +833,94 @@ export function useThreads({
     ],
   );
 
+  // Archives a thread. The row leaves the list at once; if the backend refuses, it
+  // comes back where it was and an error toast says why. Resolves to whether it stuck.
   const removeThread = useCallback(
-    (workspaceId: string, threadId: string) => {
+    async (workspaceId: string, threadId: string): Promise<boolean> => {
+      const list = threadsByWorkspaceRef.current[workspaceId] ?? [];
+      const index = list.findIndex((thread) => thread.id === threadId);
+      const summary = index === -1 ? null : list[index];
+      const pinned = getPinTimestamp(workspaceId, threadId) !== null;
       unpinThread(workspaceId, threadId);
       dispatch({ type: "removeThread", workspaceId, threadId });
-      void archiveThread(workspaceId, threadId);
+      const failure = await archiveThread(workspaceId, threadId);
+      if (failure === null) {
+        return true;
+      }
+      if (summary) {
+        dispatch({ type: "restoreThread", workspaceId, thread: summary, index });
+      }
+      if (pinned) {
+        pinThread(workspaceId, threadId);
+      }
+      pushErrorToast({
+        title: "Couldn't archive chat",
+        message: failure,
+      });
+      return false;
     },
-    [archiveThread, unpinThread],
+    [archiveThread, getPinTimestamp, pinThread, unpinThread],
+  );
+
+  const deleteThreadPermanently = useCallback(
+    async (workspaceId: string, threadId: string): Promise<boolean> => {
+      try {
+        await deleteThreadService(workspaceId, threadId);
+      } catch (error) {
+        pushErrorToast({
+          title: "Couldn't delete chat",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
+      unpinThread(workspaceId, threadId);
+      dispatch({ type: "removeThread", workspaceId, threadId });
+      return true;
+    },
+    [unpinThread],
+  );
+
+  // Moves a thread to another project. Resolves to the moved thread's id on success.
+  const moveThread = useCallback(
+    async (
+      workspaceId: string,
+      threadId: string,
+      targetWorkspaceId: string,
+      reportError?: (message: string) => void,
+    ): Promise<boolean> => {
+      const list = threadsByWorkspaceRef.current[workspaceId] ?? [];
+      const summary = list.find((thread) => thread.id === threadId);
+      let moved: Record<string, unknown> | null = null;
+      try {
+        moved = extractThreadFromResponse(await moveThreadService(workspaceId, threadId, targetWorkspaceId));
+        if (!moved) {
+          throw new Error("The engine did not return the moved chat");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (reportError) {
+          reportError(message);
+        } else {
+          pushErrorToast({ title: "Couldn't move chat", message });
+        }
+        return false;
+      }
+      moveThreadStorage(workspaceId, targetWorkspaceId, threadId);
+      const rebuilt = buildThreadSummaryFromThread({
+        workspaceId: targetWorkspaceId,
+        thread: moved,
+        fallbackIndex: 0,
+        getCustomName,
+      });
+      dispatch({
+        type: "moveThread",
+        fromWorkspaceId: workspaceId,
+        toWorkspaceId: targetWorkspaceId,
+        thread: rebuilt ?? ({ ...(summary ?? { id: threadId, name: "New Agent" }), updatedAt: Date.now() } as ThreadSummary),
+      });
+      return true;
+    },
+    [getCustomName, moveThreadStorage],
   );
 
   const markThreadUnread = useCallback(
@@ -863,6 +949,8 @@ export function useThreads({
     activeThreadId,
     markThreadUnread,
     loadThreadItems,
+    deleteThreadPermanently,
+    moveThread,
     historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
     setActiveThreadId,
     hasLocalThreadSnapshot,

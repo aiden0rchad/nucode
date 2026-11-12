@@ -11,6 +11,8 @@ import {
   createGitHubRepo,
   fetchGit,
   forkThread,
+  deleteThread,
+  moveThread,
 
   getExperimentalFeatureList,
   getGitHubIssues,
@@ -264,6 +266,21 @@ describe("tauri invoke wrappers", () => {
     expect(invokeMock).toHaveBeenCalledWith("fork_thread", {
       workspaceId: "ws-9",
       threadId: "thread-9",
+    });
+  });
+
+  it("maps ids for delete_thread and move_thread", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValue({});
+
+    await deleteThread("ws-1", "thread-1");
+    await moveThread("ws-1", "thread-1", "ws-2");
+
+    expect(invokeMock).toHaveBeenCalledWith("delete_thread", { workspaceId: "ws-1", threadId: "thread-1" });
+    expect(invokeMock).toHaveBeenCalledWith("move_thread", {
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      targetWorkspaceId: "ws-2",
     });
   });
 

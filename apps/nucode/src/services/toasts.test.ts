@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { pushErrorToast, subscribeErrorToasts } from "./toasts";
+import { pushErrorToast, pushInfoToast, subscribeErrorToasts } from "./toasts";
 
 describe("error toasts", () => {
   it("publishes error toasts to subscribers", () => {
@@ -25,5 +25,12 @@ describe("error toasts", () => {
 
     unsubscribe();
   });
-});
 
+  it("marks info toasts so they render without the error tint", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeErrorToasts(listener);
+    pushInfoToast({ title: "Moved to Docs", message: "The chat was moved." });
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ title: "Moved to Docs", tone: "info" }));
+    unsubscribe();
+  });
+});

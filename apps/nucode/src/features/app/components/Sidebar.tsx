@@ -38,6 +38,8 @@ import { useMenuController } from "../hooks/useMenuController";
 import { useSidebarMenus } from "../hooks/useSidebarMenus";
 import { useProjectPins } from "../hooks/useProjectPins";
 import { useThreadSections } from "../hooks/useThreadSections";
+import type { SidebarMenuShortcuts } from "../hooks/useSidebarMenus";
+import { useFeatures } from "@settings/features";
 import { useSidebarScrollFade } from "../hooks/useSidebarScrollFade";
 import { useThreadRows } from "../hooks/useThreadRows";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
@@ -138,7 +140,7 @@ type SidebarProps = {
   onAddCloneAgent: (workspace: WorkspaceInfo) => void;
   onToggleWorkspaceCollapse: (workspaceId: string, collapsed: boolean) => void;
   onSelectThread: (workspaceId: string, threadId: string) => void;
-  onDeleteThread: (workspaceId: string, threadId: string) => void;
+  onDeleteThread: (workspaceId: string, threadId: string) => void | Promise<boolean>;
   onSyncThread: (workspaceId: string, threadId: string) => void;
   pinThread: (workspaceId: string, threadId: string) => boolean;
   unpinThread: (workspaceId: string, threadId: string) => void;
@@ -158,6 +160,10 @@ type SidebarProps = {
   onSetThreadUnread?: (workspaceId: string, threadId: string, unread: boolean) => void;
   onForkThread?: (workspaceId: string, threadId: string) => void;
   loadThreadItems?: (workspaceId: string, threadId: string) => Promise<ConversationItem[]>;
+  onMoveThread?: (workspaceId: string, threadId: string, targetWorkspaceId: string) => Promise<boolean>;
+  onDeleteThreadPermanently?: (workspaceId: string, threadId: string) => Promise<boolean>;
+  onForkIntoWorktree?: (workspaceId: string, threadId: string) => void;
+  threadShortcuts?: SidebarMenuShortcuts;
   workspaceDropTargetRef: RefObject<HTMLElement | null>;
   isWorkspaceDropActive: boolean;
   workspaceDropText: string;
@@ -223,6 +229,10 @@ export const Sidebar = memo(function Sidebar({
   onSetThreadUnread,
   onForkThread,
   loadThreadItems,
+  onMoveThread,
+  onDeleteThreadPermanently,
+  onForkIntoWorktree,
+  threadShortcuts,
   workspaceDropTargetRef,
   isWorkspaceDropActive,
   workspaceDropText,
@@ -284,9 +294,48 @@ export const Sidebar = memo(function Sidebar({
   };
   const projectPins = useProjectPins();
   const threadSections = useThreadSections();
+  const features = useFeatures();
+  const { setThreadSection, moveThreadSection } = threadSections;
+  // A thread that leaves the list for good also leaves its section; a moved one takes it along.
+  const archiveThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      const done = onDeleteThread(workspaceId, threadId);
+      void Promise.resolve(done).then((archived) => {
+        if (archived !== false) {
+          setThreadSection(workspaceId, threadId, null);
+        }
+      });
+      return done;
+    },
+    [onDeleteThread, setThreadSection],
+  );
+  const deleteThreadPermanently = useMemo(
+    () =>
+      onDeleteThreadPermanently &&
+      (async (workspaceId: string, threadId: string) => {
+        const deleted = await onDeleteThreadPermanently(workspaceId, threadId);
+        if (deleted) {
+          setThreadSection(workspaceId, threadId, null);
+        }
+        return deleted;
+      }),
+    [onDeleteThreadPermanently, setThreadSection],
+  );
+  const moveThreadToProject = useMemo(
+    () =>
+      onMoveThread &&
+      (async (workspaceId: string, threadId: string, targetWorkspaceId: string) => {
+        const moved = await onMoveThread(workspaceId, threadId, targetWorkspaceId);
+        if (moved) {
+          moveThreadSection(workspaceId, targetWorkspaceId, threadId);
+        }
+        return moved;
+      }),
+    [moveThreadSection, onMoveThread],
+  );
   const { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu, menu } =
     useSidebarMenus({
-      onDeleteThread,
+      onDeleteThread: archiveThread,
       onSyncThread,
       onPinThread: pinThread,
       onUnpinThread: unpinThread,
@@ -311,6 +360,12 @@ export const Sidebar = memo(function Sidebar({
       onSetThreadUnread,
       onForkThread,
       loadThreadItems,
+      onMoveThread: moveThreadToProject,
+      onDeleteThreadPermanently: deleteThreadPermanently,
+      onForkIntoWorktree,
+      canForkIntoWorktree: features.worktrees,
+      onSelectThread,
+      shortcuts: threadShortcuts,
     });
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const normalizedQuery = debouncedQuery.trim().toLowerCase();

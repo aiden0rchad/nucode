@@ -232,7 +232,15 @@ export function createPreviewHandler(publish: Publish = () => {}, search = "") {
         state.threads.unshift(thread); return response(thread);
       }
       case "set_thread_name": { const thread = findThread(args.threadId); if (thread) { thread.name = String(args.name); thread.preview = thread.name; } return null; }
-      case "archive_thread": state.threads = state.threads.filter(t => t.id !== args.threadId); return null;
+      case "archive_thread":
+      case "delete_thread": state.threads = state.threads.filter(t => t.id !== args.threadId); return null;
+      case "move_thread": {
+        const thread = findThread(args.threadId);
+        const target = state.workspaces.find(w => w.id === args.targetWorkspaceId);
+        if (!thread || !target) throw new Error("Unknown target project");
+        thread.workspaceId = target.id; thread.cwd = target.path;
+        return response(thread);
+      }
       case "send_user_message": return send(findThread(args.threadId), String(args.text ?? ""));
       case "chat_request": return chat(String(args.action), params);
       case "work_request": return work(String(args.action), params);

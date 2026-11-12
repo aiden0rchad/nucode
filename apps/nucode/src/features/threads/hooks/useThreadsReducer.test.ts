@@ -315,6 +315,31 @@ describe("threadReducer", () => {
     expect(reopened.threadStatusById["thread-1"]?.hasUnread).toBe(false);
   });
 
+  it("restores a removed thread at its old position and ignores one already listed", () => {
+    const base = {
+      ...initialState,
+      threadsByWorkspace: { "ws-1": [{ id: "a", name: "A", updatedAt: 3 }, { id: "c", name: "C", updatedAt: 1 }] },
+    };
+    const restored = threadReducer(base, { type: "restoreThread", workspaceId: "ws-1", thread: { id: "b", name: "B", updatedAt: 2 }, index: 1 });
+    expect(restored.threadsByWorkspace["ws-1"].map((thread) => thread.id)).toEqual(["a", "b", "c"]);
+    expect(threadReducer(restored, { type: "restoreThread", workspaceId: "ws-1", thread: { id: "b", name: "B", updatedAt: 2 }, index: 0 })).toBe(restored);
+  });
+
+  it("moves a thread between workspaces and keeps its items", () => {
+    const base = {
+      ...initialState,
+      threadsByWorkspace: { "ws-1": [{ id: "a", name: "A", updatedAt: 3 }, { id: "b", name: "B", updatedAt: 2 }], "ws-2": [{ id: "x", name: "X", updatedAt: 1 }] },
+      activeThreadIdByWorkspace: { "ws-1": "a" },
+      itemsByThread: { a: [{ id: "m", kind: "message" as const, role: "user" as const, text: "hi" }] },
+    };
+    const moved = threadReducer(base, { type: "moveThread", fromWorkspaceId: "ws-1", toWorkspaceId: "ws-2", thread: { id: "a", name: "A", updatedAt: 9 } });
+    expect(moved.threadsByWorkspace["ws-1"].map((thread) => thread.id)).toEqual(["b"]);
+    expect(moved.threadsByWorkspace["ws-2"].map((thread) => thread.id)).toEqual(["a", "x"]);
+    expect(moved.activeThreadIdByWorkspace["ws-1"]).toBe("b");
+    expect(moved.itemsByThread.a).toHaveLength(1);
+    expect(threadReducer(base, { type: "moveThread", fromWorkspaceId: "ws-1", toWorkspaceId: "ws-1", thread: { id: "a", name: "A", updatedAt: 9 } })).toBe(base);
+  });
+
   it("tracks request user input queue", () => {
     const request = {
       workspace_id: "ws-1",

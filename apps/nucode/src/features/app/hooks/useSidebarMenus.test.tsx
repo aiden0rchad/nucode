@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem, ThreadSummary, WorkspaceInfo } from "../../../types";
 import { useSidebarMenus, type SidebarMenuHandlers } from "./useSidebarMenus";
 import { fileManagerName, revealInFileManagerLabel } from "../../../utils/platformPaths";
+import { formatShortcut } from "../../../utils/shortcuts";
 
 const revealItemInDir = vi.hoisted(() => vi.fn());
 const ask = vi.hoisted(() => vi.fn());
 const openCheckpoints = vi.hoisted(() => vi.fn());
 const exportMarkdownFile = vi.hoisted(() => vi.fn());
 const pushErrorToast = vi.hoisted(() => vi.fn());
+const pushInfoToast = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   revealItemInDir: (...args: unknown[]) => revealItemInDir(...args),
@@ -26,6 +28,7 @@ vi.mock("../../../services/tauri", () => ({
 }));
 vi.mock("../../../services/toasts", () => ({
   pushErrorToast: (...args: unknown[]) => pushErrorToast(...args),
+  pushInfoToast: (...args: unknown[]) => pushInfoToast(...args),
 }));
 
 const writeText = vi.fn();
@@ -528,5 +531,156 @@ describe("menu lifecycle", () => {
     });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(row);
+  });
+});
+
+describe("backend thread items", () => {
+  const projects = () => [workspace("p1"), workspace("p2", { name: "Second" }), workspace("w1", { kind: "worktree", parentId: "p1" }),
+    workspace("c1", { settings: { sidebarCollapsed: false, cloneSourceWorkspaceId: "p1" } })];
+  const backend = (patch: Partial<SidebarMenuHandlers> = {}) =>
+    makeHandlers({
+      workspaces: projects(),
+      threadsByWorkspace: { p1: [thread("t1", { engine: "pi" })] },
+      onMoveThread: vi.fn(async () => true),
+      onDeleteThreadPermanently: vi.fn(async () => true),
+      onForkIntoWorktree: vi.fn(),
+      onSelectThread: vi.fn(),
+      ...patch,
+    });
+
+  it("lists the other top-level projects, checks and disables the current one, and moves on choice", async () => {
+    const handlers = backend();
+    openMenu(handlers, { kind: "thread" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Project" }), { key: "ArrowRight" });
+    const submenu = screen.getAllByRole("menu")[1];
+    const rows = Array.from(submenu.querySelectorAll("[role=menuitem], [role=menuitemcheckbox]")).map((node) => node.textContent);
+    expect(rows).toEqual(["Project p1", "Second"]);
+    const current = within(submenu).getByRole("menuitemcheckbox", { name: "Project p1" });
+    expect(current.getAttribute("aria-checked")).toBe("true");
+    expect(current.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(within(submenu).getByRole("menuitem", { name: "Second" }));
+    await waitFor(() => expect(handlers.onSelectThread).toHaveBeenCalledWith("p2", "t1"));
+    expect(handlers.onMoveThread).toHaveBeenCalledWith("p1", "t1", "p2");
+    expect(pushInfoToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Moved to Second" }));
+  });
+
+  it("does not select or announce a move that failed", async () => {
+    const handlers = backend({ onMoveThread: vi.fn(async () => false) });
+    openMenu(handlers, { kind: "thread" });
+    chooseFromSubmenu("Project", "Second");
+    await waitFor(() => expect(handlers.onMoveThread).toHaveBeenCalled());
+    expect(handlers.onSelectThread).not.toHaveBeenCalled();
+    expect(pushInfoToast).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a running thread", { threadStatusById: { t1: { isProcessing: true } } }, {}, "Finish or interrupt"],
+    ["a sub-agent thread", { threadsByWorkspace: { p1: [thread("t1", { engine: "pi", isSubagent: true })] } }, {}, "move with their parent"],
+    ["a codex thread", { threadsByWorkspace: { p1: [thread("t1", { engine: "codex" })] } }, {}, "pi and omp"],
+    ["a claude thread", { threadsByWorkspace: { p1: [thread("t1", { engine: "claude" })] } }, {}, "pi and omp"],
+    ["a worktree thread", { workspaces: projects(), threadsByWorkspace: { w1: [thread("t1", { engine: "pi" })] } }, { workspaceId: "w1" }, "worktrees and clones"],
+    ["no other project", { workspaces: [workspace("p1")] }, {}, "no other project"],
+  ] as const)("disables Project for %s with a reason", (_name, patch, target, reason) => {
+    const handlers = backend(patch as Partial<SidebarMenuHandlers>);
+    openMenu(handlers, { kind: "thread", ...target });
+    const row = screen.getByRole("menuitem", { name: "Project" });
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.getAttribute("title")).toContain(reason);
+    fireEvent.keyDown(row, { key: "ArrowRight" });
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(handlers.onMoveThread).not.toHaveBeenCalled();
+  });
+
+  it("forks into a new worktree through the existing prompt, unless worktrees are off or the row is a worktree", () => {
+    const handlers = backend();
+    openMenu(handlers, { kind: "thread" });
+    chooseFromSubmenu("Fork", "Fork into a new worktree");
+    expect(handlers.onForkIntoWorktree).toHaveBeenCalledWith("p1", "t1");
+    cleanup();
+
+    const off = backend({ canForkIntoWorktree: false });
+    openMenu(off, { kind: "thread" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Fork" }), { key: "ArrowRight" });
+    const row = screen.getByRole("menuitem", { name: "Fork into a new worktree" });
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.getAttribute("title")).toBeTruthy();
+    cleanup();
+
+    const inWorktree = backend({ threadsByWorkspace: { w1: [thread("t1", { engine: "pi" })] } });
+    openMenu(inWorktree, { kind: "thread", workspaceId: "w1" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Fork" }), { key: "ArrowRight" });
+    expect(screen.getByRole("menuitem", { name: "Fork into a new worktree" }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("puts Permanently delete last, under Archive, and asks naming the thread before deleting", async () => {
+    ask.mockResolvedValue(true);
+    const handlers = backend();
+    openMenu(handlers, { kind: "thread" });
+    const all = labels(screen.getByRole("menu"));
+    expect(all.slice(-3)).toEqual(["Archive", "---", "Permanently delete"]);
+    const remove = screen.getByRole("menuitem", { name: "Permanently delete" });
+    expect(remove.className).toContain("is-danger");
+    fireEvent.click(remove);
+    await waitFor(() => expect(handlers.onDeleteThreadPermanently).toHaveBeenCalledWith("p1", "t1"));
+    expect(ask.mock.calls[0][0]).toContain("Thread t1");
+    expect(ask.mock.calls[0][0]).toContain("cannot be undone");
+  });
+
+  it("deletes nothing when the confirmation is declined", async () => {
+    ask.mockResolvedValue(false);
+    const handlers = backend();
+    openMenu(handlers, { kind: "thread" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await waitFor(() => expect(ask).toHaveBeenCalled());
+    expect(handlers.onDeleteThreadPermanently).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a running thread", { threadStatusById: { t1: { isProcessing: true } } }, "Finish or interrupt"],
+    ["a codex thread", { threadsByWorkspace: { p1: [thread("t1", { engine: "codex" })] } }, "Codex"],
+  ] as const)("disables Permanently delete for %s", (_name, patch, reason) => {
+    const handlers = backend(patch as Partial<SidebarMenuHandlers>);
+    openMenu(handlers, { kind: "thread" });
+    const row = screen.getByRole("menuitem", { name: "Permanently delete" });
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.getAttribute("title")).toContain(reason);
+    fireEvent.click(row);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("reports how many chats were archived and how many failed", async () => {
+    ask.mockResolvedValue(true);
+    const onDeleteThread = vi.fn(async (_workspaceId: string, threadId: string) => threadId !== "t2");
+    openMenu(makeHandlers({ onDeleteThread }), { kind: "project" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive chats" }));
+    await waitFor(() => expect(pushErrorToast).toHaveBeenCalled());
+    expect(pushErrorToast.mock.calls[0][0].title).toBe("Archived 1 chat, 1 failed");
+    expect(pushInfoToast).not.toHaveBeenCalled();
+  });
+
+  it("reports a clean archive of every chat", async () => {
+    ask.mockResolvedValue(true);
+    openMenu(makeHandlers({ onDeleteThread: vi.fn(async () => true) }), { kind: "project" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive chats" }));
+    await waitFor(() => expect(pushInfoToast).toHaveBeenCalled());
+    expect(pushInfoToast.mock.calls[0][0].title).toBe("Archived 2 chats");
+    expect(pushErrorToast).not.toHaveBeenCalled();
+  });
+
+  it("shows hints for Rename, Pin, Mark as unread and Archive, and none for a cleared shortcut", () => {
+    const handlers = backend({
+      shortcuts: { rename: "cmd+alt+r", pin: "cmd+alt+p", markUnread: "cmd+shift+u", archive: "cmd+ctrl+a" },
+    });
+    openMenu(handlers, { kind: "thread" });
+    const hintOf = (name: string) => screen.getByRole("menuitem", { name: new RegExp(`^${name}`) }).querySelector(".ctx-shortcut")?.textContent;
+    expect(hintOf("Rename")).toBe(formatShortcut("cmd+alt+r"));
+    expect(hintOf("Pin")).toBe(formatShortcut("cmd+alt+p"));
+    expect(hintOf("Mark as unread")).toBe(formatShortcut("cmd+shift+u"));
+    expect(hintOf("Archive")).toBe(formatShortcut("cmd+ctrl+a"));
+    expect(document.querySelectorAll(".ctx-shortcut")).toHaveLength(4);
+    cleanup();
+
+    openMenu(backend({ shortcuts: { rename: null, pin: "", markUnread: undefined, archive: "cmd+ctrl+a" } }), { kind: "thread" });
+    expect(document.querySelectorAll(".ctx-shortcut")).toHaveLength(1);
   });
 });
