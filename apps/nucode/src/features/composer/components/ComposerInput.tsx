@@ -1,5 +1,6 @@
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { useFeatures } from "@settings/features";
+import { useThreadWindow } from "@app/threadWindow";
 import { useCallback, useRef } from "react";
 import type {
   ChangeEvent,
@@ -225,6 +226,9 @@ export function ComposerInput({
   );
 
   const features = useFeatures();
+  // A thread window runs no dictation and has no Settings view for the mic button to open.
+  const threadWindow = useThreadWindow();
+  const showMic = features.dictation && !threadWindow;
   return (
     <div className={`composer-input${isPhoneLayout && isPhoneTallInput ? " is-phone-tall" : ""}`}>
       <div
@@ -236,7 +240,7 @@ export function ComposerInput({
         onDrop={handleDrop}
       >
         <ComposerShell toolbar={toolbar} controls={controls} menu={<><button type="button" disabled={disabled || !onAddAttachment} title={!onAddAttachment ? "Image attachment is unavailable" : "Attach images"} onClick={onAddAttachment}>Attach images</button>{addMenu}{onToggleExpand && <button type="button" disabled={disabled} onClick={onToggleExpand}>{isExpanded ? "Collapse input" : "Expand input"}</button>}</>} actions={          <div className="composer-input-actions">
-            {features.dictation && <IconButton
+            {showMic && <IconButton
               className={`composer-action composer-action--mic${
                 isDictationBusy ? " is-active" : ""
               }${isDictationProcessing ? " is-processing is-stop" : ""}${
