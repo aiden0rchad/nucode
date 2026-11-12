@@ -31,7 +31,7 @@ export function SettingsComposerSection({
       <SettingsGroup title="Conversation" subtitle="What happens when you send a message and how agents answer.">
         <SettingsFieldRow
           title="Follow-up behavior"
-          subtitle={steerUnavailable ? "Steer is unavailable in the current Codex config, so follow-ups queue." : <>Queue sends after the current run; Steer redirects it. <SettingsKeycaps keys={shortcutKeys(formatShortcut(followUpShortcutLabel.toLowerCase()))} /> uses the other.</>}
+          subtitle={steerUnavailable ? "Steer is unavailable in the current Codex config, so follow-ups queue." : <>Queue waits for the run; Steer redirects it. <SettingsKeycaps keys={shortcutKeys(formatShortcut(followUpShortcutLabel.toLowerCase()))} /> swaps.</>}
         >
           <SettingsSegmented label="Follow-up behavior" value={appSettings.followUpMessageBehavior}
             options={[{ value: "queue", label: "Queue" }, { value: "steer", label: "Steer", disabled: steerUnavailable }]}

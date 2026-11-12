@@ -109,10 +109,11 @@ it("splits shortcut labels into one keycap per key", () => {
   expect(shortcutKeys("Ctrl+Alt+Down")).toEqual(["Ctrl", "Alt", "Down"]);
 });
 
-it("shows the save controls only while there are unsaved edits", () => {
+it("shows a disabled Save while clean and the full save controls while there are unsaved edits", () => {
   const discard = vi.fn(), save = vi.fn();
   const { container, rerender } = render(<SettingsUnsaved dirty={false} onDiscard={discard} onSave={save} />);
-  expect(container.textContent).toBe("");
+  expect(container.textContent).toBe("Save changes");
+  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
   rerender(<SettingsUnsaved dirty onDiscard={discard} onSave={save} />);
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Discard" }));

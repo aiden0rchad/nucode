@@ -304,7 +304,7 @@ export function SettingsKeycaps({ keys, className }: { keys: string[]; className
 
 /** Header actions for pages that stage edits: nothing while clean; otherwise "Unsaved changes", Discard and Save changes. */
 export function SettingsUnsaved({ dirty, saving = false, disabled = false, onDiscard, onSave, form }: { dirty: boolean; saving?: boolean; disabled?: boolean; onDiscard: () => void; onSave?: () => void; form?: string }) {
-  if (!dirty && !saving) return null;
+  if (!dirty && !saving) return <SettingsButton className="primary lg" disabled title="Nothing to save yet">Save changes</SettingsButton>;
   return <>
     <span className="settings-unsaved">Unsaved changes</span>
     <SettingsButton className="ghost" disabled={saving} onClick={onDiscard}>Discard</SettingsButton>

@@ -42,12 +42,12 @@ it("shows the server address and token in Remote mode instead of the phone rows"
 it("hides Browser binary under Native and summarises the site rules", () => {
   render(<SettingsBrowserSection appSettings={{ browser: { allowedOrigins: ["https://a.test", "https://b.test"], blockedOrigins: ["https://c.test"] } } as AppSettings} onUpdateAppSettings={vi.fn()} />);
   expect(screen.queryByLabelText("Browser binary")).toBeNull();
-  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("Only 2 sites can open · 1 blocked");
+  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("Allowlist: 2 sites · 1 blocked");
   fireEvent.change(screen.getByLabelText("Engine"), { target: { value: "cdp" } });
   expect(screen.getByLabelText("Browser binary")).toBeTruthy();
   cleanup();
   render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={vi.fn()} />);
-  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("All sites can open");
+  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("All sites allowed");
 });
 
 it("disables Reset all with a reason only when every shortcut is at its default", () => {

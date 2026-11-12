@@ -72,7 +72,7 @@ describe("provider registry settings", () => {
   it("saves only changed policy, acknowledges success, and preserves edits after failure", async () => {
     const save = vi.fn().mockRejectedValueOnce(new Error("Save failed")).mockResolvedValue(undefined);
     render(<SettingsAgentPolicySection appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={save} tab="subagents" />);
-    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Unsaved changes")).toBeNull();
     const a = defaultAgentPolicy.subagents.maxConcurrent === 5 ? 6 : 5, b = a === 5 ? 6 : 5;
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
@@ -83,13 +83,13 @@ describe("provider registry settings", () => {
     fireEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Error: Save failed");
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull());
+    await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true));
     expect(screen.getByRole("status").textContent).toBe("Policy saved");
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ maxConcurrent: a }) }) }));
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(b) } });
     expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
-    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("shows the default engine read-only with a link to Engines", () => {
     const manage = vi.fn();

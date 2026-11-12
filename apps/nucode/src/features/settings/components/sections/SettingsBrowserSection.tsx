@@ -22,7 +22,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
   const [saved, setSaved] = useState(() => ({ d: draft, a: allow, b: block }));
   const count = (v: string) => v.split("\n").map(x => x.trim()).filter(Boolean).length;
   const allowed = count(allow), blocked = count(block);
-  const siteSummary = allowed ? `Only ${allowed} ${allowed === 1 ? "site" : "sites"} can open${blocked ? ` · ${blocked} blocked` : ""}` : blocked ? `All sites except ${blocked} blocked` : "All sites can open";
+  const siteSummary = allowed ? `Allowlist: ${allowed} ${allowed === 1 ? "site" : "sites"}${blocked ? ` · ${blocked} blocked` : ""}` : blocked ? `All sites except ${blocked} blocked` : "All sites allowed";
   const dirty = snapshot(draft, allow, block) !== snapshot(saved.d, saved.a, saved.b);
   const discard = () => { setDraft(saved.d); setAllow(saved.a); setBlock(saved.b); setError(""); };
   const [confirm, setConfirm] = useState(false);
@@ -45,7 +45,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
       setMessage("Saved. Engine and private browsing changes apply immediately. Browser binary and website changes apply to new browser sessions.");
     }); }}>
       <SettingsGroup disabled={busy} title="Engine and search">
-        <SettingsFieldRow title="Engine" subtitle="Use Headless Chromium for sites that need real input.">
+        <SettingsFieldRow title="Engine" subtitle={(draft.engine ?? "native") === "native" ? "Shows pages inside nucode." : "Runs Chrome in the background for sites that need real input."}>
           <SettingsSelect value={draft.engine ?? "native"} onChange={e => setDraft({ ...draft, engine: e.target.value as "native" | "cdp" })}><option value="native">Native</option><option value="cdp">Headless Chromium (advanced)</option></SettingsSelect>
         </SettingsFieldRow>
         {(draft.engine ?? "native") === "cdp" && <SettingsFieldRow stacked title="Browser binary" subtitle="Leave empty to find Chrome, Edge or Chromium automatically.">

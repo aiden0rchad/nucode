@@ -152,7 +152,7 @@
 .settings-page .settings-list-actions .mode-row { flex: none; margin: 0; }
 .settings-page .mode-row-menu-trigger { position: static; opacity: 1; }
 /* The dots are narrower than their hit area; line the dots up with the column edge. */
-.settings-page-actions > .mode-row-menu-trigger:last-child { margin-right: -8px; }
+.settings-page-header .mode-row-menu-trigger { margin-right: -8px; }
 .ds-popover-item.is-danger, .ds-popover-item.is-danger .ds-popover-item-icon { color: var(--status-error); }
 .settings-icon-button { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 /* Reveal-on-hover controls (clear, reorder): present for keyboard focus too. */
@@ -206,7 +206,7 @@
 .settings-list-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; font-weight: 500; line-height: 18px; color: var(--text-strong); }
 .settings-list-title { min-width: 0; overflow-wrap: anywhere; }
 .settings-list-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--text-subtle); overflow-wrap: anywhere; }
-.settings-list-meta > * + *::before { content: "·"; margin: 0 6px; color: var(--text-faint); }
+.settings-list-meta > * + *::before { content: "·"; margin: 0 3px; color: var(--text-faint); }
 .settings-list-meta > * { display: inline-flex; align-items: center; }
 .settings-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
 .settings-list-row.is-off .settings-list-identity { opacity: .55; }
@@ -227,7 +227,7 @@
 .settings-shortcut-editor { position: relative; display: inline-flex; align-items: center; min-width: 72px; max-width: 260px; height: 30px; padding: 0 8px; border: 1px solid var(--text-faint); border-radius: 8px; background: var(--surface-control); cursor: text; }
 .settings-shortcut-editor:hover { border-color: var(--text-faint); }
 .settings-shortcut-editor:focus-within { outline: 2px solid var(--border-accent); outline-offset: 0; border-color: transparent; }
-.settings-shortcut-editor.is-changed { border-color: var(--border-accent); }
+.settings-shortcut-editor.is-changed::before { content: ""; position: absolute; left: -11px; top: 50%; width: 5px; height: 5px; margin-top: -3px; border-radius: 50%; background: var(--border-accent); }
 .settings-shortcut-editor.is-recording { outline: 2px solid var(--border-accent); outline-offset: 0; border-color: transparent; background: color-mix(in srgb, var(--border-accent) 12%, var(--surface-control)); }
 .settings-shortcut-editor input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: text; }
 .settings-shortcut-placeholder { font-size: 13px; color: var(--text-faint); }

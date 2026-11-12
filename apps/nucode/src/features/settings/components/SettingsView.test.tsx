@@ -848,7 +848,7 @@ describe("SettingsView Environments", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+      expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
     });
   });
 
