@@ -7,7 +7,7 @@ import { defaultAgentPolicy } from "@settings/registry";
 import { engineRuntime, pickEngineExecutable, testEngine, type EngineRuntimeStatus } from "@services/tauri";
 import { RowMenu } from "@/features/chat/RowMenu";
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
-import { SettingsPage, SettingsGroup, SettingsRow, SettingsFieldRow, SettingsSelect, SettingsButton, SettingsToggleSwitch, SettingsTextField, SettingsTextArea, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsBadge, SettingsCallout, SettingsStatus, SettingsPage, SettingsGroup, SettingsRow, SettingsFieldRow, SettingsSelect, SettingsButton, SettingsToggleSwitch, SettingsTextField, SettingsTextArea, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
 import "./settings-engines.css";
 
 const runtimeId = (engine: EngineDefinition) => engine.id === "claude" ? "claude-acp" : engine.id;
@@ -55,15 +55,15 @@ function EngineEditor({ engine, onClose, onSave, onTested }: { engine: EngineDef
       <SettingsFieldRow title="Name"><SettingsTextField value={draft.name} placeholder="Gemini CLI or a pi fork" onChange={e => setDraft({ ...draft, name: e.target.value })} /></SettingsFieldRow>
       <SettingsFieldRow title="Protocol"><SettingsSegmented label="Protocol" value={draft.protocol} options={[{ value: "acp", label: "ACP" }, { value: "pi-rpc", label: "pi-RPC" }]} onChange={protocol => setDraft({ ...draft, protocol: protocol as "acp" | "pi-rpc" })} /></SettingsFieldRow>
       <SettingsFieldRow title="Command"><div className="engine-command"><SettingsTextField identifier value={draft.command ?? ""} placeholder="gemini or /path/to/pi-fork" onChange={e => setDraft({ ...draft, command: e.target.value })} /><SettingsButton onClick={() => { void pickEngineExecutable().then(command => { if (command) setDraft({ ...draft, command }); }).catch(error => setResult({ ok: false, message: String(error) })); }}>Browse…</SettingsButton></div></SettingsFieldRow>
-      <SettingsFieldRow title="Arguments" subtitle="One argument per line"><SettingsTextArea value={args} placeholder="--experimental-acp" onChange={e => setArgs(e.target.value)} /></SettingsFieldRow>
-      <SettingsRow className="engine-env-row"><div className="settings-toggle-title">Environment <span className="settings-toggle-subtitle">Non-secret values only</span></div><div className="engine-env">{env.map(([key, value], index) => <div className="engine-env-pair" key={index}>
+      <SettingsFieldRow stacked title="Arguments" subtitle="One argument per line"><SettingsTextArea value={args} placeholder="--experimental-acp" onChange={e => setArgs(e.target.value)} /></SettingsFieldRow>
+      <SettingsRow stacked className="engine-env-row"><div className="settings-row-text"><div className="settings-toggle-title">Environment</div><div className="settings-toggle-subtitle">Non-secret values only</div></div><div className="engine-env">{env.map(([key, value], index) => <div className="engine-env-pair" key={index}>
         <SettingsTextField identifier aria-label={`Environment key ${index + 1}`} aria-invalid={/(KEY|TOKEN|SECRET|PASSWORD)/i.test(key) || undefined} placeholder="VARIABLE" value={key} onChange={e => setEnv(env.map((pair, i) => i === index ? [e.target.value, pair[1]] : pair))} />
         <SettingsTextField identifier aria-label={`Environment value ${index + 1}`} placeholder="Value" value={value} onChange={e => setEnv(env.map((pair, i) => i === index ? [pair[0], e.target.value] : pair))} />
         <SettingsIconButton aria-label={`Remove environment variable ${index + 1}`} onClick={() => setEnv(env.filter((_, i) => i !== index))}><X size={14} aria-hidden /></SettingsIconButton>
       </div>)}<SettingsButton onClick={() => setEnv([...env, ["", ""]])}><Plus size={14} aria-hidden /> Add variable</SettingsButton>{secret && <p role="alert" className="engine-error">{secret[0]}: use a provider instead</p>}</div></SettingsRow>
       <SettingsFieldRow title="Config dir variable" subtitle="Optional; points to an isolated directory"><SettingsTextField identifier value={draft.configDirEnv ?? ""} placeholder="PI_CODING_AGENT_DIR" onChange={e => setDraft({ ...draft, configDirEnv: e.target.value || undefined })} /></SettingsFieldRow>
     </SettingsGroup>
-    {result && <p role={result.ok ? "status" : "alert"} className={result.ok ? "engine-test-result" : "engine-error"}>{result.ok && <Check size={14} aria-hidden />} {result.message}</p>}
+    {result && <SettingsCallout tone={result.ok ? "info" : "error"}>{result.message}</SettingsCallout>}
     <footer className="ds-modal-actions"><SettingsButton disabled={busy || !!invalid} title={invalid || undefined} onClick={() => void run(true)}><Play size={14} aria-hidden />{busy ? "Working…" : "Test"}</SettingsButton><span className="engine-footer-space" /><SettingsButton disabled={busy} onClick={close}>Cancel</SettingsButton><SettingsButton className="primary" disabled={busy || !!invalid} title={invalid || undefined} onClick={() => void run(false)}>Save engine</SettingsButton></footer>
   </EngineDialog>;
 }
@@ -74,7 +74,7 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
   const [runtimes, setRuntimes] = useState<EngineRuntimeStatus[]>([]);
   const [tested, setTested] = useState<Record<string, EngineRuntimeStatus>>({});
   const [draft, setDraft] = useState<EngineDefinition | null>(null);
-  const [details, setDetails] = useState<{ title: string; message: string } | null>(null);
+  const [details, setDetails] = useState<{ title: string; message: string; note?: string } | null>(null);
   const [deleting, setDeleting] = useState<EngineDefinition | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -104,25 +104,28 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
       setDetails({ title: `${engine.name} · ${engine.builtIn ? "Runtime check" : "Test connection"}`, message: status.message });
     } catch (error) { const message = String(error); if (!engine.builtIn) remember({ engine: engine.id, state: "error", message }); setDetails({ title: `${engine.name} · Test failed`, message }); }
   };
-  return <SettingsPage title="Engines" subtitle="Choose an agent runtime. Each engine has isolated configuration; provider credentials stay in the registry.">
-    <SettingsGroup title="Default"><SettingsFieldRow title="Default engine"><SettingsSelect aria-label="Default engine" disabled={!ready.length} value={ready.some(e => e.id === policy.defaultEngine) ? policy.defaultEngine : ""} onChange={e => void run(() => save(registry, e.target.value))}>{!ready.some(e => e.id === policy.defaultEngine) && <option value="" disabled>No ready default selected</option>}{ready.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</SettingsSelect></SettingsFieldRow></SettingsGroup>
-    <SettingsGroup title="Installed and available engines" actions={<SettingsButton onClick={() => setDraft({ id: `custom-${crypto.randomUUID()}`, name: "", protocol: "acp", builtIn: false, enabled: true })}><Plus size={14} aria-hidden /> Add engine</SettingsButton>}>{registry.map(engine => {
+  return <SettingsPage title="Engines" subtitle="Engines are the agent runtimes nucode can run. Choose which ones are available and which one new threads use.">
+    <SettingsGroup>
+      <SettingsFieldRow title="Default engine" subtitle="New threads start with this engine. A project can choose a different one."><SettingsSelect aria-label="Default engine" disabled={!ready.length} value={ready.some(e => e.id === policy.defaultEngine) ? policy.defaultEngine : ""} onChange={e => void run(() => save(registry, e.target.value))}>{!ready.some(e => e.id === policy.defaultEngine) && <option value="" disabled>No ready default selected</option>}{ready.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</SettingsSelect></SettingsFieldRow>
+    </SettingsGroup>
+    <SettingsGroup title="Available engines" subtitle="Engines that are on can be chosen when starting a thread." actions={<SettingsButton onClick={() => setDraft({ id: `custom-${crypto.randomUUID()}`, name: "", protocol: "acp", builtIn: false, enabled: true })}><Plus size={14} aria-hidden /> Add engine</SettingsButton>}>{registry.map(engine => {
       const status = statusFor(engine);
       const installing = busy === engine.id || status?.state === "installing" || status?.state === "preparing";
       const version = status?.version ?? status?.message.match(/\bv?(\d+\.\d+\.\d+[^\s]*)/)?.[1];
-      const label = !engine.enabled ? "Disabled" : installing ? `Installing${status?.progress === undefined ? "" : ` ${Math.round(status.progress)}%`}…` : status?.state === "ready" ? `Ready${version ? ` · v${version}` : ""}` : status?.state === "error" ? "Error — details" : engine.builtIn ? "Not installed" : "Not tested";
+      const label = !engine.enabled ? "Disabled" : installing ? `Installing${status?.progress === undefined ? "" : ` ${Math.round(status.progress)}%`}…` : status?.state === "ready" ? `Ready${version ? ` · v${version}` : ""}` : status?.state === "error" ? "Failed" : engine.builtIn ? "Not installed" : "Not tested";
+      const tone = !engine.enabled ? "idle" : installing ? "busy" : status?.state === "ready" ? "ready" : status?.state === "error" ? "error" : "idle";
       const installable = engine.builtIn;
       const Icon = !engine.builtIn ? Puzzle : engine.id === "codex" ? Terminal : engine.id === "claude" ? Sparkles : null;
       const menu = [
         { label: "Set as default", icon: <Check size={14} />, disabled: !engine.enabled || status?.state !== "ready" || engine.id === policy.defaultEngine, onClick: () => void run(() => save(registry, engine.id)) },
         { label: "Test connection", icon: <Play size={14} />, disabled: installing, onClick: () => void check(engine) },
-        ...(!engine.builtIn ? [{ label: "Edit", icon: <Pencil size={14} />, onClick: () => setDraft(engine) }, { label: "Delete", icon: <Trash2 size={14} />, disabled: engine.id === policy.defaultEngine, onClick: () => setDeleting(engine) }] : []),
-        ...(engine.id === "codex" ? [{ label: "Codex flags", icon: <SlidersHorizontal size={14} />, onClick: onOpenCodexFlags }] : []),
-        { label: "View logs/details", icon: <FileText size={14} />, onClick: () => setDetails({ title: `${engine.name} · Details`, message: status?.message ?? (engine.builtIn ? "Runtime is not installed. Install it to get started." : "Test this engine to see its protocol handshake result.") }) },
+        ...(!engine.builtIn ? [{ label: "Edit", icon: <Pencil size={14} />, onClick: () => setDraft(engine) }, { label: "Delete", icon: <Trash2 size={14} />, danger: true, disabled: engine.id === policy.defaultEngine, onClick: () => setDeleting(engine) }] : []),
+        ...(engine.id === "codex" ? [{ label: "Codex flags", icon: <SlidersHorizontal size={14} />, onClick: onOpenCodexFlags }, { label: "Codex setup", icon: <Terminal size={14} />, onClick: onOpenCodexSetup }] : []),
+        { label: "View logs/details", icon: <FileText size={14} />, onClick: () => setDetails({ title: `${engine.name} · Details`, message: status?.message ?? (engine.builtIn ? "Runtime is not installed. Install it to get started." : "Test this engine to see its protocol handshake result."), note: engine.id === "claude" ? "Some Anthropic-compatible gateways reject Claude Code's anthropic-beta headers. Allow those headers on the gateway or use a different model route." : undefined }) },
       ];
-      return <SettingsRow key={engine.id} className={`engine-row${engine.enabled ? "" : " is-disabled"}`} aria-label={`${engine.name} engine`}>
-        <div className="engine-identity"><span className={`engine-icon engine-icon-${engine.id === "omp" ? "omp" : "standard"}`} aria-hidden>{Icon ? <Icon size={18} /> : "π"}</span><div className="engine-copy"><div className="engine-name"><strong>{engine.name}</strong>{engine.id === policy.defaultEngine && <span className="engine-default">Default</span>}</div><div className="engine-meta"><span className="engine-protocol">{protocolLabel[engine.protocol]}</span><span role="status">{label}</span>{engine.id === "omp" && <span>~1.1 GB</span>}</div></div></div>
-        <div className="engine-actions">
+      return <SettingsRow key={engine.id} className={`settings-list-row engine-row${engine.enabled ? "" : " is-disabled is-off"}`} aria-label={`${engine.name} engine`}>
+        <div className="settings-list-identity engine-identity"><span className={`settings-list-icon engine-icon-${engine.id === "omp" ? "omp" : "standard"}`} aria-hidden>{Icon ? <Icon size={16} /> : "π"}</span><div className="settings-list-copy"><div className="settings-list-name"><strong>{engine.name}</strong>{engine.id === policy.defaultEngine && <SettingsBadge className="is-accent">Default</SettingsBadge>}</div><div className="settings-list-meta"><SettingsStatus tone={tone} role="status">{label}</SettingsStatus><span>{protocolLabel[engine.protocol]}</span>{engine.id === "omp" && <span>~1.1 GB</span>}</div></div></div>
+        <div className="settings-list-actions engine-actions">
           {installing ? <><progress aria-label={`Installing ${engine.name}`} max={100} value={status?.progress} /><SettingsButton onClick={() => void run(async () => { await engineRuntime("cancel", runtimeId(engine)); setBusy(null); })}>Cancel</SettingsButton></> : status?.state === "error" ? <SettingsButton onClick={() => void run(() => installable ? install(engine) : check(engine))}>Retry</SettingsButton> : installable && status?.state !== "ready" ? <SettingsButton onClick={() => void run(() => install(engine))}>Install</SettingsButton> : null}
           <SettingsToggleSwitch aria-label={`Enable ${engine.name}`} pressed={engine.enabled} disabled={installing || engine.enabled && registry.filter(e => e.enabled).length === 1} onClick={() => void run(async () => {
             const engines = registry.map(e => e.id === engine.id ? { ...e, enabled: !e.enabled } : e);
@@ -133,9 +136,9 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
         </div>
       </SettingsRow>;
     })}</SettingsGroup>
-    {message && <p role="alert" className="engine-error">{message}</p>}
+    {message && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{message}</SettingsCallout>}
     {draft && <EngineEditor engine={draft} onClose={() => setDraft(null)} onTested={remember} onSave={engine => save([...registry.filter(e => e.id !== engine.id), engine])} />}
-    {details && <EngineDialog title={details.title} onClose={() => setDetails(null)}><pre className="engine-details">{details.message}</pre><footer className="ds-modal-actions"><SettingsButton onClick={() => setDetails(null)}>Close</SettingsButton></footer></EngineDialog>}
+    {details && <EngineDialog title={details.title} onClose={() => setDetails(null)}><pre className="engine-details">{details.message}</pre>{details.note && <SettingsCallout tone="warning">{details.note}</SettingsCallout>}<footer className="ds-modal-actions"><SettingsButton onClick={() => setDetails(null)}>Close</SettingsButton></footer></EngineDialog>}
     {deleting && <EngineDialog title={`Delete ${deleting.name}?`} onClose={() => setDeleting(null)}><p>Remove this engine from settings? Existing conversation files are kept.</p><footer className="ds-modal-actions"><SettingsButton onClick={() => setDeleting(null)}>Cancel</SettingsButton><SettingsButton onClick={() => void run(async () => { await save(registry.filter(e => e.id !== deleting.id)); setDeleting(null); })}>Delete engine</SettingsButton></footer></EngineDialog>}
   </SettingsPage>;
 }

@@ -1,12 +1,11 @@
-import { SettingsIconButton } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { useEngines } from "@settings/engines";
-import { SettingsPage, SettingsButton, SettingsTextField, SettingsSelect, SettingsNumberStepper, SettingsTextArea, SettingsGroup, SettingsFieldRow, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { SettingsCallout, SettingsEmpty, SettingsListRow, SettingsPage, SettingsRow, SettingsRowText, SettingsStatus, SettingsButton, SettingsTextField, SettingsSelect, SettingsNumberStepper, SettingsTextArea, SettingsGroup, SettingsFieldRow, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { RowMenu } from "@/features/chat/RowMenu";
 import { formatRelativeTimeShort } from "@utils/time";
 import { ModelReasoningSettings } from "./ModelReasoningSettings";
 import { ExecutionLimits } from "./ExecutionLimits";
-import "./registry.css";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AppSettings, ProviderEntry, ProviderKind, ProviderAuth, AgentPolicy, WorkspaceInfo, WorkspaceSettings } from "@/types";
 import { providerSetApiKey, providerHasApiKey, providerDeleteApiKey, providerTestAndFetch } from "@services/tauri";
 import { commandRoles, commandRoleTitle, defaultAgentPolicy, isCommandRole, mergePolicy, modelKey, modelRef, policyError, providerEngines, setAgentMode } from "../../registry";
@@ -44,130 +43,140 @@ export function SettingsProvidersSection({ appSettings, onUpdateAppSettings }: P
     setEditing(p.id);
   };
   const auth = (type: ProviderAuth["type"]): ProviderAuth => type === "env" ? { type, var: "" } : type === "command" ? { type, command: "", args: [] } : { type };
-  return <SettingsPage className="registry-settings" title="Providers" subtitle="Use your own API keys or local models."><SettingsGroup title="Providers">
-    <div className="settings-section-heading"><SettingsButton className="primary" type="button" disabled={busy} onClick={() => { setDraft(newProvider()); setEditing(null); setStatus(""); }}>Add provider</SettingsButton></div>
-    {error && <p role="alert">{error}</p>}
-    <div className="settings-card-list">{providers.map(p => <article className="settings-card provider-card" aria-label={`${p.name} provider`} key={p.id}>
-      <SettingsToggleRow title={<span className="provider-title"><span className="provider-badge" aria-hidden>{p.name.slice(0, 1).toUpperCase()}</span>{p.name}</span>} subtitle={<><span className="provider-endpoint">{p.kind} · {p.baseUrl || "Default endpoint"}</span><span className="provider-status" role={testErrors[p.id] ? "alert" : "status"}>{testErrors[p.id] || `${p.models.length} models · ${p.modelsFetchedAt ? `tested ${Date.now() / 1000 - p.modelsFetchedAt < 60 ? "just now" : formatRelativeTimeShort(p.modelsFetchedAt * 1000) + " ago"}` : "not tested yet"}`}</span></>}>
-        <div className="settings-row-controls">
-          <SettingsToggleSwitch aria-label={`Enable ${p.name}`} pressed={p.enabled} disabled={busy} onClick={() => void run(() => onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, enabled: !p.enabled } : v) }))} />
-          <SettingsIconButton className="ghost" type="button" aria-label={`Test & fetch ${p.name}`} title="Test & fetch models" disabled={busy} onClick={() => void run(async () => {
-            setTestErrors(previous => ({ ...previous, [p.id]: "" }));
-            try {
-              const result = await providerTestAndFetch(p.id);
-              if (!result.ok) throw new Error(result.error);
-              await onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, models: result.models, modelsFetchedAt: Math.floor(Date.now() / 1000) } : v) });
-            } catch (error) { setTestErrors(previous => ({ ...previous, [p.id]: String(error) })); }
-          })}><RefreshCw aria-hidden /></SettingsIconButton>
-          <SettingsIconButton className="ghost" type="button" aria-label={`Edit ${p.name}`} title={`Edit ${p.name}`} disabled={busy} onClick={() => { setDraft(structuredClone(p)); setEditing(p.id); setStatus(""); }}><Pencil aria-hidden /></SettingsIconButton>
-          <SettingsIconButton className="ghost" type="button" aria-label={`Delete ${p.name}`} title={`Delete ${p.name}`} disabled={busy} onClick={() => setDeleting(p.id)}><Trash2 aria-hidden /></SettingsIconButton>
-        </div>
-      </SettingsToggleRow>
-      {deleting === p.id && <div className="provider-delete-confirm" role="alertdialog" aria-label={`Delete ${p.name}?`}><p>Remove {p.name} and its model configuration?</p><SettingsButton type="button" disabled={busy} onClick={() => void run(async () => { await onUpdateAppSettings({ ...appSettings, providers: providers.filter(v => v.id !== p.id) }); if (editing === p.id) setDraft(null); setDeleting(null); })}>Delete provider</SettingsButton><SettingsButton type="button" onClick={() => setDeleting(null)}>Cancel</SettingsButton></div>}
-    </article>)}</div>
+  const providerStatus = (p: ProviderEntry) => testErrors[p.id]
+    ? { tone: "error" as const, label: "Failed" }
+    : p.modelsFetchedAt ? { tone: "ready" as const, label: "Ready" } : { tone: "idle" as const, label: "Not tested" };
+  const test = (p: ProviderEntry) => void run(async () => {
+    setTestErrors(previous => ({ ...previous, [p.id]: "" }));
+    try {
+      const result = await providerTestAndFetch(p.id);
+      if (!result.ok) throw new Error(result.error);
+      await onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, models: result.models, modelsFetchedAt: Math.floor(Date.now() / 1000) } : v) });
+    } catch (error) { setTestErrors(previous => ({ ...previous, [p.id]: String(error) })); }
+  });
+  return <SettingsPage title="Providers" subtitle="Use your own API keys or local models."><SettingsGroup subtitle="Providers that are on supply the models you can pick for threads and agents. Turn one off to hide its models." actions={<SettingsButton type="button" disabled={busy} onClick={() => { setDraft(newProvider()); setEditing(null); setStatus(""); }}><Plus aria-hidden />Add provider</SettingsButton>}>
+    {error && <SettingsCallout tone="error">{error}</SettingsCallout>}
+    {providers.map(p => { const state = providerStatus(p); return <div key={p.id} className="settings-list-group" role="group" aria-label={`${p.name} provider`}>
+      <SettingsListRow className={p.enabled ? undefined : "is-off"} icon={p.name.slice(0, 1).toUpperCase()} title={p.name}
+        meta={<><SettingsStatus tone={state.tone} role={testErrors[p.id] ? "alert" : "status"} title={testErrors[p.id] || undefined}>{testErrors[p.id] || state.label}</SettingsStatus><span>{p.kind} · {p.baseUrl || "Default endpoint"}</span><span>{p.models.length} models{p.modelsFetchedAt ? ` · tested ${Date.now() / 1000 - p.modelsFetchedAt < 60 ? "just now" : formatRelativeTimeShort(p.modelsFetchedAt * 1000) + " ago"}` : ""}</span></>}>
+        <SettingsToggleSwitch aria-label={`Enable ${p.name}`} pressed={p.enabled} disabled={busy} onClick={() => void run(() => onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, enabled: !p.enabled } : v) }))} />
+        <RowMenu portal size="md" label={p.name} actions={[
+          { label: "Test & fetch models", icon: <RefreshCw size={14} />, disabled: busy, onClick: () => test(p) },
+          { label: "Edit", icon: <Pencil size={14} />, disabled: busy, onClick: () => { setDraft(structuredClone(p)); setEditing(p.id); setStatus(""); } },
+          { label: "Delete", icon: <Trash2 size={14} />, danger: true, disabled: busy, onClick: () => setDeleting(p.id) },
+        ]}>{null}</RowMenu>
+      </SettingsListRow>
+      {deleting === p.id && <SettingsRow className="provider-delete-confirm" role="alertdialog" aria-label={`Delete ${p.name}?`}><SettingsRowText title={`Remove ${p.name} and its model configuration?`} /><div className="settings-row-controls"><SettingsButton type="button" onClick={() => setDeleting(null)}>Cancel</SettingsButton><SettingsButton className="danger" type="button" disabled={busy} onClick={() => void run(async () => { await onUpdateAppSettings({ ...appSettings, providers: providers.filter(v => v.id !== p.id) }); if (editing === p.id) setDraft(null); setDeleting(null); })}>Delete provider</SettingsButton></div></SettingsRow>}
+    </div>; })}
+    {!providers.length && <SettingsEmpty>No providers yet. Add one to get models.</SettingsEmpty>}
+  </SettingsGroup>
     {draft && <form onSubmit={e => { e.preventDefault(); void run(() => save(draft)); }}>
-      <SettingsFieldRow  title={<>Provider ID</>}><SettingsTextField identifier required pattern="[a-z0-9_-]{1,32}" maxLength={32} disabled={!!editing} value={draft.id} onChange={e => setDraft({ ...draft, id: e.target.value })} /></SettingsFieldRow>
-      <SettingsFieldRow  title={<>Name</>}><SettingsTextField required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></SettingsFieldRow>
-      <SettingsFieldRow  title={<>Kind</>}><SettingsSelect value={draft.kind} onChange={e => { const kind = e.target.value as ProviderKind; setDraft({ ...draft, kind, baseUrl: null, apiStyle: kind === "openai-compatible" ? "chat-completions" : null, auth: { type: kind === "ollama" || kind === "lmstudio" ? "none" : "apiKey" } }); }}>{kinds.map(k => <option key={k}>{k}</option>)}</SettingsSelect></SettingsFieldRow>
-      <SettingsFieldRow  title={<>Base URL</>}><SettingsTextField type="url" required={draft.kind === "openai-compatible"} placeholder={draft.kind === "openai-compatible" ? "https://your-server/v1" : "Use provider default"} value={draft.baseUrl ?? ""} onChange={e => setDraft({ ...draft, baseUrl: e.target.value || null })} /></SettingsFieldRow>
-      {draft.kind === "openai-compatible" && <SettingsFieldRow  title={<>API style</>}><SettingsSelect value={draft.apiStyle ?? "chat-completions"} onChange={e => setDraft({ ...draft, apiStyle: e.target.value as "responses" | "chat-completions" })}><option value="chat-completions">Chat completions</option><option value="responses">Responses</option></SettingsSelect></SettingsFieldRow>}
-      <SettingsToggleRow  title={<>Anthropic-compatible (/v1/messages)</>}><SettingsToggleSwitch pressed={draft.anthropicCompatible ?? false} onClick={() => setDraft({ ...draft, anthropicCompatible: !(draft.anthropicCompatible ?? false) })} /></SettingsToggleRow>
-      <p>Engines: {providerEngines(draft).join(" / ")}</p>
-      <SettingsFieldRow  title={<>Authentication</>}><SettingsSelect value={draft.auth.type} onChange={e => setDraft({ ...draft, auth: auth(e.target.value as ProviderAuth["type"]) })}><option value="none">None</option><option value="apiKey">API key</option><option value="env">Environment variable</option><option value="command">Command</option></SettingsSelect></SettingsFieldRow>
-      {draft.auth.type === "apiKey" && <>
-        <SettingsFieldRow  title={<>{hasKey ? "Replace API key" : "API key"}</>}><SettingsTextField type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} /></SettingsFieldRow>
-        {hasKey && <><span>Saved in Keychain</span><SettingsButton type="button" disabled={busy} onClick={() => void run(async () => { await providerDeleteApiKey(draft.id); setHasKey(false); })}>Remove key</SettingsButton></>}
-      </>}
-      {draft.auth.type === "env" && <SettingsFieldRow  title={<>Environment variable</>}><SettingsTextField identifier required value={draft.auth.var} onChange={e => setDraft({ ...draft, auth: { type: "env", var: e.target.value } })} /></SettingsFieldRow>}
-      {draft.auth.type === "command" && <>
-        <SettingsFieldRow  title={<>Auth timeout (ms)</>}><SettingsNumberStepper type="number" min="1" step="1" value={draft.auth.timeoutMs ?? 15000} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, timeoutMs: Number(e.target.value) } })} /></SettingsFieldRow>
-        <SettingsFieldRow  title={<>Token command</>}><SettingsTextField identifier required value={draft.auth.command} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, command: e.target.value } })} /></SettingsFieldRow>
-        <SettingsFieldRow title={<>Arguments (one per line)</>} className="settings-field-row-long"><SettingsTextArea value={draft.auth.args.join("\n")} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, args: e.target.value.split("\n").filter(Boolean) } })} /></SettingsFieldRow>
-      </>}
-      <SettingsButton type="submit" disabled={busy}>Save provider</SettingsButton>
-      <SettingsButton type="button" disabled={busy || !editing} aria-busy={busy} onClick={() => void run(async () => {
-        await save(draft);
-        const result = await providerTestAndFetch(draft.id);
-        if (!result.ok) throw new Error(result.error);
-        setDraft({ ...draft, models: result.models });
-        await onUpdateAppSettings({ ...appSettings, providers: providers.map(p => p.id === draft.id ? { ...draft, models: result.models, modelsFetchedAt: Math.floor(Date.now() / 1000) } : p) });
-        setStatus(result.latencyMs + " ms");
-      })}>{busy && <span className="registry-spinner" aria-hidden="true" />}{busy ? "Testing…" : "Test & fetch models"}</SettingsButton><span role="status">{status}</span>
-      <div>{draft.models.map(m => {
-        const detectedImages = m.detectedSupportsImages ?? (m.supportsImagesSource !== "user" ? m.supportsImages : null);
-        return <div key={m.id}><SettingsToggleRow  title={<>{m.displayName || m.id}</>}><SettingsToggleSwitch pressed={m.enabled} onClick={() => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, enabled: !(m.enabled) } : v) })} /></SettingsToggleRow>
-        <SettingsFieldRow title="Images" subtitle={`Detected: ${detectedImages == null ? "unknown" : detectedImages ? "yes" : "no"}`}>
-          <SettingsSelect aria-label={`Images for ${m.displayName || m.id}`} disabled={busy} value={m.supportsImagesSource === "user" ? m.supportsImages ? "on" : "off" : "auto"} onChange={e => {
-            const auto = e.target.value === "auto";
-            setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, supportsImages: auto ? detectedImages ?? null : e.target.value === "on", supportsImagesSource: auto ? detectedImages == null ? null : "detected" : "user", detectedSupportsImages: detectedImages ?? null } : v) });
-          }}><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></SettingsSelect>
-        </SettingsFieldRow>
-        <ModelReasoningSettings model={m} disabled={busy} onChange={model => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? model : v) })} onDetect={() => void run(async () => {
-          await save(draft);
-          const result = await providerTestAndFetch(draft.id, m.id);
-          if (!result.ok) throw new Error(result.error);
-          const next = { ...draft, models: result.models };
-          setDraft(next);
-          await onUpdateAppSettings({ ...appSettings, providers: providers.some(p => p.id === draft.id) ? providers.map(p => p.id === draft.id ? next : p) : [...providers, next] });
-        })} />
-      </div>; })}</div>
-      <SettingsFieldRow  title={<>Model ID</>}><SettingsTextField identifier value={manual} onChange={e => setManual(e.target.value)} /></SettingsFieldRow>
-      <SettingsButton type="button" disabled={!manual.trim()} onClick={() => { if (!draft.models.some(m => m.id === manual.trim())) setDraft({ ...draft, models: [...draft.models, { id: manual.trim(), enabled: true }] }); setManual(""); }}>Add model ID manually</SettingsButton>
+      <SettingsGroup disabled={busy} title={editing ? `Edit ${draft.name || "provider"}` : "New provider"}>
+        <SettingsFieldRow title="Provider ID" subtitle="Lowercase letters, numbers, - and _ (up to 32). It cannot change later."><SettingsTextField identifier required pattern="[a-z0-9_-]{1,32}" maxLength={32} disabled={!!editing} value={draft.id} onChange={e => setDraft({ ...draft, id: e.target.value })} /></SettingsFieldRow>
+        <SettingsFieldRow title="Name"><SettingsTextField required value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></SettingsFieldRow>
+        <SettingsFieldRow title="Kind"><SettingsSelect value={draft.kind} onChange={e => { const kind = e.target.value as ProviderKind; setDraft({ ...draft, kind, baseUrl: null, apiStyle: kind === "openai-compatible" ? "chat-completions" : null, auth: { type: kind === "ollama" || kind === "lmstudio" ? "none" : "apiKey" } }); }}>{kinds.map(k => <option key={k}>{k}</option>)}</SettingsSelect></SettingsFieldRow>
+        <SettingsFieldRow title="Base URL" subtitle={draft.kind === "openai-compatible" ? "Required for this kind of provider." : "Leave empty to use the provider's own address."}><SettingsTextField className="is-mono" type="url" required={draft.kind === "openai-compatible"} placeholder={draft.kind === "openai-compatible" ? "https://your-server/v1" : "Use provider default"} value={draft.baseUrl ?? ""} onChange={e => setDraft({ ...draft, baseUrl: e.target.value || null })} /></SettingsFieldRow>
+        {draft.kind === "openai-compatible" && <SettingsFieldRow title="API style"><SettingsSelect value={draft.apiStyle ?? "chat-completions"} onChange={e => setDraft({ ...draft, apiStyle: e.target.value as "responses" | "chat-completions" })}><option value="chat-completions">Chat completions</option><option value="responses">Responses</option></SettingsSelect></SettingsFieldRow>}
+        <SettingsToggleRow title="Anthropic-compatible (/v1/messages)" subtitle={`Works with ${providerEngines(draft).join(" and ")}.`}><SettingsToggleSwitch pressed={draft.anthropicCompatible ?? false} onClick={() => setDraft({ ...draft, anthropicCompatible: !(draft.anthropicCompatible ?? false) })} /></SettingsToggleRow>
+        <SettingsFieldRow title="Authentication"><SettingsSelect value={draft.auth.type} onChange={e => setDraft({ ...draft, auth: auth(e.target.value as ProviderAuth["type"]) })}><option value="none">None</option><option value="apiKey">API key</option><option value="env">Environment variable</option><option value="command">Command</option></SettingsSelect></SettingsFieldRow>
+        {draft.auth.type === "apiKey" && <SettingsFieldRow title={hasKey ? "Replace API key" : "API key"} subtitle={hasKey ? "A key is saved in your Keychain." : "Stored in your Keychain."}><div className="settings-field-actions"><SettingsTextField type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} />{hasKey && <SettingsButton type="button" className="danger" disabled={busy} onClick={() => void run(async () => { await providerDeleteApiKey(draft.id); setHasKey(false); })}>Remove key</SettingsButton>}</div></SettingsFieldRow>}
+        {draft.auth.type === "env" && <SettingsFieldRow title="Environment variable"><SettingsTextField identifier className="is-mono" required value={draft.auth.var} onChange={e => setDraft({ ...draft, auth: { type: "env", var: e.target.value } })} /></SettingsFieldRow>}
+        {draft.auth.type === "command" && <>
+          <SettingsFieldRow title="Token command"><SettingsTextField identifier className="is-mono" required value={draft.auth.command} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, command: e.target.value } })} /></SettingsFieldRow>
+          <SettingsFieldRow stacked title="Arguments" subtitle="One argument per line."><SettingsTextArea className="is-mono" value={draft.auth.args.join("\n")} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, args: e.target.value.split("\n").filter(Boolean) } })} /></SettingsFieldRow>
+          <SettingsFieldRow title="Auth timeout (ms)"><SettingsNumberStepper type="number" min="1" step="1" value={draft.auth.timeoutMs ?? 15000} onChange={e => setDraft({ ...draft, auth: { ...draft.auth as Extract<ProviderAuth, { type: "command" }>, timeoutMs: Number(e.target.value) } })} /></SettingsFieldRow>
+        </>}
+        <div className="settings-form-actions">
+          <span role="status" className="settings-help">{status}</span>
+          <SettingsButton type="button" disabled={busy || !editing} aria-busy={busy} onClick={() => void run(async () => {
+            await save(draft);
+            const result = await providerTestAndFetch(draft.id);
+            if (!result.ok) throw new Error(result.error);
+            setDraft({ ...draft, models: result.models });
+            await onUpdateAppSettings({ ...appSettings, providers: providers.map(p => p.id === draft.id ? { ...draft, models: result.models, modelsFetchedAt: Math.floor(Date.now() / 1000) } : p) });
+            setStatus(result.latencyMs + " ms");
+          })}>{busy && <span className="registry-spinner" aria-hidden="true" />}{busy ? "Testing…" : "Test & fetch models"}</SettingsButton>
+          <SettingsButton type="submit" className="primary" disabled={busy}>Save provider</SettingsButton>
+        </div>
+      </SettingsGroup>
+      <SettingsGroup disabled={busy} title="Models" subtitle="Models that are on appear in model pickers.">
+        {draft.models.map(m => {
+          const detectedImages = m.detectedSupportsImages ?? (m.supportsImagesSource !== "user" ? m.supportsImages : null);
+          return <div key={m.id} className="settings-subrows"><SettingsToggleRow title={m.displayName || m.id}><SettingsToggleSwitch pressed={m.enabled} onClick={() => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, enabled: !(m.enabled) } : v) })} /></SettingsToggleRow>
+          <SettingsFieldRow title="Images" subtitle={`Detected: ${detectedImages == null ? "unknown" : detectedImages ? "yes" : "no"}`}>
+            <SettingsSelect aria-label={`Images for ${m.displayName || m.id}`} disabled={busy} value={m.supportsImagesSource === "user" ? m.supportsImages ? "on" : "off" : "auto"} onChange={e => {
+              const auto = e.target.value === "auto";
+              setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, supportsImages: auto ? detectedImages ?? null : e.target.value === "on", supportsImagesSource: auto ? detectedImages == null ? null : "detected" : "user", detectedSupportsImages: detectedImages ?? null } : v) });
+            }}><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></SettingsSelect>
+          </SettingsFieldRow>
+          <ModelReasoningSettings model={m} disabled={busy} onChange={model => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? model : v) })} onDetect={() => void run(async () => {
+            await save(draft);
+            const result = await providerTestAndFetch(draft.id, m.id);
+            if (!result.ok) throw new Error(result.error);
+            const next = { ...draft, models: result.models };
+            setDraft(next);
+            await onUpdateAppSettings({ ...appSettings, providers: providers.some(p => p.id === draft.id) ? providers.map(p => p.id === draft.id ? next : p) : [...providers, next] });
+          })} /></div>; })}
+        {!draft.models.length && <SettingsEmpty>No models yet. Test the connection to fetch them, or add one by ID.</SettingsEmpty>}
+        <SettingsFieldRow title="Model ID" subtitle="Add a model by hand if the provider does not list it."><div className="settings-field-actions"><SettingsTextField identifier className="is-mono" value={manual} onChange={e => setManual(e.target.value)} /><SettingsButton type="button" disabled={!manual.trim()} onClick={() => { if (!draft.models.some(m => m.id === manual.trim())) setDraft({ ...draft, models: [...draft.models, { id: manual.trim(), enabled: true }] }); setManual(""); }}>Add model ID manually</SettingsButton></div></SettingsFieldRow>
+      </SettingsGroup>
     </form>}
-  </SettingsGroup></SettingsPage>;
+  </SettingsPage>;
 }
 
-export function AgentPolicyEditor({ policy, providers, onChange, tab, scope }: { tab?: "defaults" | "subagents" | "roles"; policy: AgentPolicy; providers: ProviderEntry[]; onChange: (p: AgentPolicy) => void; scope?: "all" | "project" }) {
+export function AgentPolicyEditor({ policy, providers, onChange, tab, scope, engineControl = "select", onManageEngines }: { tab?: "defaults" | "subagents" | "roles"; policy: AgentPolicy; providers: ProviderEntry[]; onChange: (p: AgentPolicy) => void; scope?: "all" | "project"; /** "summary" shows the default engine read-only; it is changed in Engines. */ engineControl?: "select" | "summary"; onManageEngines?: () => void }) {
   const engines = useEngines();
   const models = providers.filter(p => p.enabled).flatMap(p => p.models.filter(m => m.enabled).map(m => ({ value: p.id + "/" + m.id, label: p.name + " / " + (m.displayName || m.id) })));
   const sub = policy.subagents;
   const chain = sub.enabled && sub.mode === "chain-of-command";
-  const modelSelect = (label: string, value: string, change: (value: string) => void) => <SettingsFieldRow  title={<>{label}</>}><SettingsSelect value={value} onChange={e => change(e.target.value)}><option value="">Inherit</option>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>;
+  const claudeReady = providers.some(p => p.enabled && providerEngines(p).includes("claude") && p.models.some(m => m.enabled));
+  const modelSelect = (label: string, value: string, change: (value: string) => void) => <SettingsFieldRow title={label}><SettingsSelect value={value} onChange={e => change(e.target.value)}><option value="">Inherit</option>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>;
+  const engineName = engines.find(e => e.id === policy.defaultEngine)?.name ?? policy.defaultEngine;
   return <div className="registry-policy">
-    <SettingsGroup title="Working mode" subtitle="Choose one model or a team for Code. Chain of Command is available only in Code; Chat and Work use a single model when it is selected.">
-      <SettingsFieldRow title="Agent mode"><SettingsSelect value={!sub.enabled ? "single" : sub.mode ?? "custom"} onChange={e => {
+    <SettingsGroup title="Working mode" subtitle="Choose one model or a team of agents. Chain of Command is only available in Code; Chat and Work always use a single model.">
+      <SettingsFieldRow title="Agent mode" subtitle={chain ? "The conversation model is the commander. Colonels delegate, majors verify and enlisted agents implement. Runs on Pi or OMP." : !sub.enabled ? "Delegation is off. Your role and model choices are kept." : undefined}><SettingsSelect value={!sub.enabled ? "single" : sub.mode ?? "custom"} onChange={e => {
         const next = setAgentMode(policy, e.target.value as "single" | "custom" | "chain-of-command");
         if (next.subagents.enabled && next.subagents.mode === "chain-of-command" && !engines.some(engine => engine.id === next.defaultEngine && engine.protocol === "pi-rpc")) next.defaultEngine = "pi";
         onChange(next);
       }}><option value="single">Single model</option><option value="chain-of-command">Chain of Command</option><option value="custom">Custom delegation</option></SettingsSelect></SettingsFieldRow>
-      {chain && <p>The conversation model is the commander. Colonels delegate, majors verify, and enlisted agents implement. Runs on Pi or OMP.</p>}
-      {!sub.enabled && <p>Subagent delegation is disabled. Your role and model choices are kept.</p>}
     </SettingsGroup>
-    {(!tab || tab === "defaults") && <SettingsGroup title="Defaults" subtitle="Engine enforcement: pi enforces every field. Codex enforces max concurrent, max depth, default subagent model, and roles."><SettingsFieldRow  title={<>Default engine</>}><SettingsSelect value={policy.defaultEngine} onChange={e => onChange({ ...policy, defaultEngine: e.target.value as AgentPolicy["defaultEngine"] })}>{engines.filter(e => e.enabled).map(e => <option key={e.id} value={e.id} disabled={chain && e.protocol !== "pi-rpc" || e.id === "claude" && !providers.some(p => p.enabled && providerEngines(p).includes("claude") && p.models.some(m => m.enabled))}>{e.name}</option>)}</SettingsSelect></SettingsFieldRow>
-    {!providers.some(p => p.enabled && providerEngines(p).includes("claude") && p.models.some(m => m.enabled)) && <small>Claude Code needs an enabled Anthropic or Anthropic-compatible provider and model.</small>}
-
-    {modelSelect("Default model", modelKey(policy.defaultModel), v => onChange({ ...policy, defaultModel: modelRef(v) }))}
+    {(!tab || tab === "defaults") && <SettingsGroup title="Defaults" subtitle="Pi applies every setting here. Codex applies concurrency, depth, the default subagent model and roles.">
+      {engineControl === "summary"
+        ? <SettingsRow><SettingsRowText title="Default engine" subtitle={<>New threads start with {engineName}. You change it in Engines.</>} /><SettingsButton type="button" onClick={onManageEngines} disabled={!onManageEngines}>Manage engines</SettingsButton></SettingsRow>
+        : <SettingsFieldRow title={scope === "project" ? "Engine for this project" : "Default engine"} subtitle={!claudeReady ? "Claude Code needs an enabled Anthropic or Anthropic-compatible provider and model." : undefined}><SettingsSelect value={policy.defaultEngine} onChange={e => onChange({ ...policy, defaultEngine: e.target.value as AgentPolicy["defaultEngine"] })}>{engines.filter(e => e.enabled).map(e => <option key={e.id} value={e.id} disabled={chain && e.protocol !== "pi-rpc" || e.id === "claude" && !claudeReady}>{e.name}</option>)}</SettingsSelect></SettingsFieldRow>}
+      {modelSelect("Default model", modelKey(policy.defaultModel), v => onChange({ ...policy, defaultModel: modelRef(v) }))}
     </SettingsGroup>}
-    {(!tab || tab === "subagents") && <SettingsGroup title="Subagents" subtitle="Pi enforces all limits; Codex supports concurrency, depth and default model.">
-    <p>{chain ? "Turn and concurrency limits are shared by the whole command tree. Waiting coordinators share their slots with workers." : "Limits apply to each delegator. Nested custom roles have their own per-turn budgets."}</p>
-    {([["maxConcurrent", "Max concurrent", 16], ["maxPerTurn", "Max per turn", 32], ["maxDepth", "Max depth", 3]] as const).map(([field, label, max]) => <div key={field}><small>{label}: {field === "maxPerTurn" ? "pi" : "pi, codex"}</small><SettingsFieldRow  title={<>{label}</>}><SettingsNumberStepper type="number" min={1} max={max} value={sub[field]} onChange={e => onChange({ ...policy, subagents: { ...sub, [field]: Number(e.target.value) } })} /></SettingsFieldRow></div>)}
-    <small>Allowed models: pi</small>
-    <SettingsFieldRow  title={<>Allowed models (empty means any enabled model)</>}><SettingsSelect multiple value={sub.allowedModels.map(modelKey)} onChange={e => onChange({ ...policy, subagents: { ...sub, allowedModels: Array.from(e.target.selectedOptions).flatMap(o => { const m = modelRef(o.value); return m ? [m] : []; }) } })}>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>
-    <small>Default subagent model: pi, codex</small>
-    {modelSelect("Default subagent model", modelKey(sub.defaultModel), v => onChange({ ...policy, subagents: { ...sub, defaultModel: modelRef(v) } }))}
+    {(!tab || tab === "subagents") && <SettingsGroup title="Subagents" subtitle={chain ? "Turn and concurrency limits are shared by the whole command tree. Waiting coordinators share their slots with workers." : "Limits apply to each delegator. Nested custom roles have their own per-turn budgets."}>
+      {([["maxConcurrent", "Max concurrent", 16, "How many subagents run at once. Pi and Codex."], ["maxPerTurn", "Max per turn", 32, "How many subagents one turn may start. Pi only."], ["maxDepth", "Max depth", 3, "How many levels of delegation are allowed. Pi and Codex."]] as const).map(([field, label, max, note]) => <SettingsFieldRow key={field} title={label} subtitle={note}><SettingsNumberStepper type="number" min={1} max={max} value={sub[field]} onChange={e => onChange({ ...policy, subagents: { ...sub, [field]: Number(e.target.value) } })} /></SettingsFieldRow>)}
+      <SettingsFieldRow stacked title="Allowed models" subtitle="Leave empty to allow any enabled model. Pi only."><SettingsSelect multiple value={sub.allowedModels.map(modelKey)} onChange={e => onChange({ ...policy, subagents: { ...sub, allowedModels: Array.from(e.target.selectedOptions).flatMap(o => { const m = modelRef(o.value); return m ? [m] : []; }) } })}>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>
+      {modelSelect("Default subagent model", modelKey(sub.defaultModel), v => onChange({ ...policy, subagents: { ...sub, defaultModel: modelRef(v) } }))}
     </SettingsGroup>}
     {chain && (!tab || tab === "subagents") && <ExecutionLimits policy={policy} onChange={onChange} />}
     {chain && tab === "defaults" && <SettingsGroup title="Team models" subtitle="Choose smaller cloud or local models where suitable. Inherit uses the default subagent model, then the parent's model. Edit tools and instructions in Roles.">
       {sub.roles.filter(isCommandRole).map(role => <div key={role.name}>{modelSelect(`${commandRoleTitle(role.name)} model`, modelKey(role.model), value => onChange({ ...policy, subagents: { ...sub, roles: sub.roles.map(r => r.name === role.name ? { ...r, model: modelRef(value) } : r) } }))}</div>)}
     </SettingsGroup>}
-    {(!tab || tab === "roles") && <SettingsGroup title="Roles" subtitle={<>Named specialists with their own model, tools and instructions.{scope === "all" ? <> <strong>All projects:</strong> these roles apply to every project without its own roles. To give one project different roles, use its agent policy in Settings → Projects.</> : scope === "project" ? <> <strong>This project only:</strong> these roles replace the ones set for all projects.</> : null}</>}>
-    {sub.roles.map((role, index) => {
-      if (chain && !isCommandRole(role)) return null;
-      const change = (patch: Partial<typeof role>) => onChange({ ...policy, subagents: { ...sub, roles: sub.roles.map((r, i) => i === index ? { ...r, ...patch } : r) } });
-      return <SettingsGroup key={index} title={<>{chain ? commandRoleTitle(role.name) : `Role ${index + 1}`}{scope ? <small> · {scope === "all" ? "All projects" : "This project"}</small> : null}</>}>
-        <SettingsFieldRow  title={<>Name</>}><SettingsTextField identifier readOnly={chain} value={role.name} onChange={e => change({ name: e.target.value })} /></SettingsFieldRow>
-        <SettingsFieldRow  title={<>Description</>}><SettingsTextField value={role.description} onChange={e => change({ description: e.target.value })} /></SettingsFieldRow>
-        {modelSelect(chain ? `${commandRoleTitle(role.name)} model` : "Role model", modelKey(role.model), v => change({ model: modelRef(v) }))}
-        <SettingsFieldRow  title={<>Tool access</>}><SettingsSelect value={role.toolAccess} onChange={e => change({ toolAccess: e.target.value as "read-only" | "full" })}><option value="read-only">Read only</option><option value="full">Full</option></SettingsSelect></SettingsFieldRow>
-        <SettingsFieldRow title={<>Instructions</>} className="settings-field-row-long"><SettingsTextArea value={role.instructions} onChange={e => change({ instructions: e.target.value })} /></SettingsFieldRow>
-        {(!chain || !commandRoles.some(core => core.name === role.name)) && <SettingsButton type="button" onClick={() => onChange({ ...policy, subagents: { ...sub, roles: sub.roles.filter((_, i) => i !== index) } })}>Remove role</SettingsButton>}
-      </SettingsGroup>;
-    })}
-    {!chain && <SettingsButton type="button" onClick={() => onChange({ ...policy, subagents: { ...sub, roles: [...sub.roles, { name: "role-" + (sub.roles.length + 1), description: "", model: null, toolAccess: "read-only", instructions: "" }] } })}>Add role</SettingsButton>}
-    </SettingsGroup>}
+    {(!tab || tab === "roles") && <>
+      <SettingsGroup title="Roles" subtitle={<>Named specialists with their own model, tools and instructions.{scope === "all" ? <> <strong>All projects:</strong> these roles apply to every project without its own roles. To give one project different roles, use its agent policy in Settings → Projects.</> : scope === "project" ? <> <strong>This project only:</strong> these roles replace the ones set for all projects.</> : null}</>}
+        actions={!chain ? <SettingsButton type="button" onClick={() => onChange({ ...policy, subagents: { ...sub, roles: [...sub.roles, { name: "role-" + (sub.roles.length + 1), description: "", model: null, toolAccess: "read-only", instructions: "" }] } })}><Plus aria-hidden />Add role</SettingsButton> : undefined}>
+        {!sub.roles.length && <SettingsEmpty>No roles yet.</SettingsEmpty>}
+        {sub.roles.map((role, index) => chain && !isCommandRole(role) ? null : <div key={index} className="settings-card-block settings-role-summary">{chain ? commandRoleTitle(role.name) : role.name || `Role ${index + 1}`}</div>)}
+      </SettingsGroup>
+      {sub.roles.map((role, index) => {
+        if (chain && !isCommandRole(role)) return null;
+        const change = (patch: Partial<typeof role>) => onChange({ ...policy, subagents: { ...sub, roles: sub.roles.map((r, i) => i === index ? { ...r, ...patch } : r) } });
+        return <SettingsGroup key={index} title={<>{chain ? commandRoleTitle(role.name) : `Role ${index + 1}`}{scope ? <small> · {scope === "all" ? "All projects" : "This project"}</small> : null}</>}
+          actions={(!chain || !commandRoles.some(core => core.name === role.name)) ? <SettingsButton type="button" className="danger" onClick={() => onChange({ ...policy, subagents: { ...sub, roles: sub.roles.filter((_, i) => i !== index) } })}>Remove role</SettingsButton> : undefined}>
+          <SettingsFieldRow title="Name"><SettingsTextField identifier readOnly={chain} value={role.name} onChange={e => change({ name: e.target.value })} /></SettingsFieldRow>
+          <SettingsFieldRow title="Description"><SettingsTextField value={role.description} onChange={e => change({ description: e.target.value })} /></SettingsFieldRow>
+          {modelSelect(chain ? `${commandRoleTitle(role.name)} model` : "Role model", modelKey(role.model), v => change({ model: modelRef(v) }))}
+          <SettingsFieldRow title="Tool access"><SettingsSelect value={role.toolAccess} onChange={e => change({ toolAccess: e.target.value as "read-only" | "full" })}><option value="read-only">Read only</option><option value="full">Full</option></SettingsSelect></SettingsFieldRow>
+          <SettingsFieldRow stacked title="Instructions"><SettingsTextArea value={role.instructions} onChange={e => change({ instructions: e.target.value })} /></SettingsFieldRow>
+        </SettingsGroup>;
+      })}
+    </>}
   </div>;
 }
-export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, workspace, tab, onUpdateWorkspaceSettings }: Props & { onUpdateWorkspaceSettings?: (id: string, settings: Partial<WorkspaceSettings>) => Promise<void>; workspace?: WorkspaceInfo | null; tab?: "defaults" | "subagents" | "roles" }) {
+export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, workspace, tab, onUpdateWorkspaceSettings, pageTabs, onManageEngines }: Props & { onUpdateWorkspaceSettings?: (id: string, settings: Partial<WorkspaceSettings>) => Promise<void>; workspace?: WorkspaceInfo | null; tab?: "defaults" | "subagents" | "roles"; /** The tab strip shown directly under the page header. */ pageTabs?: ReactNode; onManageEngines?: () => void }) {
   const base = appSettings.agentPolicy ?? defaultAgentPolicy;
   const [scope, setScope] = useState<"all" | "project">(tab === "roles" && workspace && onUpdateWorkspaceSettings ? "project" : "all");
   const [policy, setPolicy] = useState(scope === "project" && workspace ? mergePolicy(base, workspace.settings.agentPolicy) : base);
@@ -194,18 +203,23 @@ export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, w
       setSavedPolicy(policy); setSaveState("saved");
     } catch (e) { setError(String(e)); setSaveState("idle"); }
   };
-  return <div className="registry-settings">
-    {tab === "roles" && <SettingsFieldRow title="Apply roles to"><SettingsSelect aria-label="Agent scope" value={scope} disabled={dirty || saveState === "saving"} onChange={e => {
+  const actions = <>
+    {dirty && <span className="settings-unsaved">Unsaved changes</span>}
+    {tab === "roles" && dirty && <SettingsButton disabled={saveState === "saving"} onClick={() => { setPolicy(savedPolicy); setError(""); }}>Discard changes</SettingsButton>}
+    <SettingsButton className="primary lg" disabled={!dirty || !!validation || saveState === "saving"} onClick={() => void save()}>{saveState === "saving" ? "Saving…" : !dirty && saveState === "saved" ? "Saved" : "Save changes"}</SettingsButton>
+    <span className="settings-visually-hidden" role="status">{!dirty && saveState === "saved" ? "Policy saved" : ""}</span>
+  </>;
+  return <SettingsPage title="Models & Agents" subtitle="Choose default models, delegate work to subagents and define roles." actions={actions}>
+    {pageTabs}
+    {tab === "roles" && <SettingsGroup><SettingsFieldRow title="Apply roles to" subtitle="Roles for all projects, or only for the current project."><SettingsSelect aria-label="Agent scope" value={scope} disabled={dirty || saveState === "saving"} onChange={e => {
       const nextScope = e.target.value as "all" | "project";
       const next = nextScope === "project" && workspace ? mergePolicy(base, workspace.settings.agentPolicy) : base;
       setScope(nextScope); setPolicy(next); setSavedPolicy(next); setSaveState("idle"); setError("");
-    }}><option value="project" disabled={!workspace || !onUpdateWorkspaceSettings}>This project{workspace ? ` — ${workspace.name}` : " (select a project first)"}</option><option value="all">All projects</option></SettingsSelect></SettingsFieldRow>}
-    {tab === "roles" && dirty && <SettingsButton disabled={saveState === "saving"} onClick={() => { setPolicy(savedPolicy); setError(""); }}>Discard changes</SettingsButton>}
-    <AgentPolicyEditor tab={tab} scope={scope} policy={policy} providers={appSettings.providers ?? []} onChange={next => { setPolicy(next); setError(""); }} />
-    {(validation || error) && <p role="alert">{validation || error}</p>}
-    {workspace && scope === "all" && tab !== "roles" && <SettingsGroup collapsible title={<>Effective policy for {workspace.name} (app + workspace)</>} disabled><AgentPolicyEditor policy={mergePolicy(savedPolicy, workspace.settings.agentPolicy)} providers={appSettings.providers ?? []} onChange={() => {}} /></SettingsGroup>}
-    <div className="settings-section-actions"><SettingsButton className="primary" disabled={!dirty || !!validation || saveState === "saving"} onClick={() => void save()}>{saveState === "saving" ? "Saving…" : !dirty && saveState === "saved" ? "Saved" : "Save policy"}</SettingsButton><span className="settings-visually-hidden" role="status">{!dirty && saveState === "saved" ? "Policy saved" : ""}</span></div>
-  </div>;
+    }}><option value="project" disabled={!workspace || !onUpdateWorkspaceSettings}>This project{workspace ? ` — ${workspace.name}` : " (select a project first)"}</option><option value="all">All projects</option></SettingsSelect></SettingsFieldRow></SettingsGroup>}
+    <AgentPolicyEditor tab={tab} scope={scope} policy={policy} providers={appSettings.providers ?? []} onChange={next => { setPolicy(next); setError(""); }} engineControl={scope === "all" ? "summary" : "select"} onManageEngines={onManageEngines} />
+    {(validation || error) && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{validation || error}</SettingsCallout>}
+    {workspace && scope === "all" && tab !== "roles" && <div className="settings-effective"><SettingsGroup collapsible title={<>Effective policy for {workspace.name} (app + workspace)</>} disabled><AgentPolicyEditor policy={mergePolicy(savedPolicy, workspace.settings.agentPolicy)} providers={appSettings.providers ?? []} onChange={() => {}} /></SettingsGroup></div>}
+  </SettingsPage>;
 }
 export function ProjectAgentPolicy({ workspace, appSettings, onUpdate }: { workspace: WorkspaceInfo; appSettings: AppSettings; onUpdate: (id: string, settings: Partial<WorkspaceSettings>) => Promise<void> }) {
   const base = appSettings.agentPolicy ?? defaultAgentPolicy;
@@ -214,10 +228,12 @@ export function ProjectAgentPolicy({ workspace, appSettings, onUpdate }: { works
   const [policy, setPolicy] = useState(effective);
   const [error, setError] = useState("");
   const validation = policyError(policy, appSettings.providers ?? []);
-  return <details className="settings-project-row settings-agent-policy"><summary><strong>{workspace.name}: agent policy</strong></summary>
+  return <details className="settings-disclosure settings-agent-policy"><summary>{workspace.name}: agent policy</summary>
     <AgentPolicyEditor scope="project" policy={policy} providers={appSettings.providers ?? []} onChange={setPolicy} />
-    {(validation || error) && <p role="alert">{validation || error}</p>}
-    <SettingsButton type="button" disabled={!!validation} onClick={() => void onUpdate(workspace.id, { agentPolicy: policy }).catch(e => setError(String(e)))}>Save project override</SettingsButton>
-    <SettingsButton type="button" onClick={() => void onUpdate(workspace.id, { agentPolicy: null }).then(() => setPolicy(base)).catch(e => setError(String(e)))}>Use app policy</SettingsButton>
+    {(validation || error) && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{validation || error}</SettingsCallout>}
+    <div className="settings-form-actions settings-form-actions--page">
+      <SettingsButton type="button" onClick={() => void onUpdate(workspace.id, { agentPolicy: null }).then(() => setPolicy(base)).catch(e => setError(String(e)))}>Use app policy</SettingsButton>
+      <SettingsButton type="button" className="primary" disabled={!!validation} onClick={() => void onUpdate(workspace.id, { agentPolicy: policy }).catch(e => setError(String(e)))}>Save project override</SettingsButton>
+    </div>
   </details>;
 }

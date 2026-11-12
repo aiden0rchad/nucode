@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+const choose = (row: string, item: string) => { fireEvent.click(screen.getByRole("button", { name: `Actions for ${row}` })); fireEvent.click(screen.getByRole("menuitem", { name: item })); };
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings, McpServerEntry, WorkspaceInfo } from "@/types";
@@ -23,8 +24,10 @@ describe("Connectors settings", () => {
   });
   it("masks saved credentials and sends secret values only to the credential command", async () => {
     render(<Harness />);
-    expect(screen.queryByText("Delete CodeGraph")).toBeNull();
-    fireEvent.click(screen.getByText("Edit Example"));
+    fireEvent.click(screen.getByRole("button", { name: "Actions for CodeGraph" }));
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    choose("Example", "Edit");
     await screen.findByText("Saved in Keychain");
     const token = screen.getByLabelText("Bearer token");
     expect(token.getAttribute("type")).toBe("password");
@@ -37,20 +40,20 @@ describe("Connectors settings", () => {
   });
   it("shows tools, descriptions, latency and actionable errors", async () => {
     render(<Harness />);
-    fireEvent.click(screen.getByText("Test Example"));
+    choose("Example", "Test connection");
     await screen.findByText("Connected · 7 ms · 1 tools");
     expect(screen.getByText("Reads a document")).toBeTruthy();
     vi.mocked(connectorRequest).mockResolvedValueOnce({ ok: false, latencyMs: 3, error: "This server requires OAuth sign-in, which nucode doesn't support." });
-    fireEvent.click(screen.getByText("Test Example"));
+    choose("Example", "Test connection");
     expect((await screen.findByRole("alert")).textContent).toContain("OAuth sign-in");
   });
   it("persists workspace toggles and restores inheritance", async () => {
     render(<Harness />);
     fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "workspace" } });
-    fireEvent.click(screen.getByLabelText("Example"));
+    fireEvent.click(screen.getByRole("button", { name: "Enable Example" }));
     await waitFor(() => expect(updateWorkspace).toHaveBeenCalledWith("ws", { mcpServers: [{ id: "example", enabled: false }] }));
     expect(saveSettings).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("Use global setting for Example"));
+    choose("Example", "Use global setting");
     await waitFor(() => expect(updateWorkspace).toHaveBeenLastCalledWith("ws", { mcpServers: [] }));
   });
   it("adds workspace-only command connectors and rejects reserved IDs", async () => {

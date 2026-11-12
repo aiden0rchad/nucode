@@ -9,6 +9,7 @@ import { providerSetApiKey, providerHasApiKey, providerTestAndFetch } from "@ser
 vi.mock("@services/tauri", () => ({
   providerSetApiKey: vi.fn(), providerHasApiKey: vi.fn(), providerDeleteApiKey: vi.fn(), providerTestAndFetch: vi.fn(),
 }));
+const choose = (row: string, item: string) => { fireEvent.click(screen.getByRole("button", { name: `Actions for ${row}` })); fireEvent.click(screen.getByRole("menuitem", { name: item })); };
 const provider: ProviderEntry = { id: "local", name: "Local", kind: "ollama", auth: { type: "none" }, enabled: true, models: [{ id: "small", enabled: true }] };
 function Providers({ initial = [] }: { initial?: ProviderEntry[] }) {
   const [settings, setSettings] = useState({ providers: initial } as AppSettings);
@@ -21,7 +22,7 @@ describe("provider registry settings", () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const initial: ProviderEntry = { ...provider, models: [{ id: "small", enabled: true, supportsImages: detected, detectedSupportsImages: detected, supportsImagesSource: detected == null ? null : "detected" }, { id: "other", enabled: false }] };
     const { unmount } = render(<SettingsProvidersSection appSettings={{ providers: [initial] } as AppSettings} onUpdateAppSettings={save} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    choose("Local", "Edit");
     const control = screen.getByLabelText("Images for small");
     expect(control).toHaveProperty("value", "auto");
     expect(screen.getAllByText(`Detected: ${detected == null ? "unknown" : detected ? "yes" : "no"}`).length).toBeGreaterThan(0);
@@ -41,13 +42,13 @@ describe("provider registry settings", () => {
     const saved = save.mock.lastCall![0];
     unmount();
     render(<SettingsProvidersSection appSettings={saved} onUpdateAppSettings={save} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    choose("Local", "Edit");
     expect(screen.getByLabelText("Images for small")).toHaveProperty("value", "on");
   });
   it("shows image detection returned by Test & fetch models", async () => {
     vi.mocked(providerTestAndFetch).mockResolvedValue({ ok: true, latencyMs: 12, models: [{ id: "small", enabled: true, supportsImages: false, supportsImagesSource: "user", detectedSupportsImages: true }] });
     render(<Providers initial={[provider]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    choose("Local", "Edit");
     fireEvent.click(screen.getByText("Test & fetch models"));
     await screen.findByText("Detected: yes");
     expect(screen.getByLabelText("Images for small")).toHaveProperty("value", "off");
@@ -58,57 +59,67 @@ describe("provider registry settings", () => {
     const save = vi.fn().mockResolvedValue(undefined);
     render(<SettingsAgentPolicySection appSettings={{ providers: [provider], agentPolicy: { ...defaultAgentPolicy, defaultEngine: "codex" } } as AppSettings} onUpdateAppSettings={save} tab="defaults" />);
     fireEvent.change(screen.getByLabelText("Agent mode"), { target: { value: "chain-of-command" } });
-    expect((screen.getByLabelText("Default engine") as HTMLSelectElement).value).toBe("pi");
-    expect((screen.getByRole("option", { name: "Codex" }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.getByText(/New threads start with pi\./)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Enlisted model"), { target: { value: "local/small" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ enabled: true, mode: "chain-of-command", maxDepth: 2, roles: expect.arrayContaining([expect.objectContaining({ name: "enlisted", model: { providerId: "local", modelId: "small" } })]) }) }) })));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ defaultEngine: "pi", subagents: expect.objectContaining({ enabled: true, mode: "chain-of-command", maxDepth: 2, roles: expect.arrayContaining([expect.objectContaining({ name: "enlisted", model: { providerId: "local", modelId: "small" } })]) }) }) })));
     fireEvent.change(screen.getByLabelText("Agent mode"), { target: { value: "single" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ enabled: false }) }) })));
     fireEvent.change(screen.getByLabelText("Agent mode"), { target: { value: "chain-of-command" } });
     expect((screen.getByLabelText("Enlisted model") as HTMLSelectElement).value).toBe("local/small");
   });
   it("saves only changed policy, acknowledges success, and preserves edits after failure", async () => {
     const save = vi.fn().mockRejectedValueOnce(new Error("Save failed")).mockResolvedValue(undefined);
-    render(<SettingsAgentPolicySection appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={save} tab="defaults" />);
-    const button = screen.getByRole("button", { name: "Save policy" }) as HTMLButtonElement;
+    render(<SettingsAgentPolicySection appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={save} tab="subagents" />);
+    const button = screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.classList.contains("primary")).toBe(true);
-    expect(button.closest(".settings-section-actions")).toBeTruthy();
-    expect(screen.getByText(/^Engine enforcement:/).className).toBe("settings-group-description");
-    fireEvent.change(screen.getByLabelText("Default engine"), { target: { value: "codex" } });
+    expect(button.closest(".settings-page-actions")).toBeTruthy();
+    const a = defaultAgentPolicy.subagents.maxConcurrent === 5 ? 6 : 5, b = a === 5 ? 6 : 5;
+    fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
     expect(button.disabled).toBe(false);
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
     fireEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Error: Save failed");
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     expect(await screen.findByRole("button", { name: "Saved" })).toHaveProperty("disabled", true);
     expect(screen.getByRole("status").textContent).toBe("Policy saved");
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ defaultEngine: "codex" }) }));
-    fireEvent.change(screen.getByLabelText("Default engine"), { target: { value: "pi" } });
-    expect(screen.getByRole("button", { name: "Save policy" })).toHaveProperty("disabled", false);
-    fireEvent.change(screen.getByLabelText("Default engine"), { target: { value: "codex" } });
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ maxConcurrent: a }) }) }));
+    fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(b) } });
+    expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
     expect(screen.getByRole("button", { name: "Saved" })).toHaveProperty("disabled", true);
   });
-  it("saves Anthropic compatibility and enables the Claude default engine", async () => {
+  it("shows the default engine read-only with a link to Engines", () => {
+    const manage = vi.fn();
+    render(<SettingsAgentPolicySection appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={vi.fn()} tab="defaults" onManageEngines={manage} />);
+    expect(screen.queryByLabelText("Default engine")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Manage engines" }));
+    expect(manage).toHaveBeenCalledOnce();
+  });
+  it("saves Anthropic compatibility and enables the Claude engine for a project", async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(<SettingsProvidersSection appSettings={{ providers: [provider] } as AppSettings} onUpdateAppSettings={save} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    const { unmount } = render(<SettingsProvidersSection appSettings={{ providers: [provider] } as AppSettings} onUpdateAppSettings={save} />);
+    choose("Local", "Edit");
     fireEvent.click(screen.getByLabelText("Anthropic-compatible (/v1/messages)"));
     fireEvent.click(screen.getByText("Save provider"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ providers: [expect.objectContaining({ anthropicCompatible: true })] })));
-    rerender(<SettingsAgentPolicySection appSettings={{ providers: [{ ...provider, anthropicCompatible: true }] } as AppSettings} onUpdateAppSettings={save} />);
+    unmount();
+    const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false } };
+    const update = vi.fn().mockResolvedValue(undefined);
+    render(<ProjectAgentPolicy workspace={workspace} appSettings={{ providers: [{ ...provider, anthropicCompatible: true }], agentPolicy: defaultAgentPolicy } as AppSettings} onUpdate={update} />);
     expect((screen.getByRole("option", { name: "Claude Code (ACP)" }) as HTMLOptionElement).disabled).toBe(false);
-    fireEvent.change(screen.getByLabelText("Default engine"), { target: { value: "claude" } });
-    fireEvent.click(screen.getByText("Save policy"));
-    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ defaultEngine: "claude" }) })));
+    fireEvent.change(screen.getByLabelText("Engine for this project"), { target: { value: "claude" } });
+    fireEvent.click(screen.getByText("Save project override"));
+    await waitFor(() => expect(update).toHaveBeenCalledWith("ws", { agentPolicy: expect.objectContaining({ defaultEngine: "claude" }) }));
   });
   it("defaults auth commands to 15 seconds and saves a provider override", async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const commandProvider: ProviderEntry = { ...provider, auth: { type: "command", command: "/bin/key", args: [] } };
     render(<SettingsProvidersSection appSettings={{ providers: [commandProvider] } as AppSettings} onUpdateAppSettings={save} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    choose("Local", "Edit");
     expect((screen.getByLabelText("Auth timeout (ms)") as HTMLInputElement).value).toBe("15000");
     fireEvent.change(screen.getByLabelText("Auth timeout (ms)"), { target: { value: "30000" } });
     fireEvent.click(screen.getByText("Save provider"));
@@ -135,7 +146,7 @@ describe("provider registry settings", () => {
   it("renders fetch latency, model toggles and actionable failures", async () => {
     vi.mocked(providerTestAndFetch).mockResolvedValueOnce({ ok: true, latencyMs: 42, models: [{ id: "fetched", enabled: true }] }).mockResolvedValueOnce({ ok: false, latencyMs: 2, models: [], error: "API key rejected" });
     render(<Providers initial={[provider]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit Local" }));
+    choose("Local", "Edit");
     fireEvent.click(screen.getByText("Test & fetch models"));
     await waitFor(() => expect(screen.getByText("42 ms")).toBeTruthy());
     expect(screen.getByLabelText("fetched").getAttribute("aria-pressed")).toBe("true");
@@ -151,19 +162,19 @@ describe("provider registry settings", () => {
     expect(screen.getAllByLabelText("Name")).toHaveLength(3);
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: "17" } });
     expect(screen.getByRole("alert").textContent).toContain("concurrent 1–16");
-    expect((screen.getByText("Save policy") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("Save changes") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: "3" } });
-    expect((screen.getByText("Save policy") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Save changes") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.change(screen.getAllByLabelText("Role model")[0], { target: { value: "local/large" } });
     expect(screen.getByRole("alert").textContent).toContain("must be in allowed models");
-    expect((screen.getByText("Save policy") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("Save changes") as HTMLButtonElement).disabled).toBe(true);
   });
   it("shows engine enforcement and the merged workspace policy", () => {
     const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false, agentPolicy: { subagents: { maxConcurrent: 2 } } } };
     render(<SettingsAgentPolicySection workspace={workspace} appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={vi.fn()} />);
-    expect(screen.getAllByText("Max per turn: pi").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Allowed models: pi").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Max concurrent: pi, codex").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("How many subagents one turn may start. Pi only.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Leave empty to allow any enabled model. Pi only.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("How many subagents run at once. Pi and Codex.").length).toBeGreaterThan(0);
     expect(screen.getByText("Effective policy for Project (app + workspace)")).toBeTruthy();
     const disclosure = screen.getByRole("button", { name: "Effective policy for Project (app + workspace)" });
     expect(disclosure.querySelector("svg")).toBeTruthy();
@@ -200,21 +211,21 @@ it("renders a provider card with a shared toggle, test status, icon actions and 
   render(<Providers initial={[provider]} />);
   const toggle = screen.getByRole("button", { name: "Enable Local" });
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
-  expect(toggle.closest(".provider-card")).toBeTruthy();
+  expect(toggle.closest(".settings-list-group")).toBeTruthy();
   expect(document.querySelector('input[type="checkbox"]')).toBeNull();
   fireEvent.click(toggle);
   await waitFor(() => expect(toggle.getAttribute("aria-pressed")).toBe("false"));
   vi.mocked(providerTestAndFetch).mockResolvedValue({ ok: true, latencyMs: 15, models: [{ id: "fetched", enabled: true }] });
-  fireEvent.click(screen.getByRole("button", { name: "Test & fetch Local" }));
+  choose("Local", "Test & fetch models");
   await waitFor(() => expect(screen.getByText(/1 models · tested/)).toBeTruthy());
-  fireEvent.click(screen.getByRole("button", { name: "Delete Local" }));
+  choose("Local", "Delete");
   expect(screen.getByRole("alertdialog", { name: "Delete Local?" })).toBeTruthy();
-  expect(screen.getByRole("article", { name: "Local provider" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Local provider" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("alertdialog")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Delete Local" }));
+  choose("Local", "Delete");
   fireEvent.click(screen.getByRole("button", { name: "Delete provider" }));
-  await waitFor(() => expect(screen.queryByRole("article", { name: "Local provider" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Local provider" })).toBeNull());
 });
 
 it("defaults roles to the current project and preserves unrelated overrides", async () => {
@@ -227,14 +238,14 @@ it("defaults roles to the current project and preserves unrelated overrides", as
   fireEvent.click(screen.getByText("Add role"));
   fireEvent.change(screen.getAllByLabelText("Name").slice(-1)[0], { target: { value: "beta-only" } });
   expect(screen.getByLabelText("Agent scope")).toHaveProperty("disabled", true);
-  fireEvent.click(screen.getByText("Save policy"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(projectSave).toHaveBeenCalledWith("project-b", { agentPolicy: { subagents: { maxConcurrent: 2, roles: expect.arrayContaining([expect.objectContaining({ name: "beta-only" })]) } } }));
   expect(globalSave).not.toHaveBeenCalled();
   expect(screen.getAllByText("· This project").length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText("Agent scope"), { target: { value: "all" } });
   expect(screen.queryByDisplayValue("beta-only")).toBeNull();
   fireEvent.click(screen.getByText("Add role"));
-  fireEvent.click(screen.getByText("Save policy"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(globalSave).toHaveBeenCalled());
   cleanup();
 });
@@ -245,6 +256,6 @@ it("renders partial project overrides returned with null fields by Rust", () => 
   render(<ProjectAgentPolicy workspace={workspace} appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdate={vi.fn()} />);
   expect(screen.getByDisplayValue("alphaonly")).toBeTruthy();
   expect(screen.getByLabelText("Max concurrent")).toHaveProperty("value", String(defaultAgentPolicy.subagents.maxConcurrent));
-  expect(screen.getByLabelText("Default engine")).toHaveProperty("value", defaultAgentPolicy.defaultEngine);
+  expect(screen.getByLabelText("Engine for this project")).toHaveProperty("value", defaultAgentPolicy.defaultEngine);
   cleanup();
 });

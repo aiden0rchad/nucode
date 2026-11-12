@@ -46,7 +46,7 @@ it("keeps each engine in one row with one action column and only offers needed p
   expect(within(omp).getByRole("button", { name: "Install" })).toBeTruthy();
   expect(within(screen.getByLabelText("Claude Code (ACP) engine")).getByRole("button", { name: "Retry" })).toBeTruthy();
   expect(within(screen.getByRole("combobox", { name: "Default engine" })).getAllByRole("option").map(e => e.textContent)).toEqual(["pi", "Codex"]);
-  expect(screen.getByRole("button", { name: "Add engine" }).closest(".settings-group-title")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Add engine" }).closest(".settings-group-actions")).toBeTruthy();
 });
 
 it("shows progress and Cancel while installing, with no Install action", async () => {

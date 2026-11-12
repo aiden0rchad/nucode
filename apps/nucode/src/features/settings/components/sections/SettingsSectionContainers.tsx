@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ThemeGallery } from "@/features/themes/ThemeGallery";
 import { SettingsCodexSection } from "./SettingsCodexSection";
 import { SettingsComposerSection } from "./SettingsComposerSection";
@@ -17,17 +18,20 @@ import type { SettingsViewOrchestration } from "@settings/hooks/useSettingsViewO
 type SettingsSectionContainersProps = {
   activeSection: CodexSection;
   orchestration: SettingsViewOrchestration;
+  /** Rendered at the end of the Projects page. */
+  projectsExtra?: ReactNode;
 };
 
 export function SettingsSectionContainers({
   activeSection,
   orchestration,
+  projectsExtra,
 }: SettingsSectionContainersProps) {
   if (activeSection === "appearance") {
     return <ThemeGallery settings={orchestration.displaySectionProps.appSettings} update={orchestration.displaySectionProps.onUpdateAppSettings} />;
   }
   if (activeSection === "projects") {
-    return <SettingsProjectsSection {...orchestration.projectsSectionProps} />;
+    return <SettingsProjectsSection {...orchestration.projectsSectionProps}>{projectsExtra}</SettingsProjectsSection>;
   }
   if (activeSection === "environments") {
     return <SettingsEnvironmentsSection {...orchestration.environmentsSectionProps} />;
