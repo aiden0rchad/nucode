@@ -136,7 +136,7 @@ export const Messages = memo(function Messages({
   const {
     bottomRef,
     containerRef,
-    updateAutoScroll,
+    scrollHandlers,
     loadOlderHistory,
     requestAutoScroll,
     expandedItems,
@@ -284,7 +284,7 @@ export const Messages = memo(function Messages({
     <div
       className="messages messages-full"
       ref={containerRef}
-      onScroll={updateAutoScroll}
+      {...scrollHandlers}
     >
       <div className="messages-inner">
         {hasOlderHistory && (

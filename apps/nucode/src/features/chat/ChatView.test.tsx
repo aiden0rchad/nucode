@@ -8,7 +8,7 @@ import { ChatView } from "./ChatView";
 import type { Chat } from "./chat";
 
 let listener: (event: AppServerEvent) => void;
-let nativeDrop: (event: { payload: { type: string; paths: string[] } }) => void;
+let nativeDrop: (event: { payload: { type: string; position?: { x: number; y: number }; paths: string[] } }) => void;
 vi.mock("@services/dragDrop", () => ({ subscribeWindowDragDrop: (callback: typeof nativeDrop) => { nativeDrop = callback; return () => {}; } }));
 vi.mock("@services/events", () => ({ subscribeMenuViewAction: () => () => {}, subscribeAppServerEvents: (callback: typeof listener) => { listener = callback; return () => {}; } }));
 vi.mock("@services/tauri", () => ({ subscribeBrowser: vi.fn().mockResolvedValue(() => {}), browserRequest: vi.fn().mockResolvedValue(undefined), chatRequest: vi.fn(), exportMarkdownFile: vi.fn().mockResolvedValue(null), getAppSettings: vi.fn(), updateAppSettings: vi.fn(), readChatAttachment: vi.fn() }));
@@ -94,12 +94,32 @@ describe("Chat UI", () => {
   it("inlines native Tauri drops before sending, without giving paths to the model", async () => {
     vi.mocked(readChatAttachment).mockResolvedValue({ name: "native.txt", text: "Dropped text" });
     render(<ChatView settings={settings} />); await open();
-    act(() => nativeDrop({ payload: { type: "drop", paths: ["/picked/native.txt"] } }));
+    act(() => nativeDrop({ payload: { type: "drop", position: { x: 0, y: 0 }, paths: ["/picked/native.txt"] } }));
     expect(await screen.findByText("native.txt")).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toHaveProperty("disabled", true));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(chatRequest).toHaveBeenCalledWith("send", { threadId: "chat", input: [{ type: "text", text: "native.txt\n```\nDropped text\n```" }] }));
     expect(readChatAttachment).toHaveBeenCalledWith("/picked/native.txt");
+  });
+  it("stops following a streaming reply once the user scrolls up, and resumes at the bottom", async () => {
+    render(<ChatView settings={settings} />); await open();
+    const log = screen.getByRole("log", { name: "Conversation" });
+    const metrics = { height: 1000 };
+    Object.defineProperty(log, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(log, "scrollHeight", { configurable: true, get: () => metrics.height });
+    const delta = (text: string, height: number) => { metrics.height = height; act(() => listener({ workspace_id: "chats", message: { method: "item/agentMessage/delta", params: { threadId: "chat", itemId: "stream", delta: text } } })); };
+    act(() => listener({ workspace_id: "chats", message: { method: "turn/started", params: { threadId: "chat" } } }));
+    delta("one", 1100);
+    expect(log.scrollTop).toBe(1100);
+    fireEvent.wheel(log, { deltaY: -30 });
+    log.scrollTop = 600;
+    delta(" two", 1200);
+    delta(" three", 1300);
+    expect(log.scrollTop).toBe(600);
+    log.scrollTop = 1250;
+    fireEvent.scroll(log);
+    delta(" four", 1400);
+    expect(log.scrollTop).toBe(1400);
   });
   it("pins, searches, trashes and restores local conversations", async () => {
     render(<ChatView settings={settings} />);
@@ -167,7 +187,7 @@ describe("Chat UI", () => {
     expect(screen.queryByRole("checkbox", { name: "Web" })).toBeNull();
     const image = new File(["png"], "photo.png", { type: "image/png" });
     fireEvent.paste(screen.getByRole("textbox", { name: "Message" }), { clipboardData: { files: [image] } });
-    expect(await screen.findByText("photo.png")).toBeTruthy();
+    expect(await screen.findByAltText("photo.png")).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toHaveProperty("disabled", true));
     const file = new File(["notes"], "notes.txt", { type: "text/plain" });
     Object.defineProperty(file, "text", { value: async () => "notes" });

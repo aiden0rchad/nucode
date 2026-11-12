@@ -34,7 +34,11 @@ import type { AppSettings, WorkRequest, WorkTask } from "@/types";
 import { ComposerQueue } from "@/features/composer/components/ComposerQueue";
 import { isMacPlatform } from "@utils/platformPaths";
 import { checkpointRequest, pickWorkspacePath, pickWorkspacePaths, pickWorkAttachments, workAttachment, workOutput, workRequest } from "@services/tauri";
-import { subscribeWindowDragDrop } from "@services/dragDrop";
+import { useStickToBottom } from "@/features/messages/hooks/useStickToBottom";
+import { useNativeFileDrop } from "@/features/composer/hooks/useNativeFileDrop";
+import { AttachmentTiles } from "@/features/composer/components/AttachmentTiles";
+import { attachmentPreviewSrc } from "@/features/composer/components/ComposerAttachments";
+import { isImagePath } from "@/features/composer/utils/dropPaths";
 import { Markdown } from "@/features/messages/components/Markdown";
 import { TranscriptMessage } from "@/features/messages/components/TranscriptMessage";
 import { isTurnError, TurnErrorCard } from "@/features/messages/components/TurnErrorCard";
@@ -170,24 +174,24 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
     observer.observe(request);
     return () => observer.disconnect();
   }, [task?.id, task?.pending]);
-  const followProgress = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
+  const stick = useStickToBottom(progressRef, { threshold: 64, onScroll: () => setShowLatest(!stick.isAttached()) });
   const scrollToLatest = useCallback(() => {
-    followProgress.current = true;
-    if (progressRef.current) progressRef.current.scrollTop = progressRef.current.scrollHeight;
+    stick.attach();
+    stick.scrollToBottom();
     setShowLatest(false);
-  }, []);
+  }, [stick]);
   useLayoutEffect(scrollToLatest, [task?.id, scrollToLatest]);
   useLayoutEffect(() => {
-    if (followProgress.current) scrollToLatest();
-  }, [work.items, task?.status, task?.pending, task?.error, scrollToLatest]);
+    if (stick.isAttached()) scrollToLatest();
+  }, [work.items, task?.status, task?.pending, task?.error, scrollToLatest, stick]);
   useEffect(() => {
     if (!progressRef.current || !progressContentRef.current || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => { if (followProgress.current) scrollToLatest(); });
+    const observer = new ResizeObserver(() => { if (stick.isAttached()) scrollToLatest(); });
     observer.observe(progressRef.current);
     observer.observe(progressContentRef.current);
     return () => observer.disconnect();
-  }, [task?.id, scrollToLatest]);
+  }, [task?.id, scrollToLatest, stick]);
   useEffect(() => { setFollowAccess(task?.accessMode ?? "ask"); }, [task?.id, task?.accessMode]);
   // A message waiting for the model shows in the transcript; it returns to the composer if the launch stops or fails.
   const sending = task && ["queued", "starting"].includes(task.status) ? task.pendingMessage : undefined;
@@ -201,8 +205,6 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
   const followModel = followSelection?.model ?? task?.model ?? "";
   const followCapability = models.find(m => m.key === followModel)?.reasoning;
   const followEffort = clampReasoning(followCapability, followSelection ? followSelection.effort : task?.effort);
-  const nativeDrop = useRef<(paths: string[]) => void>(() => {});
-  useEffect(() => subscribeWindowDragDrop(event => { setDragOver(event.payload.type === "enter" || event.payload.type === "over"); if (event.payload.type === "drop") nativeDrop.current(event.payload.paths ?? []); }), []);
   const run = async (operation: () => Promise<unknown>) => {
     setBusy(true); work.setError("");
     try { await operation(); return true; } catch (error) { work.setError(String(error)); return false; } finally { setBusy(false); }
@@ -219,7 +221,7 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
     for (const path of paths) added.push(await workAttachment(selectedSpace, path));
     setAttachments(current => [...current, ...added]);
   });
-  nativeDrop.current = paths => { if (!busy && !task) void attach(paths); };
+  const nativeDrop = useNativeFileDrop({ disabled: busy || Boolean(task), onDropPaths: paths => { void attach(paths); } });
   const create = (runNow: boolean) => run(async () => {
     if (busy || dictating || !brief.trim() || !selectedSpace || !model) return;
     const created = await work.mutate<WorkTask>("create", { spaceId: selectedSpace, brief, model, accessMode: access, attachments, runNow, effort: reasoning.level });
@@ -230,6 +232,7 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
     const id = task.id;
     return run(async () => {
       await work.mutate("follow-up", { taskId: id, message, accessMode: followAccess, ...(!active ? { model: followModel, effort: followEffort } : {}) });
+      scrollToLatest();
       if (clearDraft) setDrafts(current => { const next = { ...current }; delete next[id]; return next; });
       setFollowSelections(current => { const next = { ...current }; delete next[id]; return next; });
     });
@@ -244,6 +247,7 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
       const id = task.id;
       void run(async () => {
         await work.mutate("queue-follow-up", { taskId: id, message: followUp, accessMode: followAccess });
+        scrollToLatest();
         setDrafts(current => { const next = { ...current }; delete next[id]; return next; });
       });
       return;
@@ -381,11 +385,7 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
           <button onClick={() => setFolder("")}>Cancel</button></div>
       </section>}
       {task ? <div className="work-task-view">
-        <div className="work-progress" data-task-status={task?.status}><div ref={progressRef} className="chat-scroll" role="log" aria-label="Task progress" aria-live="polite" onScroll={event => {
-          const node = event.currentTarget;
-          followProgress.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 64;
-          setShowLatest(!followProgress.current);
-        }}><div ref={progressContentRef} className="chat-column">
+        <div className="work-progress" data-task-status={task?.status}><div ref={progressRef} className="chat-scroll" role="log" aria-label="Task progress" aria-live="polite" {...stick.handlers}><div ref={progressContentRef} className="chat-column">
           <article className="message chat-message user"><h2>Task brief</h2><Markdown {...fileLinks} codeBlockStyle="message" className="markdown" value={task.brief} showFilePath={false} /><ul>{task.attachments.map(path => <li key={path}>{path}</li>)}</ul></article>
           {(() => { const renderItem = (item: (typeof items)[number]) => {
             if (item === duplicateError) return null;
@@ -441,13 +441,13 @@ export function WorkView({ settings, onOpenSettings = () => {} }: { settings: Ap
         <div className="chat-empty work-empty"><DigitalRain /><span className="chat-eyebrow">A space for getting things done</span><h1>What would you like to make?</h1><p>Bring a folder and a brief. Follow the plan, review requests, and find the finished files here.</p>
 
         </div>
-        <form className="work-composer" aria-label="New task" onSubmit={e => { e.preventDefault(); void create(true); }} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }} onDrop={e => { e.preventDefault(); setDragOver(false); }}>
+        <form ref={nativeDrop.dropTargetRef as React.RefObject<HTMLFormElement>} className="work-composer" aria-label="New task" onSubmit={e => { e.preventDefault(); void create(true); }} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }} onDrop={e => { e.preventDefault(); setDragOver(false); }}>
           <ComposerShell reasoning={{ modelName: formatModelRef(settings, model).name, models: models.map(m => ({ id: m.key, name: m.displayName || m.id, provider: m.provider })), selectedModelId: model, defaultModelId: settings.agentPolicy?.defaultModel ? settings.agentPolicy.defaultModel.providerId + "/" + settings.agentPolicy.defaultModel.modelId : undefined, onSelectModel: setModel, capability, value: reasoning.requested, onChange: reasoning.onChange, disabled: busy, onOpenSettings }} toolbar={<div className="work-fields"><ComposerAccessControl value={access} onChange={setAccess} disabled={busy} /><label className="composer-chip"><Folder aria-hidden /><select aria-label="Space" value={selectedSpace} disabled={busy} onChange={e => { setSpaceId(e.target.value); setAttachments([]); }}><option value="" disabled>Choose a space</option>{writableSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><ChevronDown className="composer-access-chevron" size={14} aria-hidden /></label>
 
 
           </div>} menu={<><button className="ghost icon-button" type="button" aria-label="Queue task" title={!selectedSpace ? "Choose a space first" : !brief.trim() ? "Describe the task to queue" : "Queue task"} disabled={busy || dictating || !brief.trim() || !selectedSpace || !model} onClick={() => { void create(false); }}>Queue task</button><button type="button" disabled={busy || !selectedSpace} title={!selectedSpace ? "Choose a space first" : "Attach files to this space"} onClick={() => { void run(async () => { const paths = await pickWorkAttachments(); if (paths.length) await attach(paths); }); }}>Attach files to space</button></>} actions={<><ComposerDictation settings={settings} disabled={busy} onBusyChange={setDictating} onTranscript={text => setBrief(current => current + (current && !/\s$/.test(current) ? " " : "") + text)} onError={work.setError} onOpenSettings={onOpenSettings} /><ComposerSendButton label="Run now" disabled={busy || dictating || !brief.trim() || !selectedSpace || !model} disabledReason={dictating ? "Finish dictation first" : busy ? "Please wait" : !selectedSpace ? "Choose a space first" : !model ? "Choose a model in Settings" : "Describe the result you want"} onSend={() => { void create(true); }} /></>}>
-          {dragOver && <div className="composer-drop-overlay">Drop attachments into this space</div>}
-          <ul className="chat-attachments">{attachments.map(path => <li key={path}><img src={getFileTypeIconUrl(path)} alt="" />{path.split("/").pop()}<IconButton type="button" aria-label={"Remove " + path} onClick={() => setAttachments(current => current.filter(p => p !== path))}><X aria-hidden /></IconButton></li>)}</ul>
+          {(dragOver || nativeDrop.isDragOver) && <div className="composer-drop-overlay">Drop attachments into this space</div>}
+          <AttachmentTiles disabled={busy} items={attachments.map(path => ({ key: path, name: path.split("/").pop() ?? path, src: isImagePath(path) ? attachmentPreviewSrc(path) : undefined, iconSrc: getFileTypeIconUrl(path), title: path }))} onRemove={path => setAttachments(current => current.filter(p => p !== path))} />
           <label className="work-brief"><textarea writingsuggestions="false" aria-label="Task brief" placeholder="Describe the result you want…" rows={1} value={brief} disabled={busy} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void create(true); } }} onChange={e => setBrief(e.target.value)} /></label>
 
           </ComposerShell>

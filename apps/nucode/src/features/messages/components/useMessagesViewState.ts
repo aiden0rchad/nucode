@@ -7,9 +7,9 @@ import {
   useState,
 } from "react";
 import type { ConversationItem } from "../../../types";
+import { useStickToBottom } from "../hooks/useStickToBottom";
 import { isPlanReadyTaggedMessage } from "../../../utils/internalPlanReadyMessages";
 import {
-  SCROLL_THRESHOLD_PX,
   buildToolGroups,
   collapseChecklistPlans,
   computePlanFollowupState,
@@ -58,7 +58,8 @@ export function useMessagesViewState({
 }: UseMessagesViewStateArgs) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const autoScrollRef = useRef(true);
+  // undefined: thread not seen yet; null: seen, no user message.
+  const lastUserIdRef = useRef<string | null | undefined>(undefined);
   const prependAnchor = useRef<{ threadId: string | null; firstId?: string; height: number; top: number } | null>(null);
   const loadingHistory = useRef(false);
   const copyTimeoutRef = useRef<number | null>(null);
@@ -74,11 +75,14 @@ export function useMessagesViewState({
 
   const scrollKey = `${scrollKeyForItems(items)}-${activeUserInputRequestId ?? "no-input"}`;
 
-  const isNearBottom = useCallback(
-    (node: HTMLDivElement) =>
-      node.scrollHeight - node.scrollTop - node.clientHeight <= SCROLL_THRESHOLD_PX,
-    [],
-  );
+  const stick = useStickToBottom(containerRef, {
+    onScroll: (node) => {
+      if (node.scrollTop <= 40) {
+        void loadOlderHistoryRef.current();
+      }
+    },
+  });
+  const loadOlderHistoryRef = useRef<() => Promise<void>>(async () => {});
 
   const loadOlderHistory = useCallback(async () => {
     const container = containerRef.current;
@@ -86,43 +90,32 @@ export function useMessagesViewState({
       return;
     }
     prependAnchor.current = { threadId, firstId: items[0]?.id, height: container.scrollHeight, top: container.scrollTop };
-    autoScrollRef.current = false;
+    stick.detach();
     loadingHistory.current = true;
     try {
       await onLoadOlderHistory();
     } finally {
       loadingHistory.current = false;
     }
-  }, [hasOlderHistory, isLoadingHistory, onLoadOlderHistory, threadId, items]);
-
-  const updateAutoScroll = useCallback(() => {
-    if (!containerRef.current) {
-      return;
-    }
-    autoScrollRef.current = isNearBottom(containerRef.current);
-    if (containerRef.current.scrollTop <= 40) {
-      void loadOlderHistory();
-    }
-  }, [isNearBottom, loadOlderHistory]);
+  }, [hasOlderHistory, isLoadingHistory, onLoadOlderHistory, threadId, items, stick]);
+  loadOlderHistoryRef.current = loadOlderHistory;
 
   const requestAutoScroll = useCallback(() => {
-    const container = containerRef.current;
-    const shouldScroll =
-      autoScrollRef.current || (container ? isNearBottom(container) : true);
-    if (!shouldScroll) {
+    if (!stick.isAttached()) {
       return;
     }
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+    if (containerRef.current) {
+      stick.scrollToBottom();
       return;
     }
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [isNearBottom]);
+  }, [stick]);
 
   useLayoutEffect(() => {
-    autoScrollRef.current = true;
+    stick.attach();
     prependAnchor.current = null;
-  }, [threadId]);
+    lastUserIdRef.current = undefined;
+  }, [threadId, stick]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -135,17 +128,21 @@ export function useMessagesViewState({
       prependAnchor.current = null;
       return;
     }
-    const shouldScroll =
-      autoScrollRef.current || (container ? isNearBottom(container) : true);
-    if (!shouldScroll) {
+    // Sending a message brings the view back to the bottom.
+    const lastUser = [...items].reverse().find((item) => item.kind === "message" && item.role === "user");
+    if (lastUser && lastUserIdRef.current !== undefined && lastUser.id !== lastUserIdRef.current) {
+      stick.attach();
+    }
+    lastUserIdRef.current = lastUser?.id ?? null;
+    if (!stick.isAttached()) {
       return;
     }
     if (container) {
-      container.scrollTop = container.scrollHeight;
+      stick.scrollToBottom();
       return;
     }
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [scrollKey, items, isThinking, isNearBottom, threadId, isLoadingHistory]);
+  }, [scrollKey, items, isThinking, threadId, isLoadingHistory, stick]);
 
   useEffect(() => {
     return () => {
@@ -329,7 +326,7 @@ export function useMessagesViewState({
   return {
     bottomRef,
     containerRef,
-    updateAutoScroll,
+    scrollHandlers: stick.handlers,
     loadOlderHistory,
     requestAutoScroll,
     expandedItems,

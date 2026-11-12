@@ -16,7 +16,9 @@ import { getFileTypeIconUrl } from "@utils/fileTypeIcons";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings } from "@/types";
 import { chatRequest, exportMarkdownFile, getAppSettings, updateAppSettings, readChatAttachment } from "@services/tauri";
-import { subscribeWindowDragDrop } from "@services/dragDrop";
+import { useStickToBottom } from "@/features/messages/hooks/useStickToBottom";
+import { useNativeFileDrop } from "@/features/composer/hooks/useNativeFileDrop";
+import { AttachmentTiles } from "@/features/composer/components/AttachmentTiles";
 import { TranscriptMessage } from "@/features/messages/components/TranscriptMessage";
 import { formatModelRef, modelKey, modelRef } from "@/features/settings/registry";
 import { ModeSwitcher, useModeSettings } from "./ModeShell";
@@ -54,7 +56,8 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
   const [newWeb, setNewWeb] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useStickToBottom(scroller);
   const active = chat.chats.find(c => c.id === chat.active);
   const capability = models.find(m => m.key === model)?.reasoning;
   const reasoning = useReasoningSelection(model, chat.active, capability);
@@ -62,18 +65,13 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
   const lastUser = users[users.length - 1];
   const supportsImages = models.find(m => m.key === model)?.supportsImages !== false;
   const disabled = busy || chat.running;
-  const nativeDrop = useRef<(paths: string[]) => void>(() => {});
   useEffect(() => {
     if (import.meta.env.MODE === "uipreview" && new URLSearchParams(window.location.search).get("composer") === "attachments") {
       void import("@/dev/uiPreview/fixtures").then(({ composerAttachments }) => setAttachments(composerAttachments));
     }
   }, []);
-  useEffect(() => subscribeWindowDragDrop(event => {
-    setDragOver(event.payload.type === "enter" || event.payload.type === "over"); if (event.payload.type === "drop") nativeDrop.current(event.payload.paths ?? []);
-  }), []);
-
-  useEffect(() => { if (active?.model) setModel(`${active.modelProvider}/${active.model}`); }, [active?.id, active?.model, active?.modelProvider]);
-  useEffect(() => { end.current?.scrollIntoView?.({ block: "end" }); }, [chat.messages]);
+  useEffect(() => { stick.attach(); }, [chat.active, stick]);
+  useEffect(() => { stick.followIfAttached(); }, [chat.messages, chat.running, stick]);
   const run = async (operation: () => Promise<unknown>) => {
     setBusy(true); chat.setError("");
     try { await operation(); return true; } catch (e) { chat.setError(String(e)); return false; } finally { setBusy(false); }
@@ -84,7 +82,7 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
     const added = await Promise.all(files.map(file => readAttachment(file, supportsImages)));
     setAttachments(current => [...current, ...added]);
   }); };
-  nativeDrop.current = paths => {
+  const nativeDrop = useNativeFileDrop({ disabled, onDropPaths: paths => {
     if (disabled || !paths.length) return;
     void run(async () => {
       if (attachments.length + paths.length > 31) throw new Error("Attach at most 31 files.");
@@ -92,7 +90,7 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
       if (!supportsImages && added.some(a => a.url)) throw new Error("This model does not support images.");
       setAttachments(current => [...current, ...added.map(a => a.text !== undefined ? { ...a, text: inlineAttachment(a.name, a.text) } : a)]);
     });
-  };
+  } });
   // While a response runs, Cmd/Ctrl+Enter adds the message to it when steering is on; Chat never queues.
   const canSteer = settings.steerEnabled;
   const interruptShortcut = isMacPlatform() ? "⌘Enter" : "Ctrl+Enter";
@@ -100,6 +98,7 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
     if (busy || dictating || (chat.running && !canSteer) || (!draft.trim() && !attachments.length)) return;
     const text = [draft, ...attachments.flatMap(a => a.text ? [a.text] : [])].filter(Boolean).join("\n\n");
     const images = attachments.flatMap(a => a.url ? [a.url] : []);
+    stick.attach();
     void run(async () => {
       if (chat.running) await chat.steer(text, images);
       else await chat.send(text, images, model || null, editing, newWeb, reasoning.level);
@@ -151,16 +150,15 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
     </aside>
     <main className={`chat-main${!chat.messages.length ? " is-empty" : ""}`}>
 
-      <div className="chat-scroll" role="log" aria-label="Conversation" aria-live="polite">
+      <div ref={scroller} className="chat-scroll" role="log" aria-label="Conversation" aria-live="polite" {...stick.handlers}>
         <div className="chat-column">
           {!chat.messages.length && <div className="chat-empty"><DigitalRain /><span className="chat-eyebrow">A little room to think</span><h1>What’s on your mind?</h1><p>Ask a question, explore an idea, or bring something to read.</p></div>}
           {chat.messages.map(message => <TranscriptMessage key={message.id} role={message.role} text={message.text} images={message.images} actions={<><IconButton type="button" className="ghost" aria-label="Copy message" title="Copy message" onClick={() => { void navigator.clipboard.writeText(message.text).catch(() => chat.setError("Could not copy message.")); }}><Copy aria-hidden /></IconButton>{message.id === lastUser?.id && <IconButton className="ghost" aria-label="Edit and resend" title="Edit and resend" disabled={disabled} onClick={() => { setDraft(message.text); setAttachments(message.images?.map((url, i) => ({ name: `Image ${i + 1}`, url })) ?? []); setEditing(message.id); composerInput.current?.focus(); }}><Pencil aria-hidden /></IconButton>}{message.role === "assistant" && message.id === chat.messages[chat.messages.length - 1]?.id && lastUser && <IconButton className="ghost" aria-label="Regenerate last answer" title="Regenerate last answer" disabled={disabled} onClick={() => { void run(() => chat.send(lastUser.text, lastUser.images ?? [], model || null, lastUser.id, web, reasoning.level)); }}><RotateCcw aria-hidden /></IconButton>}</>} />)}
 
           {chat.running && <div className="chat-typing" aria-hidden><span /><span /><span /></div>}
-          <div ref={end} />
         </div>
       </div>
-      <form className="chat-composer chat-column" onSubmit={e => { e.preventDefault(); send(); }} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }} onDrop={e => { e.preventDefault(); setDragOver(false); if (!disabled) addFiles(Array.from(e.dataTransfer.files)); }}>
+      <form ref={nativeDrop.dropTargetRef as React.RefObject<HTMLFormElement>} className="chat-composer chat-column" onSubmit={e => { e.preventDefault(); send(); }} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }} onDrop={e => { e.preventDefault(); setDragOver(false); if (!disabled) addFiles(Array.from(e.dataTransfer.files)); }}>
         {(chat.running || chat.turnStatus === "interrupted" || chat.turnStatus === "failed") && <p role="status" className={`chat-turn-state${chat.running ? "" : ` is-${chat.turnStatus}`}`}>
           <strong>{chat.running ? "Working" : chat.turnStatus === "interrupted" ? "Stopped" : "Failed"}</strong>
           {chat.running ? canSteer ? ` · ${interruptShortcut} interrupts this reply and sends yours` : " · You can stop this response below" : chat.turnStatus === "interrupted" ? " · Send a follow-up to continue, or regenerate the last answer" : " · Review the error, then retry or choose another model"}
@@ -172,8 +170,8 @@ export function ChatView({ settings, onOpenSettings = () => {} }: { settings: Ap
           updateSettings?.(updated);
           setDefaultModel(value);
         }); }}>{defaultModel === model ? "Use policy default" : "Make chat default"}</button></>} toolbar={<>{web && <button type="button" className="composer-chip" disabled={disabled} onClick={toggleWeb} title="Turn off Web"><Globe aria-hidden />Web<X aria-hidden /></button>}</>} actions={<> <ComposerDictation settings={settings} disabled={busy || chat.running} onBusyChange={setDictating} onTranscript={text => setDraft(current => current + (current && !/\s$/.test(current) ? " " : "") + text)} onError={chat.setError} onOpenSettings={onOpenSettings} /><ComposerSendButton running={chat.running} runningHint={canSteer ? `${interruptShortcut} to interrupt and send; Shift+Enter for a new line` : undefined} disabled={busy || dictating || !model || (chat.running && !canSteer) || (!draft.trim() && !attachments.length)} disabledReason={dictating ? "Finish dictation first" : busy ? "Please wait" : !model ? "Choose a model in Settings" : "Write a message or add an attachment"} onSend={send} onStop={() => { void run(() => chatRequest("stop", { threadId: chat.active })); }} /></>}>
-        {dragOver && <div className="composer-drop-overlay">Drop files or images</div>}
-        {!!attachments.length && <ul className="chat-attachments">{attachments.map((a, index) => <li key={index}><img src={a.url || getFileTypeIconUrl(a.name)} alt="" />{a.name}<IconButton type="button" disabled={busy} aria-label={`Remove ${a.name}`} onClick={() => setAttachments(current => current.filter((_, i) => i !== index))}><X aria-hidden /></IconButton></li>)}</ul>}
+        {(dragOver || nativeDrop.isDragOver) && <div className="composer-drop-overlay">Drop files or images</div>}
+        <AttachmentTiles disabled={busy} items={attachments.map((a, index) => ({ key: String(index), name: a.name, src: a.url, iconSrc: a.url ? undefined : getFileTypeIconUrl(a.name) }))} onRemove={key => setAttachments(current => current.filter((_, i) => String(i) !== key))} />
         {editing && <div className="chat-editing">Editing the last message · creates a new branch <button type="button" onClick={() => { clearDraft(); composerInput.current?.focus(); }}>Cancel</button></div>}
         <textarea writingsuggestions="false" ref={composerInput} aria-label="Message" placeholder="Ask anything" rows={1} value={draft} disabled={busy} onChange={e => setDraft(e.target.value)} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); if (!disabled) addFiles(files); } }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); /* Interrupting a running reply takes Cmd/Ctrl+Enter, so plain Enter can never stop it by accident. */ if (!chat.running || e.metaKey || e.ctrlKey) send(); } }} />
 
