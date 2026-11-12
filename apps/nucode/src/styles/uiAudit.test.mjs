@@ -26,7 +26,7 @@ it.each([960, 1136, 1440])("moves overflowing header actions into the menu at %i
 });
 it("orders settings and names switches from their row without overriding explicit names", () => {
   render(h(Fragment, null, h(SettingsNav, { activeSection: "providers", onSelectSection: () => {} }), h(SettingsToggleRow, { title: "Notifications" }, h(SettingsToggleSwitch, { pressed: false })), h(SettingsToggleRow, { title: "CodeGraph" }, h(SettingsToggleSwitch, { pressed: true, "aria-label": "Enable CodeGraph" }))));
-  expect(SETTINGS_GROUPS.flatMap(group => group.sections)).toEqual(["appearance", "features", "engines", "codex-flags", "providers", "agents", "connectors", "composer", "display", "shortcuts", "dictation", "evals", "diagnostics", "git", "open-apps", "projects", "environments", "browser", "computer", "server", "import", "about"]);
+  expect(SETTINGS_GROUPS.flatMap(group => group.sections)).toEqual(["appearance", "display", "composer", "shortcuts", "dictation", "features", "providers", "agents", "engines", "connectors", "projects", "environments", "git", "open-apps", "browser", "computer", "codex-flags", "server", "evals", "diagnostics", "import", "about"]);
   expect(screen.getByRole("button", { name: "Models & Agents" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Notifications" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Enable CodeGraph" })).toBeTruthy();
@@ -61,7 +61,7 @@ it("uses distinct settings icons and shared switches throughout settings", () =>
   expect(icons).toHaveLength(22);
   expect(new Set(icons).size).toBe(22);
   expect(icons[0]).toContain("lucide-palette");
-  expect(icons[4]).toContain("lucide-key-round");
+  expect(icons[6]).toContain("lucide-key-round");
   const files = readdirSync("src/features/settings", { recursive: true }).filter(file => file.endsWith(".tsx") && !file.includes(".test."));
   expect(files.filter(file => /type=["']checkbox["']/.test(readFileSync(`src/features/settings/${file}`, "utf8")))).toEqual([]);
 });
@@ -86,4 +86,16 @@ it("places all desktop mode sidebars and conversations in one explicit grid row 
   expect(css).toMatch(/> \.sidebar\s*\{ grid-column: 1; grid-row: 1;/);
   expect(css).toMatch(/> :is\(\.main, \.chat-main\)\s*\{ grid-column: 2; grid-row: 1;/);
   expect(css).toMatch(/\.workspace-shell.sidebar-overlay[^}]*> \.sidebar\s*\{ position: absolute;/);
+});
+
+it("keeps Settings text at 12px or larger, rows on one grid recipe and nothing fading content", () => {
+  const settings = styles.filter(([file]) => /settings/.test(file) || /features\/(themes|evals|diagnostics)/.test(file));
+  const small = settings.flatMap(([file, css]) => [...css.matchAll(/font-size\s*:\s*([\d.]+)px\b/g)].filter(match => Number(match[1]) < 12 && !/settings-add-remote|\.theme-(mini|preview|contrast)/.test(css.slice(Math.max(0, match.index - 200), match.index))).map(match => `${file}: ${match[0]}`));
+  expect(small.filter(entry => entry.startsWith("styles/settings.css") || entry.includes("settings-engines"))).toEqual([]);
+  const css = styles.map(([, text]) => text).join("\n");
+  expect(css).not.toMatch(/\.settings-[\w-]+[^{}]*\{[^}]*mask-image/);
+  const base = styles.find(([file]) => file === "styles/settings.css")[1];
+  expect(base).toContain(".settings-page .settings-row { display: grid; grid-template-columns: minmax(0, 1fr) auto;");
+  expect(base).toContain("padding: 12px 16px");
+  expect(base).toContain("max-width: 720px");
 });

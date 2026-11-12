@@ -30,7 +30,8 @@ it("uses shared settings pages, groups and rows in every section, with independe
     fireEvent.click(within(dialog).getByRole("button", { name: SETTINGS_SECTION_LABELS[section] }));
     await waitFor(() => expect(dialog.querySelector(".settings-page"), section).toBeTruthy());
     expect(dialog.querySelector(".settings-page .settings-group"), section).toBeTruthy();
-    expect(dialog.querySelector(".settings-page .settings-row"), section).toBeTruthy();
+    // Appearance is a theme gallery: its rows appear only for the system theme.
+    if (section !== "appearance") expect(dialog.querySelector(".settings-page .settings-row"), section).toBeTruthy();
     expect(dialog.querySelector('fieldset, input[type="checkbox"], input[type="radio"]'), section).toBeNull();
     expect(within(dialog).queryByText("Engine runtimes"), section).toBeNull();
     for (const details of dialog.querySelectorAll(".settings-project-row")) details.open = true;
@@ -54,8 +55,7 @@ it("uses shared settings pages, groups and rows in every section, with independe
   expect(within(dialog).getByText(value, { selector: ".settings-select-label" })).toBeTruthy();
   expect(within(dialog).getByText("GPT-5 mini · Extended reasoning", { selector: ".settings-select-label" })).toBeTruthy();
   const typing = within(dialog).getByRole("combobox", { name: "Typing confirmation" }).closest(".settings-control-row");
-  expect(typing.querySelector(".settings-field-row .settings-control-help")).toBeNull();
-  expect(typing.querySelector(":scope > .settings-control-help").textContent).toContain("Sensitive mode allows typing");
+  expect(typing.querySelector(".settings-field-info").textContent).toContain("Typing in ordinary text fields");
   for (const trigger of dialog.querySelectorAll(".settings-select-label")) {
     expect(getComputedStyle(trigger).whiteSpace).toBe("nowrap");
     expect(getComputedStyle(trigger).textOverflow).toBe("ellipsis");
@@ -69,10 +69,10 @@ it("uses shared settings pages, groups and rows in every section, with independe
   fireEvent.keyDown(mode, { key: "Escape" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Manage" }));
   expect(within(dialog).getByRole("heading", { name: "Engines" })).toBeTruthy();
-  expect(await within(dialog).findByText("Installed and available engines")).toBeTruthy();
+  expect(await within(dialog).findByText("Engines that are on can be chosen when starting a thread.")).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "Models & Agents" }));
   const tabs = within(dialog).getByRole("tablist", { name: "Models & Agents tabs" });
-  expect(within(tabs).getAllByRole("tab").map(button => button.textContent)).toEqual(["Defaults", "Subagents", "Roles", "Engines"]);
+  expect(within(tabs).getAllByRole("tab").map(button => button.textContent)).toEqual(["Defaults", "Subagents", "Roles"]);
   for (const name of ["Defaults", "Subagents", "Roles"]) {
     fireEvent.click(within(tabs).getByRole("tab", { name }));
     expect(within(dialog).queryByText("Engine runtimes")).toBeNull();
@@ -84,8 +84,8 @@ it("uses shared settings pages, groups and rows in every section, with independe
 it("uses roomy dialog and row tokens with an opaque dialog and a fading translucent scrim", () => {
   expect(settingsStyles).toContain("width: min(1180px, 94vw)");
   expect(settingsStyles).toContain("height: min(900px, 92vh)");
-  expect(settingsStyles).toContain("minmax(0, 1fr) clamp(280px, 38%, 420px)");
-  expect(settingsStyles).toContain(".settings-window { background: var(--surface-app); }");
+  expect(settingsStyles).toContain("grid-template-columns: minmax(0, 1fr) auto");
+  expect(settingsStyles).toMatch(/\.settings-window \{[^}]*background: var\(--surface-app\)/);
   expect(settingsStyles).toContain("background: rgba(0, 0, 0, 0.62)");
   expect(settingsStyles).toContain(':root[data-theme="light"] .settings-overlay > .ds-modal-backdrop { background: rgba(15, 15, 20, 0.28); }');
   expect(settingsStyles).toContain("animation-duration: 150ms");

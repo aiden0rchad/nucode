@@ -6,7 +6,7 @@ import { FeatureSettings } from "@settings/features";
 import { SettingsNucodeFeaturesSection } from "./sections/SettingsNucodeFeaturesSection";
 import { SettingsEnginesSection } from "./sections/SettingsEnginesSection";
 import { useState } from "react";
-import { SettingsPage, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsGroup, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { SettingsProvidersSection, SettingsAgentPolicySection, ProjectAgentPolicy } from "./sections/SettingsRegistrySections";
 import { SettingsConnectorsSection } from "./sections/SettingsConnectorsSection";
 import { SettingsImportSection } from "./sections/SettingsImportSection";
@@ -31,7 +31,6 @@ import { SETTINGS_SECTION_LABELS } from "./settingsViewConstants";
 import { SettingsSectionContainers } from "./sections/SettingsSectionContainers";
 import { SettingsComputerSection } from "./sections/SettingsComputerSection";
 import { SettingsBrowserSection } from "./sections/SettingsBrowserSection";
-import { SettingsRuntimeSetup } from "./sections/SettingsRuntimeSetup";
 
 export type SettingsViewProps = {
   activeWorkspace?: WorkspaceInfo | null;
@@ -212,16 +211,13 @@ export function SettingsView({
                activeSection === "import" ? <SettingsImportSection /> :
                activeSection === "providers" ? <SettingsProvidersSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} /> :
                activeSection === "connectors" ? <SettingsConnectorsSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} workspace={activeWorkspace} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} /> :
-               activeSection === "agents" ? <SettingsPage title="Models & Agents" subtitle="Choose defaults, delegate work and manage engine runtimes.">
-                 <SettingsSegmented tabs label="Models & Agents tabs" value={agentTab} options={["defaults", "subagents", "roles", "engines"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} onChange={setAgentTab} />
-                 {agentTab === "engines" ? <><SettingsRuntimeSetup /><details><summary>Codex engine</summary><SettingsSectionContainers activeSection="codex" orchestration={orchestration} /></details><details><summary>Engine features</summary><SettingsSectionContainers activeSection="codex-flags" orchestration={orchestration} /></details></> :
-                 <SettingsAgentPolicySection key={`${activeWorkspace?.id ?? "global"}-${agentTab}`} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} tab={agentTab as "defaults" | "subagents" | "roles"} appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} workspace={activeWorkspace} />}
-               </SettingsPage> :
+               activeSection === "agents" ? <SettingsAgentPolicySection key={`${activeWorkspace?.id ?? "global"}-${agentTab}`} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} tab={agentTab as "defaults" | "subagents" | "roles"} appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} workspace={activeWorkspace} onManageEngines={manageEngines}
+                 pageTabs={<SettingsSegmented tabs label="Models & Agents tabs" value={agentTab} options={["defaults", "subagents", "roles"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} onChange={setAgentTab} />} /> :
                <SettingsSectionContainers
                 activeSection={activeSection}
                 orchestration={orchestration}
+                projectsExtra={groupedWorkspaces.some(g => g.workspaces.length) ? <SettingsGroup title="Agent policy" subtitle="Override the app's agent policy for a single project."><div className="settings-card-block settings-policy-list">{groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}</div></SettingsGroup> : null}
               />}
-              {activeSection === "projects" && groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}
             </div>
           </div>
         )}

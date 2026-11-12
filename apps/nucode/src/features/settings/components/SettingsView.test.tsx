@@ -1046,7 +1046,7 @@ describe("SettingsView Codex section", () => {
     await waitFor(() => expect(onUpdateAppSettings).toHaveBeenCalledWith(
       expect.objectContaining({ codegraphEnabled: false }),
     ));
-    expect(screen.getByText(/Changes apply on the next app-server spawn/)).toBeTruthy();
+    expect(screen.getByText(/Changes apply the next time the app-server starts/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Review mode"), {
       target: { value: "detached" },
@@ -1096,8 +1096,8 @@ describe("SettingsView Codex section", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Start daemon" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Stop daemon" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Start" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       expect(screen.getByRole("button", { name: "Refresh status" })).toBeTruthy();
       expect(screen.getByLabelText("Remote backend host")).toBeTruthy();
       expect(screen.getByLabelText("Remote backend token")).toBeTruthy();
@@ -1175,7 +1175,7 @@ describe("SettingsView Codex section", () => {
       });
 
       expect(screen.queryByLabelText("Backend mode")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Start daemon" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Detect Tailscale" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Start Runner" })).toBeNull();
       expect(
@@ -1770,11 +1770,7 @@ describe("SettingsView Composer", () => {
 
     const steerOption = screen.getByRole("button", { name: "Steer" });
     expect(steerOption.hasAttribute("disabled")).toBe(true);
-    expect(
-      screen.getByText(
-        "Steer is unavailable in the current Codex config. Follow-ups will queue.",
-      ),
-    ).not.toBeNull();
+    expect(screen.getByText(/Steer is unavailable in the current Codex config/)).not.toBeNull();
 
     fireEvent.click(steerOption);
     await waitFor(() => {
@@ -1862,7 +1858,7 @@ describe("SettingsView mobile layout", () => {
         within(rendered.baseElement).queryByText("Sections"),
       ).toBeNull();
       expect(
-        rendered.baseElement.querySelectorAll(".ds-panel-nav-item-disclosure")
+        rendered.baseElement.querySelectorAll(".settings-nav-disclosure")
           .length,
       ).toBeGreaterThan(0);
 

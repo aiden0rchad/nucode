@@ -82,7 +82,7 @@ export const SETTINGS_SECTION_LABELS: Record<CodexSection, string> = {
   composer: "Composer",
   dictation: "Dictation",
   shortcuts: "Shortcuts",
-  "open-apps": "Open in",
+  "open-apps": "Open in apps",
   git: "Git",
   server: "Server",
   agents: "Models & Agents",
