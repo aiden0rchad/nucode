@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/react";
 import { subscribeImportsChanged } from "@services/events";
 import type {
   CollabAgentRef,
+  ConversationItem,
   CustomPromptOption,
   DebugEntry,
   ServiceTier,
@@ -835,8 +836,30 @@ export function useThreads({
     [archiveThread, unpinThread],
   );
 
+  const markThreadUnread = useCallback(
+    (threadId: string, hasUnread: boolean) => {
+      dispatch({ type: "markUnread", threadId, hasUnread });
+    },
+    [],
+  );
+
+  // Items of any thread, loaded the way opening it would, without switching the visible thread.
+  const loadThreadItems = useCallback(
+    async (workspaceId: string, threadId: string): Promise<ConversationItem[]> => {
+      if (!hasLocalThreadSnapshot(threadId)) {
+        await resumeThreadForWorkspace(workspaceId, threadId);
+        // Let the dispatched history render so the items ref catches up.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return itemsByThreadRef.current[threadId] ?? [];
+    },
+    [hasLocalThreadSnapshot, itemsByThreadRef, resumeThreadForWorkspace],
+  );
+
   return {
     activeThreadId,
+    markThreadUnread,
+    loadThreadItems,
     historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
     setActiveThreadId,
     hasLocalThreadSnapshot,

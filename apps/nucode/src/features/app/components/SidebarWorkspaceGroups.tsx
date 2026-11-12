@@ -12,6 +12,7 @@ import {
   PopoverMenuItem,
   PopoverSurface,
 } from "../../design-system/components/popover/PopoverPrimitives";
+import { PinnedThreadList } from "./PinnedThreadList";
 import { ThreadList } from "./ThreadList";
 import { ThreadLoading } from "./ThreadLoading";
 import { WorkspaceCard } from "./WorkspaceCard";
@@ -24,8 +25,14 @@ import type {
   WorkspaceGroupSection,
 } from "./sidebarTypes";
 
+type SectionChatRow = { thread: ThreadSummary; depth: number; workspaceId: string };
+
 type SidebarWorkspaceGroupsProps = {
   groups: WorkspaceGroupSection[];
+  /** Chats filed under a section, listed under its header above its projects. */
+  sectionChatRows?: Map<string, SectionChatRow[]>;
+  isWorkspacePinned?: (workspaceId: string) => boolean;
+  getWorkspaceLabel?: (workspaceId: string) => string | null;
   onReorderWorkspace?: (id: string, targetId: string, position: DropPosition) => void;
   onMoveWorkspace?: (id: string, direction: "up" | "down") => void;
   hasWorkspaceGroups: boolean;
@@ -94,6 +101,8 @@ type SidebarWorkspaceGroupsProps = {
 type SidebarWorkspaceEntryProps = Omit<
   SidebarWorkspaceGroupsProps,
   | "groups"
+  | "sectionChatRows"
+  | "getWorkspaceLabel"
   | "hasWorkspaceGroups"
   | "collapsedGroups"
   | "ungroupedCollapseId"
@@ -106,6 +115,7 @@ type SidebarWorkspaceEntryProps = Omit<
 function SidebarWorkspaceEntry({
   workspace,
   reorderProps,
+  isWorkspacePinned,
   cloneChildIds,
   clonesBySource,
   worktreesByParent,
@@ -212,6 +222,7 @@ function SidebarWorkspaceEntry({
     <WorkspaceCard
       workspace={workspace}
       reorderProps={reorderProps}
+      isPinned={isWorkspacePinned?.(workspace.id) ?? false}
       workspaceName={renderHighlightedName(workspace.name)}
       summary={
         displayThreadRootCount > 0
@@ -408,6 +419,8 @@ export function SidebarWorkspaceGroups({
   toggleGroupCollapse,
   onReorderWorkspace,
   onMoveWorkspace,
+  sectionChatRows,
+  getWorkspaceLabel,
   ...entryProps
 }: SidebarWorkspaceGroupsProps) {
   const reorderRow = useSidebarReorder(onReorderWorkspace, onMoveWorkspace);
@@ -427,11 +440,28 @@ export function SidebarWorkspaceGroups({
         isSelected={group.workspaces.some(workspace => workspace.id === entryProps.activeWorkspaceId)}
         onToggleCollapse={toggleGroupCollapse}
       >
+        {group.id && sectionChatRows?.get(group.id) && (
+          <PinnedThreadList
+            className="section-thread-list"
+            rows={sectionChatRows.get(group.id) ?? []}
+            activeWorkspaceId={entryProps.activeWorkspaceId}
+            activeThreadId={entryProps.activeThreadId}
+            threadStatusById={entryProps.threadStatusById}
+            pendingUserInputKeys={entryProps.pendingUserInputKeys}
+            getWorkspaceLabel={getWorkspaceLabel}
+            getThreadTime={entryProps.getThreadTime}
+            getThreadArgsBadge={entryProps.getThreadArgsBadge}
+            isThreadPinned={entryProps.isThreadPinned}
+            onTogglePin={entryProps.onTogglePin}
+            onSelectThread={entryProps.onSelectThread}
+            onShowThreadMenu={entryProps.onShowThreadMenu}
+          />
+        )}
         {group.workspaces.map((workspace) => (
           <SidebarWorkspaceEntry
             key={workspace.id}
             workspace={workspace}
-            reorderProps={reorderRow(workspace.id, JSON.stringify(group.id), !entryProps.isSearchActive && (workspace.kind ?? "main") === "main" && !entryProps.cloneChildIds.has(workspace.id))}
+            reorderProps={reorderRow(workspace.id, JSON.stringify(group.id), !entryProps.isSearchActive && (workspace.kind ?? "main") === "main" && !entryProps.cloneChildIds.has(workspace.id) && !entryProps.isWorkspacePinned?.(workspace.id))}
             {...entryProps}
           />
         ))}

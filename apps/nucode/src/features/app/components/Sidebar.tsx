@@ -2,6 +2,7 @@ import { useThreadOrder } from "../hooks/useThreadOrder";
 import type { DropPosition } from "../hooks/useSidebarReorder";
 import { SidebarProjects } from "./SidebarTree";
 import type {
+  ConversationItem,
   RequestUserInputRequest,
   ThreadListOrganizeMode,
   ThreadListSortKey,
@@ -35,6 +36,8 @@ import type {
 import { useCollapsedGroups } from "../hooks/useCollapsedGroups";
 import { useMenuController } from "../hooks/useMenuController";
 import { useSidebarMenus } from "../hooks/useSidebarMenus";
+import { useProjectPins } from "../hooks/useProjectPins";
+import { useThreadSections } from "../hooks/useThreadSections";
 import { useSidebarScrollFade } from "../hooks/useSidebarScrollFade";
 import { useThreadRows } from "../hooks/useThreadRows";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
@@ -45,6 +48,7 @@ const COLLAPSED_GROUPS_STORAGE_KEY = "codexmonitor.collapsedGroups";
 const UNGROUPED_COLLAPSE_ID = "__ungrouped__";
 const ADD_MENU_WIDTH = 200;
 const ALL_THREADS_ADD_MENU_WIDTH = 220;
+const NO_SECTIONS: Array<{ id: string; name: string }> = [];
 
 function getThreadBucketId(timestamp: number, nowMs: number): ThreadBucket["id"] {
   const now = new Date(nowMs);
@@ -146,6 +150,14 @@ type SidebarProps = {
   onDeleteWorktree: (workspaceId: string) => void;
   onLoadOlderThreads: (workspaceId: string) => void;
   onReloadWorkspaceThreads: (workspaceId: string) => void;
+  /** Sections (workspace groups) a project or chat can be filed under, in display order. */
+  workspaceSections?: Array<{ id: string; name: string }>;
+  onCreateSection?: (name: string) => Promise<string | null>;
+  onAssignWorkspaceSection?: (workspaceId: string, sectionId: string | null) => void;
+  onEditProject?: (workspaceId: string) => void;
+  onSetThreadUnread?: (workspaceId: string, threadId: string, unread: boolean) => void;
+  onForkThread?: (workspaceId: string, threadId: string) => void;
+  loadThreadItems?: (workspaceId: string, threadId: string) => Promise<ConversationItem[]>;
   workspaceDropTargetRef: RefObject<HTMLElement | null>;
   isWorkspaceDropActive: boolean;
   workspaceDropText: string;
@@ -204,6 +216,13 @@ export const Sidebar = memo(function Sidebar({
   onDeleteWorktree,
   onLoadOlderThreads,
   onReloadWorkspaceThreads,
+  workspaceSections = NO_SECTIONS,
+  onCreateSection,
+  onAssignWorkspaceSection,
+  onEditProject,
+  onSetThreadUnread,
+  onForkThread,
+  loadThreadItems,
   workspaceDropTargetRef,
   isWorkspaceDropActive,
   workspaceDropText,
@@ -263,7 +282,9 @@ export const Sidebar = memo(function Sidebar({
       pinThread(workspaceId, threadId);
     }
   };
-  const { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu } =
+  const projectPins = useProjectPins();
+  const threadSections = useThreadSections();
+  const { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu, menu } =
     useSidebarMenus({
       onDeleteThread,
       onSyncThread,
@@ -274,6 +295,22 @@ export const Sidebar = memo(function Sidebar({
       onReloadWorkspaceThreads,
       onDeleteWorkspace,
       onDeleteWorktree,
+      workspaces,
+      threadsByWorkspace,
+      threadParentById,
+      threadStatusById,
+      sections: workspaceSections,
+      onCreateSection,
+      isProjectPinned: projectPins.isProjectPinned,
+      onPinProject: projectPins.pinProject,
+      onUnpinProject: projectPins.unpinProject,
+      onEditProject,
+      onAssignProjectSection: onAssignWorkspaceSection,
+      getThreadSection: threadSections.getThreadSection,
+      onSetThreadSection: threadSections.setThreadSection,
+      onSetThreadUnread,
+      onForkThread,
+      loadThreadItems,
     });
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const normalizedQuery = debouncedQuery.trim().toLowerCase();
@@ -722,6 +759,160 @@ export const Sidebar = memo(function Sidebar({
       : filteredGroupedWorkspaces;
   const isThreadsOnlyMode = threadListOrganizeMode === "threads_only";
 
+  // Chats filed under a section leave their project list and are listed under the
+  // section header instead. A stored section that no longer exists means "no section".
+  const sectionIds = useMemo(
+    () => new Set(workspaceSections.map((section) => section.id)),
+    [workspaceSections],
+  );
+  const { getThreadSection } = threadSections;
+  const { projectThreadsByWorkspace, sectionThreadLists } = useMemo(() => {
+    const lists = new Map<string, Array<{ workspaceId: string; threads: ThreadSummary[] }>>();
+    if (sectionIds.size === 0) {
+      return { projectThreadsByWorkspace: threadsByWorkspace, sectionThreadLists: lists };
+    }
+    const project: Record<string, ThreadSummary[]> = { ...threadsByWorkspace };
+    workspaces.forEach((workspace) => {
+      if ((workspace.kind ?? "main") !== "main" || workspace.settings.cloneSourceWorkspaceId?.trim()) {
+        return;
+      }
+      const threads = threadsByWorkspace[workspace.id] ?? [];
+      const sectionByRoot = new Map<string, string>();
+      threads.forEach((thread) => {
+        if (thread.isSubagent || thread.sideOf || threadParentById[thread.id]) {
+          return;
+        }
+        const sectionId = getThreadSection(workspace.id, thread.id);
+        if (sectionId && sectionIds.has(sectionId) && getPinTimestamp(workspace.id, thread.id) === null) {
+          sectionByRoot.set(thread.id, sectionId);
+        }
+      });
+      if (sectionByRoot.size === 0) {
+        return;
+      }
+      const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
+      const ownerSection = (threadId: string) => {
+        const seen = new Set<string>();
+        let current: string | undefined = threadId;
+        while (current && !seen.has(current)) {
+          seen.add(current);
+          const sectionId = sectionByRoot.get(current);
+          if (sectionId) {
+            return sectionId;
+          }
+          current = threadsById.get(current)?.sideOf?.threadId ?? threadParentById[current];
+        }
+        return null;
+      };
+      const kept: ThreadSummary[] = [];
+      const moved = new Map<string, ThreadSummary[]>();
+      threads.forEach((thread) => {
+        const sectionId = ownerSection(thread.id);
+        if (!sectionId) {
+          kept.push(thread);
+          return;
+        }
+        moved.set(sectionId, [...(moved.get(sectionId) ?? []), thread]);
+      });
+      project[workspace.id] = kept;
+      moved.forEach((movedThreads, sectionId) => {
+        lists.set(sectionId, [
+          ...(lists.get(sectionId) ?? []),
+          { workspaceId: workspace.id, threads: movedThreads },
+        ]);
+      });
+    });
+    return { projectThreadsByWorkspace: project, sectionThreadLists: lists };
+    // threadSections.version and pinnedThreadsVersion stand in for the refs read above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    getPinTimestamp,
+    getThreadSection,
+    pinnedThreadsVersion,
+    sectionIds,
+    threadParentById,
+    threadSections.version,
+    threadsByWorkspace,
+    workspaces,
+  ]);
+  const sectionChatRows = useMemo(() => {
+    const result = new Map<string, Array<{ thread: ThreadSummary; depth: number; workspaceId: string }>>();
+    sectionThreadLists.forEach((entries, sectionId) => {
+      const groups = entries
+        .flatMap(({ workspaceId, threads }) => {
+          const workspaceName = workspaceNameById.get(workspaceId) ?? "";
+          return splitRowsByRoot(
+            getThreadRows(threads, true, workspaceId, getPinTimestamp, pinnedThreadsVersion).unpinnedRows,
+          ).map((group) => ({
+            workspaceId,
+            workspaceName,
+            timestamp: getSortTimestamp(group.root.thread),
+            rows: group.rows,
+          }));
+        })
+        .filter((group) =>
+          normalizedQuery
+            ? group.rows.some((row) => threadMatchesQuery(row.thread, group.workspaceName, normalizedQuery))
+            : true,
+        )
+        .sort((a, b) => b.timestamp - a.timestamp);
+      if (groups.length > 0) {
+        result.set(
+          sectionId,
+          groups.flatMap((group) => group.rows.map((row) => ({ ...row, workspaceId: group.workspaceId }))),
+        );
+      }
+    });
+    return result;
+  }, [
+    getPinTimestamp,
+    getSortTimestamp,
+    getThreadRows,
+    normalizedQuery,
+    pinnedThreadsVersion,
+    sectionThreadLists,
+    workspaceNameById,
+  ]);
+
+  // Pinned projects sort first inside their section, in the order they were pinned.
+  // Sections that only hold chats still get a header.
+  const { isProjectPinned, getProjectPinTimestamp } = projectPins;
+  const groupsForRender = useMemo(() => {
+    const pinnedFirst = (list: WorkspaceInfo[]) => {
+      const pinned = list
+        .filter((workspace) => isProjectPinned(workspace.id))
+        .sort((a, b) => (getProjectPinTimestamp(a.id) ?? 0) - (getProjectPinTimestamp(b.id) ?? 0));
+      return pinned.length === 0
+        ? list
+        : [...pinned, ...list.filter((workspace) => !isProjectPinned(workspace.id))];
+    };
+    const result = groupedWorkspacesForRender.map((group) => ({
+      ...group,
+      workspaces: pinnedFirst(group.workspaces),
+    }));
+    const sectionIndex = (id: string | null) => {
+      const index = workspaceSections.findIndex((section) => section.id === id);
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    workspaceSections.forEach((section) => {
+      if (!sectionChatRows.has(section.id) || result.some((group) => group.id === section.id)) {
+        return;
+      }
+      const at = result.findIndex((group) => sectionIndex(group.id) > sectionIndex(section.id));
+      result.splice(at === -1 ? result.length : at, 0, { id: section.id, name: section.name, workspaces: [] });
+    });
+    return result;
+    // projectPins.version stands in for the pin ref read above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    getProjectPinTimestamp,
+    groupedWorkspacesForRender,
+    isProjectPinned,
+    projectPins.version,
+    sectionChatRows,
+    workspaceSections,
+  ]);
+
   const handleAllThreadsAddMenuToggle = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -972,7 +1163,10 @@ export const Sidebar = memo(function Sidebar({
               )
             : (
                 <SidebarWorkspaceGroups
-                  groups={groupedWorkspacesForRender}
+                  groups={groupsForRender}
+                  sectionChatRows={sectionChatRows}
+                  isWorkspacePinned={isProjectPinned}
+                  getWorkspaceLabel={getWorkspaceLabel}
                   onReorderWorkspace={threadListOrganizeMode === "by_project" ? onReorderWorkspace : undefined}
                   onMoveWorkspace={onMoveWorkspace}
                   onReorderThread={reorderThread}
@@ -990,7 +1184,7 @@ export const Sidebar = memo(function Sidebar({
                   renderHighlightedName={renderHighlightedName}
                   isWorkspaceMatch={isWorkspaceMatch}
                   deletingWorktreeIds={deletingWorktreeIds}
-                  threadsByWorkspace={threadsByWorkspace}
+                  threadsByWorkspace={projectThreadsByWorkspace}
                   threadStatusById={threadStatusById}
                   threadListLoadingByWorkspace={threadListLoadingByWorkspace}
                   threadListPagingByWorkspace={threadListPagingByWorkspace}
@@ -1047,6 +1241,7 @@ export const Sidebar = memo(function Sidebar({
         onOpenDebug={onOpenDebug}
         showDebugButton={showDebugButton}
       />
+      {menu}
     </aside></SidebarProjects.Provider>
   );
 });

@@ -1748,3 +1748,45 @@
 }
 
 .engine-badge { display: inline-block; margin-inline: 6px; padding: 1px 5px; border: 1px solid var(--border-muted); border-radius: 4px; color: var(--text-muted); font-size: 11px; }
+
+/* Context menu: the row that owns the open menu keeps its hover look. */
+.workspace-row[data-context-open]::before {
+  background: color-mix(in srgb, var(--cm-surface-panel-hover) 78%, white);
+  border-color: var(--cm-border-default);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px color-mix(in srgb, var(--cm-border-default) 42%, transparent);
+}
+
+.workspace-row[data-context-open] .workspace-add,
+.worktree-row[data-context-open] .workspace-add,
+.workspace-row[data-context-open] .workspace-toggle {
+  opacity: 1;
+}
+
+.thread-row[data-context-open]:not(.active) {
+  background: color-mix(in srgb, var(--cm-surface-panel-hover) 76%, white);
+  border-color: var(--cm-border-default);
+  color: var(--text-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px color-mix(in srgb, var(--cm-border-default) 46%, transparent);
+}
+
+.worktree-row[data-context-open] {
+  background: var(--surface-hover);
+}
+
+/* Cut-off titles slide sideways on hover; no ellipsis while sliding. */
+.thread-name.is-scrolling,
+.workspace-name.is-scrolling {
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 14px), transparent 100%);
+}
+
+.workspace-pin-glyph {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-muted);
+}

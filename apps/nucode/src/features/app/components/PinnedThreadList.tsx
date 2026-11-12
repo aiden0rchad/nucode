@@ -13,6 +13,7 @@ type PinnedThreadRow = {
 };
 
 type PinnedThreadListProps = {
+  className?: string;
   rows: PinnedThreadRow[];
   activeWorkspaceId: string | null;
   activeThreadId: string | null;
@@ -33,6 +34,7 @@ type PinnedThreadListProps = {
 };
 
 export function PinnedThreadList({
+  className,
   rows,
   activeWorkspaceId,
   activeThreadId,
@@ -70,7 +72,7 @@ export function PinnedThreadList({
   };
 
   return (
-    <div className="thread-list pinned-thread-list">
+    <div className={`thread-list pinned-thread-list${className ? ` ${className}` : ""}`}>
       <SidebarTree baseDepth={0} rows={visibility.visibleRows} rowKey={row => `${row.workspaceId}:${row.thread.id}`} selected={row => row.workspaceId === activeWorkspaceId && row.thread.id === activeThreadId}>{row => {
         const { thread, depth, workspaceId } = row;
         const threadKey = `${workspaceId}:${thread.id}`;

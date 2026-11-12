@@ -6,6 +6,7 @@ import { useFeatureSettings } from "@settings/features";
 import { formatModelRef } from "@settings/registry";
 import { Bot, GitFork, Ellipsis } from "lucide-react";
 import { useContext } from "react";
+import { MarqueeText } from "./MarqueeText";
 import { SidebarEngine, SidebarProjects } from "./SidebarTree";
 import { useRunningAgents } from "@/features/agents/agents";
 import type { CSSProperties, MouseEvent } from "react";
@@ -181,6 +182,7 @@ export function ThreadRow({
       }${isPinned ? " is-pinned" : ""}`}
       style={indentStyle}
       data-depth={treeDepth}
+      data-marquee-host=""
       data-needs-input={needsInput || undefined}
       title={[thread.name, thread.engine ?? "codex", modelBadge, badge, statusLabel, effectiveWorkspaceLabel].filter(Boolean).join(" · ")}
       onClick={() => onSelectThread(workspaceId, thread.id)}
@@ -199,7 +201,7 @@ export function ThreadRow({
       <span className="thread-kind">{canToggleSubagents && <IconButton size="sm" type="button" className="thread-tree-toggle" aria-label={subagentsExpanded ? "Hide sub-agents" : "Show sub-agents"} aria-expanded={subagentsExpanded} onClick={event => { event.stopPropagation(); onToggleSubagents?.(workspaceId, thread.id); }}><ChevronRight size={14} aria-hidden /></IconButton>}{!needsInput && statusClass !== "processing" && thread.isSubagent ? <Bot size={14} aria-hidden /> : !needsInput && statusClass !== "processing" && thread.sideOf ? <GitFork size={14} aria-label="Side chat" /> : <span className={`thread-status ${statusClass}`} aria-hidden />}</span>
       <div className="thread-content">
         <div className="thread-headline">
-          <span className="thread-name">{thread.name}</span>{runningAgents > 0 && <span className="agents-count" aria-label={`${runningAgents} running subagents`}>{runningAgents}</span>}
+          <MarqueeText className="thread-name">{thread.name}</MarqueeText>{runningAgents > 0 && <span className="agents-count" aria-label={`${runningAgents} running subagents`}>{runningAgents}</span>}
         </div>
         {hasDetails && (
           <div className="thread-details">

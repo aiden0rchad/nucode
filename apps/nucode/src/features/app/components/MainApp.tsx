@@ -458,6 +458,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     setActiveThreadId,
     hasLocalThreadSnapshot,
     historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
+    markThreadUnread, loadThreadItems, forkThreadForWorkspace,
     activeThreadId,
     activeItems,
     itemsByThread,
@@ -1819,6 +1820,13 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         onReorderWorkspace: handleReorderWorkspace,
         onMoveWorkspace: (id, direction) => handleMoveWorkspace(id, direction, true),
         newThreadShortcut: appSettings.newAgentShortcut,
+        workspaceSections: workspaceGroups,
+        onCreateSection: async name => (await createWorkspaceGroup(name))?.id ?? null,
+        onAssignWorkspaceSection: (workspaceId, groupId) => { void updateWorkspaceSettings(workspaceId, { groupId }); },
+        onEditProject: () => modalActions.openSettings("projects"),
+        onSetThreadUnread: (_workspaceId, threadId, unread) => markThreadUnread(threadId, unread),
+        onForkThread: (workspaceId, threadId) => { void forkThreadForWorkspace(workspaceId, threadId); },
+        loadThreadItems,
         onSelectThread: (workspaceId, threadId) => {
           const thread = threadsByWorkspace[workspaceId]?.find(t => t.id === threadId);
           if (thread?.sideOf) {

@@ -1,5 +1,7 @@
 import type { ReorderRowProps } from "../hooks/useSidebarReorder";
 import Plus from "lucide-react/dist/esm/icons/plus";
+import Pin from "lucide-react/dist/esm/icons/pin";
+import { MarqueeText } from "./MarqueeText";
 import { ProjectAvatar } from "./ProjectAvatar";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import { IconButton } from "@/features/design-system/components/IconButton";
@@ -12,6 +14,7 @@ import type { WorkspaceInfo } from "../../../types";
 type WorkspaceCardProps = {
   reorderProps?: ReorderRowProps;
   workspace: WorkspaceInfo;
+  isPinned?: boolean;
   workspaceName?: React.ReactNode;
   summary?: string | null;
   isActive: boolean;
@@ -34,6 +37,7 @@ type WorkspaceCardProps = {
 export function WorkspaceCard({
   workspace,
   reorderProps,
+  isPinned = false,
   workspaceName,
   summary = null,
   isActive,
@@ -56,6 +60,7 @@ export function WorkspaceCard({
         className={`workspace-row ${isActive ? "active" : ""}`}
         title={[workspace.name, summary].filter(Boolean).join(" · ")}
         data-depth={0}
+        data-marquee-host=""
         role="button"
       aria-label={workspace.name}
         tabIndex={0}
@@ -85,7 +90,8 @@ export function WorkspaceCard({
           <div className="workspace-name-row">
             <div className="workspace-title">
               <ProjectAvatar name={workspace.name} />
-              <span className="workspace-name">{workspaceName ?? workspace.name}</span>
+              <MarqueeText className="workspace-name">{workspaceName ?? workspace.name}</MarqueeText>
+              {isPinned && <Pin className="workspace-pin-glyph" size={12} aria-label="Pinned" />}
             </div>
           </div>
         </div>
