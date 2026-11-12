@@ -88,7 +88,7 @@ it.each([
       await waitFor(() => expect(document.querySelectorAll(".work-space")).toHaveLength(2));
       expect(document.querySelector(".sidebar .squircle .squircle")).toBeNull();
     }
-    if (query.includes("composer=attachments")) expect(document.querySelectorAll(".chat-attachments li")).toHaveLength(2);
+    if (query.includes("composer=attachments")) expect(document.querySelectorAll(".composer-attachment")).toHaveLength(2);
     if (query.includes("task=task-running")) {
       expect(document.querySelector(".work-space .thread-row .thread-status.work-status-running")).toBeTruthy();
       expect(screen.getByRole("progressbar", { name: "Plan completion" })).toHaveProperty("value", 1);

@@ -1,7 +1,5 @@
-import { IconButton } from "@/features/design-system/components/IconButton";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import Image from "lucide-react/dist/esm/icons/image";
-import X from "lucide-react/dist/esm/icons/x";
+import { AttachmentTiles } from "./AttachmentTiles";
 
 type ComposerAttachmentsProps = {
   attachments: string[];
@@ -21,7 +19,7 @@ function fileTitle(path: string) {
   return parts.length ? parts[parts.length - 1] : path;
 }
 
-function attachmentPreviewSrc(path: string) {
+export function attachmentPreviewSrc(path: string) {
   if (path.startsWith("data:")) {
     return path;
   }
@@ -40,49 +38,16 @@ export function ComposerAttachments({
   disabled,
   onRemoveAttachment,
 }: ComposerAttachmentsProps) {
-  if (attachments.length === 0) {
-    return null;
-  }
-
   return (
-    <div className="composer-attachments">
-      {attachments.map((path) => {
-        const title = fileTitle(path);
-        const titleAttr = path.startsWith("data:") ? "Pasted image" : path;
-        const previewSrc = attachmentPreviewSrc(path);
-        return (
-          <div
-            key={path}
-            className="composer-attachment"
-            title={titleAttr}
-          >
-            {previewSrc && (
-              <span className="composer-attachment-preview" aria-hidden>
-                <img src={previewSrc} alt="" />
-              </span>
-            )}
-            {previewSrc ? (
-              <span className="composer-attachment-thumb" aria-hidden>
-                <img src={previewSrc} alt="" />
-              </span>
-            ) : (
-              <span className="composer-icon" aria-hidden>
-                <Image size={14} />
-              </span>
-            )}
-            <span className="composer-attachment-name">{title}</span>
-            <IconButton
-              type="button"
-              className="composer-attachment-remove"
-              onClick={() => onRemoveAttachment?.(path)}
-              aria-label={`Remove ${title}`}
-              disabled={disabled}
-            >
-              <X size={12} aria-hidden />
-            </IconButton>
-          </div>
-        );
-      })}
-    </div>
+    <AttachmentTiles
+      disabled={disabled}
+      onRemove={onRemoveAttachment}
+      items={attachments.map((path) => ({
+        key: path,
+        name: fileTitle(path),
+        src: attachmentPreviewSrc(path),
+        title: path.startsWith("data:") ? "Pasted image" : fileTitle(path),
+      }))}
+    />
   );
 }

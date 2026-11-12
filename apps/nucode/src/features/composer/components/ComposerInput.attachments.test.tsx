@@ -103,9 +103,9 @@ function renderComposerHarness(initial: HarnessProps): RenderedHarness {
 }
 
 function getAttachmentNames(container: HTMLElement) {
-  return Array.from(
-    container.querySelectorAll(".composer-attachment-name"),
-  ).map((node) => node.textContent ?? "");
+  return Array.from(container.querySelectorAll(".composer-attachment")).map(
+    (node) => node.getAttribute("title") ?? "",
+  );
 }
 
 function getTextarea(container: HTMLElement) {

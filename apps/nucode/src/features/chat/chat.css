@@ -42,9 +42,6 @@
 .chat-attach { position: relative; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 7px; padding: 7px 10px; }
 .chat-attach input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
 .chat-attach:focus-within { outline: 2px solid var(--border-accent); }
-.chat-attachments { display: flex; gap: 8px; flex-wrap: wrap; padding: 0; list-style: none; }
-.chat-attachments li { display: flex; gap: 8px; align-items: center; font-size: 12px; }
-.chat-attachments img { width: 40px; height: 40px; object-fit: cover; border-radius: 5px; }
 .chat-editing { margin-top: 12px; font-size: 12px; }
 .chat-composer-error { margin: 4px 12px 8px; }
 .chat-placeholder { display: grid; place-content: center; text-align: center; }

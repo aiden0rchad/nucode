@@ -126,12 +126,6 @@ button.icon-button:hover, .main-header-action:hover { background: var(--surface-
 .composer-shell-actions :is(.composer-action, .icon-button) { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); box-shadow: none; }
 .composer-shell-actions :is(.composer-action, .icon-button):hover:not(:disabled) { background: var(--surface-hover); color: var(--text-strong); }
 .composer-shell-actions :is(.composer-action, .icon-button) svg { width: 18px; height: 18px; }
-.composer-shell .chat-attachments, .composer-shell .composer-attachments { margin: 0; padding: 12px 16px 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.composer-shell .chat-attachments:empty { display: none; }
-.composer-shell .chat-attachments li, .composer-shell .composer-attachment { border: 1px solid var(--border-subtle); background: var(--surface-card); border-radius: var(--radius-chip); padding: 4px; max-width: 240px; font-size: 12px; }
-.composer-shell .composer-attachment-thumb, .composer-shell .chat-attachments img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
-.chat-attachments button, .composer-attachment-remove { opacity: 0; }
-.chat-attachments li:hover button, .chat-attachments li:focus-within button, .composer-attachment:hover .composer-attachment-remove, .composer-attachment:focus-within .composer-attachment-remove { opacity: 1; }
 .composer-drop-overlay { position: absolute; inset: 0; z-index: var(--z-sticky); display: grid; place-items: center; background: var(--surface-composer); border: 2px dashed var(--border-accent); border-radius: var(--radius-composer); pointer-events: none; }
 .composer-followup-hint { display: none; }
 .chat-main.is-empty .chat-scroll { flex: 0 1 auto; overflow: visible; padding-bottom: 0; }
@@ -200,7 +194,7 @@ progress.plan-progress::-webkit-progress-value { background: var(--border-accent
   .composer-shell .composer-action--mic { display: inline-flex; }
 }
 @media (hover: none) {
-  .message-hover-actions, .work-output .work-actions, .chat-attachments button, .composer-attachment-remove { opacity: 1; }
+  .message-hover-actions, .work-output .work-actions { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -232,7 +226,6 @@ progress.plan-progress::-webkit-progress-value { background: var(--border-accent
 .sidebar-new-row { display: flex; align-items: center; gap: 4px; width: 100%; }
 .sidebar-new-row .mode-new { flex: 1; min-width: 0; }
 .sidebar-new-row kbd { margin-left: auto; color: var(--text-faint); font-family: inherit; font-size: 12px; font-weight: 400; }
-.chat-attachments img[src*="material-icons"] { width: 20px; height: 20px; }
 .ds-popover { border-radius: var(--radius-card); }
 .sidebar .thread-status.processing { animation: status-pulse 1.4s ease-in-out infinite; }
 @keyframes status-pulse { 50% { background: var(--text-subtle); } }
