@@ -195,6 +195,7 @@ export function createPreviewHandler(publish: Publish = () => {}, search = "") {
         return workspace ?? state.workspaces[0];
       }
       case "themes_list": return themeFiles;
+      case "open_thread_window": case "close_thread_window": case "retarget_thread_window": return null;
       case "window_set_material": case "themes_open_folder": case "themes_reveal_file": case "themes_export": return null;
       case "themes_save": {
         const manifest = parseTheme(JSON.stringify(args.manifest));

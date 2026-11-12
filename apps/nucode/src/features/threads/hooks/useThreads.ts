@@ -24,12 +24,15 @@ import { useThreadSelectors } from "./useThreadSelectors";
 import { useThreadStatus } from "./useThreadStatus";
 import { useThreadUserInput } from "./useThreadUserInput";
 import { useThreadTitleAutogeneration } from "./useThreadTitleAutogeneration";
+import { useThreadWindowEffects } from "@app/threadWindow";
 import { useDetachedReviewTracking } from "./useDetachedReviewTracking";
 import {
   archiveThread as archiveThreadService,
+  closeThreadWindow,
   deleteThread as deleteThreadService,
   moveThread as moveThreadService,
   readThread as readThreadService,
+  retargetThreadWindow,
   setThreadName as setThreadNameService,
 } from "@services/tauri";
 import {
@@ -119,6 +122,7 @@ export function useThreads({
   useEffect(() => {
     dispatch({ type: "setMaxItemsPerThread", maxItemsPerThread });
   }, [dispatch, maxItemsPerThread]);
+  const threadWindowEffects = useThreadWindowEffects();
   const loadedThreadsRef = useRef<Record<string, boolean>>({});
   const replaceOnResumeRef = useRef<Record<string, boolean>>({});
   const pendingInterruptsRef = useRef<Set<string>>(new Set());
@@ -383,7 +387,7 @@ export function useThreads({
   );
 
   const { onUserMessageCreated } = useThreadTitleAutogeneration({
-    enabled: threadTitleAutogenerationEnabled,
+    enabled: threadTitleAutogenerationEnabled && threadWindowEffects.titleAutogeneration,
     itemsByThreadRef,
     threadsByWorkspaceRef,
     getCustomName,
@@ -845,6 +849,8 @@ export function useThreads({
       dispatch({ type: "removeThread", workspaceId, threadId });
       const failure = await archiveThread(workspaceId, threadId);
       if (failure === null) {
+        // The thread may be open in a window of its own; it has nothing left to show.
+        void closeThreadWindow(threadId).catch(() => {});
         return true;
       }
       if (summary) {
@@ -875,6 +881,7 @@ export function useThreads({
       }
       unpinThread(workspaceId, threadId);
       dispatch({ type: "removeThread", workspaceId, threadId });
+      void closeThreadWindow(threadId).catch(() => {});
       return true;
     },
     [unpinThread],
@@ -918,6 +925,8 @@ export function useThreads({
         toWorkspaceId: targetWorkspaceId,
         thread: rebuilt ?? ({ ...(summary ?? { id: threadId, name: "New Agent" }), updatedAt: Date.now() } as ThreadSummary),
       });
+      // A window of its own for this thread follows it into the new project.
+      void retargetThreadWindow(threadId, targetWorkspaceId).catch(() => {});
       return true;
     },
     [getCustomName, moveThreadStorage],

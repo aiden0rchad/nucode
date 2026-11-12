@@ -11,6 +11,7 @@ const revealItemInDir = vi.hoisted(() => vi.fn());
 const ask = vi.hoisted(() => vi.fn());
 const openCheckpoints = vi.hoisted(() => vi.fn());
 const exportMarkdownFile = vi.hoisted(() => vi.fn());
+const openThreadWindow = vi.hoisted(() => vi.fn());
 const pushErrorToast = vi.hoisted(() => vi.fn());
 const pushInfoToast = vi.hoisted(() => vi.fn());
 
@@ -25,6 +26,7 @@ vi.mock("@services/events", () => ({
 }));
 vi.mock("../../../services/tauri", () => ({
   exportMarkdownFile: (...args: unknown[]) => exportMarkdownFile(...args),
+  openThreadWindow: (...args: unknown[]) => openThreadWindow(...args),
 }));
 vi.mock("../../../services/toasts", () => ({
   pushErrorToast: (...args: unknown[]) => pushErrorToast(...args),
@@ -290,9 +292,33 @@ describe("thread menu", () => {
       "---",
       "Share…",
       "Copy",
+      "Open in new window",
       "---",
       "Archive",
     ]);
+  });
+
+  it("opens the thread in its own window with its ids and name", () => {
+    openThreadWindow.mockResolvedValue(undefined);
+    openMenu(makeHandlers(), { kind: "thread", threadId: "t2" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in new window" }));
+    expect(openThreadWindow).toHaveBeenCalledWith("p1", "t2", "Thread t2");
+  });
+
+  it("reports a window that could not open", async () => {
+    openThreadWindow.mockRejectedValue(new Error("no window"));
+    openMenu(makeHandlers(), { kind: "thread" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in new window" }));
+    await waitFor(() => expect(pushErrorToast).toHaveBeenCalledWith(expect.objectContaining({ message: "no window" })));
+  });
+
+  it("keeps Open in new window off in Remote mode and says why", () => {
+    openMenu(makeHandlers({ backendMode: "remote" }), { kind: "thread" });
+    const item = screen.getByRole("menuitem", { name: "Open in new window" });
+    expect(item.getAttribute("aria-disabled")).toBe("true");
+    expect(item.getAttribute("title")).toBe("Not available in Remote mode");
+    fireEvent.click(item);
+    expect(openThreadWindow).not.toHaveBeenCalled();
   });
 
   it("calls rename, pin, archive and checkpoints with the thread ids", () => {

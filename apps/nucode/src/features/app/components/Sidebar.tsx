@@ -164,6 +164,7 @@ type SidebarProps = {
   onDeleteThreadPermanently?: (workspaceId: string, threadId: string) => Promise<boolean>;
   onForkIntoWorktree?: (workspaceId: string, threadId: string) => void;
   threadShortcuts?: SidebarMenuShortcuts;
+  backendMode?: "local" | "remote";
   workspaceDropTargetRef: RefObject<HTMLElement | null>;
   isWorkspaceDropActive: boolean;
   workspaceDropText: string;
@@ -233,6 +234,7 @@ export const Sidebar = memo(function Sidebar({
   onDeleteThreadPermanently,
   onForkIntoWorktree,
   threadShortcuts,
+  backendMode,
   workspaceDropTargetRef,
   isWorkspaceDropActive,
   workspaceDropText,
@@ -366,6 +368,7 @@ export const Sidebar = memo(function Sidebar({
       canForkIntoWorktree: features.worktrees,
       onSelectThread,
       shortcuts: threadShortcuts,
+      backendMode,
     });
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const normalizedQuery = debouncedQuery.trim().toLowerCase();

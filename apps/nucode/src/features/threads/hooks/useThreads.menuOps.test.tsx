@@ -5,11 +5,13 @@ import type { WorkspaceInfo } from "@/types";
 import type { useAppServerEvents } from "@app/hooks/useAppServerEvents";
 import {
   archiveThread,
+  closeThreadWindow,
   deleteThread,
   listThreadHistory,
   moveThread,
   readThread,
   resumeThread,
+  retargetThreadWindow,
 } from "@services/tauri";
 import { makeCustomNameKey, makePinKey, STORAGE_KEY_CUSTOM_NAMES, STORAGE_KEY_PINNED_THREADS } from "@threads/utils/threadStorage";
 import { useThreads } from "./useThreads";
@@ -39,6 +41,8 @@ vi.mock("@services/tauri", () => ({
   archiveThread: vi.fn(),
   deleteThread: vi.fn(),
   moveThread: vi.fn(),
+  closeThreadWindow: vi.fn(() => Promise.resolve()),
+  retargetThreadWindow: vi.fn(() => Promise.resolve()),
   setThreadName: vi.fn(),
   getAccountInfo: vi.fn(),
   interruptTurn: vi.fn(),
@@ -84,6 +88,7 @@ describe("archiving", () => {
     expect(ids(hook)).toEqual(["t1"]);
     expect(hook.result.current.isThreadPinned("ws-1", "t2")).toBe(false);
     expect(pushErrorToast).not.toHaveBeenCalled();
+    expect(closeThreadWindow).toHaveBeenCalledWith("t2");
   });
 
   it("restores the row where it was, and its pin, when the backend refuses", async () => {
@@ -103,6 +108,7 @@ describe("archiving", () => {
     expect(pushErrorToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Couldn't archive chat", message: "disk is read-only" }),
     );
+    expect(closeThreadWindow).not.toHaveBeenCalled();
   });
 });
 
@@ -119,6 +125,7 @@ describe("permanent delete", () => {
     expect(deleteThread).toHaveBeenCalledWith("ws-1", "t1");
     expect(ids(hook)).toEqual(["t2"]);
     expect(localStorage.getItem(STORAGE_KEY_PINNED_THREADS)).not.toContain("t1");
+    expect(closeThreadWindow).toHaveBeenCalledWith("t1");
   });
 
   it("keeps the thread and says why when the delete fails", async () => {
@@ -129,6 +136,7 @@ describe("permanent delete", () => {
     });
     expect(ids(hook).sort()).toEqual(["t1", "t2"]);
     expect(pushErrorToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't delete chat" }));
+    expect(closeThreadWindow).not.toHaveBeenCalled();
   });
 });
 
@@ -150,6 +158,7 @@ describe("moving to another project", () => {
     expect(hook.result.current.isThreadPinned("ws-1", "t1")).toBe(false);
     const pins = JSON.parse(localStorage.getItem(STORAGE_KEY_PINNED_THREADS) ?? "{}");
     expect(Object.keys(pins)).toEqual([makePinKey("ws-2", "t1")]);
+    expect(retargetThreadWindow).toHaveBeenCalledWith("t1", "ws-2");
   });
 
   it("leaves everything in place and reports the error when the move fails", async () => {
@@ -167,6 +176,7 @@ describe("moving to another project", () => {
     expect(pushErrorToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Couldn't move chat", message: "Finish or interrupt the turn first" }),
     );
+    expect(retargetThreadWindow).not.toHaveBeenCalled();
   });
 
   it("hands a failure to a caller that wants to word it itself", async () => {

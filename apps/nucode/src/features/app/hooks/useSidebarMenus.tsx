@@ -1,6 +1,7 @@
 import { openCheckpoints } from "@services/events";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
+import AppWindow from "lucide-react/dist/esm/icons/app-window";
 import Archive from "lucide-react/dist/esm/icons/archive";
 import ArrowRightLeft from "lucide-react/dist/esm/icons/arrow-right-left";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
@@ -28,7 +29,7 @@ import {
 } from "../../design-system/components/menu/ContextMenu";
 import { engineCapabilities } from "../../threads/utils/engineCapabilities";
 import type { ConversationItem, ThreadSummary, WorkspaceInfo } from "../../../types";
-import { exportMarkdownFile } from "../../../services/tauri";
+import { exportMarkdownFile, openThreadWindow } from "../../../services/tauri";
 import { pushErrorToast, pushInfoToast } from "../../../services/toasts";
 import {
   fileManagerName,
@@ -88,6 +89,8 @@ export type SidebarMenuHandlers = {
   canForkIntoWorktree?: boolean;
   onSelectThread?: (workspaceId: string, threadId: string) => void;
   shortcuts?: SidebarMenuShortcuts;
+  /** "Open in new window" stays off in Remote mode: a second live subscription there is not supported. */
+  backendMode?: "local" | "remote";
 };
 
 type OpenMenu = {
@@ -182,6 +185,7 @@ export function useSidebarMenus({
   canForkIntoWorktree = true,
   onSelectThread,
   shortcuts = {},
+  backendMode = "local",
 }: SidebarMenuHandlers) {
   const [open, setOpen] = useState<OpenMenu | null>(null);
   const nextId = useRef(0);
@@ -469,6 +473,17 @@ export function useSidebarMenus({
             },
           ]),
         },
+        {
+          id: "open-window",
+          label: "Open in new window",
+          icon: <AppWindow size={16} />,
+          disabled: backendMode === "remote",
+          disabledReason: "Not available in Remote mode",
+          onSelect: () =>
+            void openThreadWindow(workspaceId, threadId, thread?.name).catch((error) =>
+              pushErrorToast({ title: "Couldn't open a new window", message: describeError(error) }),
+            ),
+        },
         separator("sep-archive"),
         {
           id: "archive",
@@ -498,6 +513,7 @@ export function useSidebarMenus({
       onForkIntoWorktree,
       onMoveThread,
       onSelectThread,
+      backendMode,
       canForkIntoWorktree,
       shortcuts,
       onForkThread,
