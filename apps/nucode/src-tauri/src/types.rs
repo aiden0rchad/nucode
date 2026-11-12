@@ -531,6 +531,21 @@ pub(crate) struct AppSettings {
     )]
     pub(crate) archive_thread_shortcut: Option<String>,
     #[serde(
+        default = "default_rename_thread_shortcut",
+        rename = "renameThreadShortcut"
+    )]
+    pub(crate) rename_thread_shortcut: Option<String>,
+    #[serde(
+        default = "default_pin_thread_shortcut",
+        rename = "pinThreadShortcut"
+    )]
+    pub(crate) pin_thread_shortcut: Option<String>,
+    #[serde(
+        default = "default_mark_thread_unread_shortcut",
+        rename = "markThreadUnreadShortcut"
+    )]
+    pub(crate) mark_thread_unread_shortcut: Option<String>,
+    #[serde(
         default = "default_toggle_projects_sidebar_shortcut",
         rename = "toggleProjectsSidebarShortcut"
     )]
@@ -899,6 +914,33 @@ fn default_new_clone_agent_shortcut() -> Option<String> {
     Some(value.to_string())
 }
 
+fn default_rename_thread_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+alt+r"
+    } else {
+        "ctrl+alt+r"
+    };
+    Some(value.to_string())
+}
+
+fn default_pin_thread_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+alt+p"
+    } else {
+        "ctrl+alt+p"
+    };
+    Some(value.to_string())
+}
+
+fn default_mark_thread_unread_shortcut() -> Option<String> {
+    let value = if cfg!(target_os = "macos") {
+        "cmd+shift+u"
+    } else {
+        "ctrl+shift+u"
+    };
+    Some(value.to_string())
+}
+
 fn default_archive_thread_shortcut() -> Option<String> {
     let value = if cfg!(target_os = "macos") {
         "cmd+ctrl+a"
@@ -1257,6 +1299,9 @@ impl Default for AppSettings {
             new_worktree_agent_shortcut: default_new_worktree_agent_shortcut(),
             new_clone_agent_shortcut: default_new_clone_agent_shortcut(),
             archive_thread_shortcut: default_archive_thread_shortcut(),
+            rename_thread_shortcut: default_rename_thread_shortcut(),
+            pin_thread_shortcut: default_pin_thread_shortcut(),
+            mark_thread_unread_shortcut: default_mark_thread_unread_shortcut(),
             toggle_projects_sidebar_shortcut: default_toggle_projects_sidebar_shortcut(),
             toggle_git_sidebar_shortcut: default_toggle_git_sidebar_shortcut(),
             toggle_debug_panel_shortcut: default_toggle_debug_panel_shortcut(),
@@ -1401,6 +1446,18 @@ mod tests {
             } else {
                 "ctrl+alt+a"
             })
+        );
+        assert_eq!(
+            settings.rename_thread_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") { "cmd+alt+r" } else { "ctrl+alt+r" })
+        );
+        assert_eq!(
+            settings.pin_thread_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") { "cmd+alt+p" } else { "ctrl+alt+p" })
+        );
+        assert_eq!(
+            settings.mark_thread_unread_shortcut.as_deref(),
+            Some(if cfg!(target_os = "macos") { "cmd+shift+u" } else { "ctrl+shift+u" })
         );
         assert_eq!(
             settings.toggle_debug_panel_shortcut.as_deref(),

@@ -464,6 +464,9 @@ impl WorkspaceSession {
             return Err("Conversation teams require Pi or OMP".into());
         }
         let engine = definition.id.clone();
+        if matches!(method, "thread/delete" | "thread/move") && definition.protocol == EngineProtocol::CodexAppServer {
+            return Err("Not available for Codex threads".into());
+        }
         let mutating = matches!(method, "turn/start" | "turn/steer" | "thread/start" | "thread/fork" | "thread/compact/start" | "thread/accessMode/set");
         if !definition.enabled && mutating { return Err(format!("Enable {} to continue", definition.name)); }
         if policy.subagents.enabled && policy.subagents.mode == SubagentMode::ChainOfCommand

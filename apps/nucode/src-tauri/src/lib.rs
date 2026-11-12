@@ -359,6 +359,8 @@ pub fn run() {
             codex::list_threads,
             codex::list_mcp_server_status,
             codex::archive_thread,
+            codex::delete_thread,
+            codex::move_thread,
             codex::compact_thread,
             codex::set_thread_name,
             codex::set_thread_access_mode,

@@ -809,6 +809,23 @@ impl DaemonState {
         codex_core::archive_thread_core(&self.sessions, workspace_id, thread_id).await
     }
 
+    async fn delete_thread(
+        &self,
+        workspace_id: String,
+        thread_id: String,
+    ) -> Result<Value, String> {
+        codex_core::delete_thread_core(&self.sessions, workspace_id, thread_id).await
+    }
+
+    async fn move_thread(
+        &self,
+        workspace_id: String,
+        thread_id: String,
+        target_workspace_id: String,
+    ) -> Result<Value, String> {
+        codex_core::move_thread_core(&self.sessions, workspace_id, thread_id, target_workspace_id).await
+    }
+
     async fn compact_thread(
         &self,
         workspace_id: String,

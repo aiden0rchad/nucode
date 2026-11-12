@@ -183,6 +183,32 @@ pub(super) async fn try_handle(
             };
             Some(state.archive_thread(workspace_id, thread_id).await)
         }
+        "delete_thread" => {
+            let workspace_id = match parse_string(params, "workspaceId") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            let thread_id = match parse_string(params, "threadId") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            Some(state.delete_thread(workspace_id, thread_id).await)
+        }
+        "move_thread" => {
+            let workspace_id = match parse_string(params, "workspaceId") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            let thread_id = match parse_string(params, "threadId") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            let target_workspace_id = match parse_string(params, "targetWorkspaceId") {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
+            Some(state.move_thread(workspace_id, thread_id, target_workspace_id).await)
+        }
         "compact_thread" => {
             let workspace_id = match parse_string(params, "workspaceId") {
                 Ok(value) => value,

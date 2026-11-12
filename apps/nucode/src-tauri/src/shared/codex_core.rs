@@ -513,6 +513,33 @@ pub(crate) async fn archive_thread_core(
         .await
 }
 
+pub(crate) async fn delete_thread_core(
+    sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
+    workspace_id: String,
+    thread_id: String,
+) -> Result<Value, String> {
+    let session = get_session_clone(sessions, &workspace_id).await?;
+    session
+        .send_request_for_workspace(&workspace_id, "thread/delete", json!({ "threadId": thread_id }))
+        .await
+}
+
+pub(crate) async fn move_thread_core(
+    sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
+    workspace_id: String,
+    thread_id: String,
+    target_workspace_id: String,
+) -> Result<Value, String> {
+    let session = get_session_clone(sessions, &workspace_id).await?;
+    session
+        .send_request_for_workspace(
+            &workspace_id,
+            "thread/move",
+            json!({ "threadId": thread_id, "targetWorkspaceId": target_workspace_id }),
+        )
+        .await
+}
+
 pub(crate) async fn compact_thread_core(
     sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
     workspace_id: String,

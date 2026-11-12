@@ -689,6 +689,23 @@ impl ClaudeAcpEngine {
         } else {
             None
         };
+        if method == "thread/move" {
+            return Err("Moving is only available for pi and omp threads".into());
+        }
+        if method == "thread/delete" {
+            let id = id.ok_or("Missing thread ID")?;
+            let mut threads = self.threads.lock().await;
+            let thread = threads.remove(id).ok_or("Unknown Claude thread")?;
+            if let Err(error) = std::fs::remove_file(&thread.file) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    threads.insert(id.into(), thread);
+                    return Err(error.to_string());
+                }
+            }
+            drop(threads);
+            self.emit(workspace, json!({"method":"thread/archived","params":{"threadId":id}}));
+            return Ok(json!({"result":{}}));
+        }
         if method == "model/list" {
             let (provider, _) = self.model(&registry, &policy, &params, current.as_ref())?;
             return Ok(providers::catalog(std::slice::from_ref(provider)));
