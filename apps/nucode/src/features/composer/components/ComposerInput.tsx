@@ -15,6 +15,7 @@ import Mic from "lucide-react/dist/esm/icons/mic";
 import Square from "lucide-react/dist/esm/icons/square";
 import X from "lucide-react/dist/esm/icons/x";
 import { useComposerImageDrop } from "../hooks/useComposerImageDrop";
+import { droppedPathsText } from "../utils/dropPaths";
 
 import { ComposerSuggestionsPopover } from "./ComposerSuggestionsPopover";
 import { ComposerAttachments } from "./ComposerAttachments";
@@ -50,6 +51,8 @@ type ComposerInputProps = {
   attachments?: string[];
   onAddAttachment?: () => void;
   onAttachImages?: (paths: string[]) => void;
+  /** Project folder; dropped paths inside it are inserted relative to it. */
+  projectPath?: string | null;
   onRemoveAttachment?: (path: string) => void;
   onTextChange: (next: string, selectionStart: number | null) => void;
   onTextPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
@@ -108,6 +111,7 @@ export function ComposerInput({
   attachments = [],
   onAddAttachment,
   onAttachImages,
+  projectPath = null,
   onRemoveAttachment,
   onTextChange,
   onTextPaste,
@@ -149,6 +153,23 @@ export function ComposerInput({
     textareaRef,
   });
 
+  const handleDropPaths = (paths: string[]) => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? text.length;
+    const end = textarea?.selectionEnd ?? start;
+    const inserted = droppedPathsText(paths, projectPath);
+    const caret = start + inserted.length;
+    onTextChange(`${text.slice(0, start)}${inserted}${text.slice(end)}`, caret);
+    requestAnimationFrame(() => {
+      const target = textareaRef.current;
+      if (!target) {
+        return;
+      }
+      target.focus();
+      target.setSelectionRange(caret, caret);
+      onSelectionChange(caret);
+    });
+  };
   const {
     dropTargetRef,
     isDragOver,
@@ -160,6 +181,7 @@ export function ComposerInput({
   } = useComposerImageDrop({
     disabled,
     onAttachImages,
+    onDropPaths: handleDropPaths,
   });
   const {
     handleMicClick,
@@ -235,7 +257,7 @@ export function ComposerInput({
             </IconButton>}
             <ComposerSendButton runningHint={`Enter to ${sendLabel.toLowerCase()} a follow-up; Shift+Enter for a new line`} running={canStop} disabled={disabled || isDictationBusy || !canSend} disabledReason={disabled ? "Review in progress" : isDictationBusy ? "Finish dictation first" : "Write a message or add an attachment"} onSend={onSend} onStop={onStop} label={sendLabel} />
           </div>}>
-        {isDragOver && <div className="composer-drop-overlay">Drop images to attach</div>}
+        {isDragOver && <div className="composer-drop-overlay">Drop files to attach</div>}
         <ComposerAttachments
           attachments={attachments}
           disabled={disabled}

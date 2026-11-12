@@ -100,6 +100,7 @@ type ComposerProps = {
   attachedImages?: string[];
   onPickImages?: () => void;
   onAttachImages?: (paths: string[]) => void;
+  projectPath?: string | null;
   onRemoveImage?: (path: string) => void;
   prefillDraft?: QueuedMessage | null;
   onPrefillHandled?: (id: string) => void;
@@ -212,6 +213,7 @@ export const Composer = memo(function Composer({
   attachedImages = [],
   onPickImages,
   onAttachImages,
+  projectPath = null,
   onRemoveImage,
   prefillDraft = null,
   onPrefillHandled,
@@ -662,6 +664,7 @@ export const Composer = memo(function Composer({
         attachments={attachedImages}
         onAddAttachment={onPickImages}
         onAttachImages={onAttachImages}
+        projectPath={projectPath}
         onRemoveAttachment={onRemoveImage}
         onTextChange={handleTextChangeWithHistory}
         onSelectionChange={handleSelectionChange}

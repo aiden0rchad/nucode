@@ -421,6 +421,7 @@ export function WorkspaceHome({
               void pickImages();
             }}
             onAttachImages={attachImages}
+            projectPath={workspace.path}
             onRemoveAttachment={removeImage}
             onTextChange={handleTextChangeWithHistory}
             onSelectionChange={handleSelectionChange}

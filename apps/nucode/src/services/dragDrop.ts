@@ -1,4 +1,6 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+// The UI is a child webview of the main window. Tauri delivers drag-and-drop events to the webview
+// target for child webviews, so a window subscription never fires.
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export type DragDropPayload = {
   type: "enter" | "over" | "leave" | "drop";
@@ -26,7 +28,7 @@ function start(options?: SubscriptionOptions) {
   if (unlisten || listenPromise) {
     return;
   }
-  listenPromise = getCurrentWindow()
+  listenPromise = getCurrentWebview()
     .onDragDropEvent((event) => {
       for (const listener of exclusiveListeners.size ? exclusiveListeners : listeners) {
         try {

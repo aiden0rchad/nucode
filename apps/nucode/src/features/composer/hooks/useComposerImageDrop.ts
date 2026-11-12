@@ -1,23 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeWindowDragDrop } from "../../../services/dragDrop";
-
-const imageExtensions = [
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-  ".tif",
-  ".heic",
-  ".heif",
-];
-
-function isImagePath(path: string) {
-  const lower = path.toLowerCase();
-  return imageExtensions.some((ext) => lower.endsWith(ext));
-}
+import { isImagePath } from "../utils/dropPaths";
 
 function isDragFileTransfer(types: readonly string[] | undefined) {
   if (!types || types.length === 0) {
@@ -45,23 +28,26 @@ function readFilesAsDataUrls(files: File[]) {
   ).then((items) => items.filter(Boolean));
 }
 
-function getDragPosition(position: { x: number; y: number }) {
-  return position;
-}
-
-function normalizeDragPosition(
+/**
+ * Tauri reports physical pixels. Without a DOM drag position to compare against (the DOM drag
+ * events do not fire while Tauri owns file drops), convert by the device pixel ratio.
+ */
+export function normalizeDragPosition(
   position: { x: number; y: number },
   lastClientPosition: { x: number; y: number } | null,
 ) {
   const scale = window.devicePixelRatio || 1;
-  if (scale === 1 || !lastClientPosition) {
-    return getDragPosition(position);
+  if (scale === 1) {
+    return position;
+  }
+  const scaled = { x: position.x / scale, y: position.y / scale };
+  if (!lastClientPosition) {
+    return scaled;
   }
   const logicalDistance = Math.hypot(
     position.x - lastClientPosition.x,
     position.y - lastClientPosition.y,
   );
-  const scaled = { x: position.x / scale, y: position.y / scale };
   const scaledDistance = Math.hypot(
     scaled.x - lastClientPosition.x,
     scaled.y - lastClientPosition.y,
@@ -72,15 +58,33 @@ function normalizeDragPosition(
 type UseComposerImageDropArgs = {
   disabled: boolean;
   onAttachImages?: (paths: string[]) => void;
+  /** Dropped files and folders that are not images. */
+  onDropPaths?: (paths: string[]) => void;
 };
 
 export function useComposerImageDrop({
   disabled,
   onAttachImages,
+  onDropPaths,
 }: UseComposerImageDropArgs) {
   const [isDragOver, setIsDragOver] = useState(false);
   const dropTargetRef = useRef<HTMLDivElement | null>(null);
   const lastClientPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const handlersRef = useRef({ onAttachImages, onDropPaths });
+  handlersRef.current = { onAttachImages, onDropPaths };
+
+  const deliverPaths = (paths: string[]) => {
+    const imagePaths = paths.filter(isImagePath);
+    const otherPaths = paths.filter((path) => !isImagePath(path));
+    if (imagePaths.length > 0) {
+      handlersRef.current.onAttachImages?.(imagePaths);
+    }
+    if (otherPaths.length > 0) {
+      handlersRef.current.onDropPaths?.(otherPaths);
+    }
+  };
+  const deliverPathsRef = useRef(deliverPaths);
+  deliverPathsRef.current = deliverPaths;
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -114,13 +118,9 @@ export function useComposerImageDrop({
         if (!isInside) {
           return;
         }
-        const imagePaths = (event.payload.paths ?? [])
-          .map((path) => path.trim())
-          .filter(Boolean)
-          .filter(isImagePath);
-        if (imagePaths.length > 0) {
-          onAttachImages?.(imagePaths);
-        }
+        deliverPathsRef.current(
+          (event.payload.paths ?? []).map((path) => path.trim()).filter(Boolean),
+        );
       }
     });
     return () => {
@@ -128,7 +128,7 @@ export function useComposerImageDrop({
         unlisten();
       }
     };
-  }, [disabled, onAttachImages]);
+  }, [disabled]);
 
   const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
     if (disabled) {
@@ -165,12 +165,15 @@ export function useComposerImageDrop({
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
-    const filePaths = [...files, ...itemFiles]
-      .map((file) => (file as File & { path?: string }).path ?? "")
-      .filter(Boolean);
-    const imagePaths = filePaths.filter(isImagePath);
-    if (imagePaths.length > 0) {
-      onAttachImages?.(imagePaths);
+    const filePaths = Array.from(
+      new Set(
+        [...files, ...itemFiles]
+          .map((file) => (file as File & { path?: string }).path ?? "")
+          .filter(Boolean),
+      ),
+    );
+    if (filePaths.length > 0) {
+      deliverPaths(filePaths);
       return;
     }
     const fileImages = [...files, ...itemFiles].filter((file) =>

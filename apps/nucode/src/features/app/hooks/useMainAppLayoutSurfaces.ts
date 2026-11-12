@@ -471,6 +471,7 @@ function buildPrimarySurface({
           attachedImages: composerWorkspaceState.activeImages,
           onPickImages: composerWorkspaceState.pickImages,
           onAttachImages: composerWorkspaceState.attachImages,
+          projectPath: activeWorkspace?.path ?? null,
           onRemoveImage: composerWorkspaceState.removeImage,
           prefillDraft: composerWorkspaceState.prefillDraft,
           onPrefillHandled: (id) => {
