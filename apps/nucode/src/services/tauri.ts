@@ -1065,6 +1065,21 @@ export async function archiveThread(workspaceId: string, threadId: string) {
   return invoke<any>("archive_thread", { workspaceId, threadId });
 }
 
+/** Opens the conversation in its own window, or focuses the window it already has. */
+export async function openThreadWindow(workspaceId: string, threadId: string, title?: string | null): Promise<void> {
+  await invoke("open_thread_window", { workspaceId, threadId, title: title ?? null });
+}
+
+/** Closes the thread's own window, if it has one. */
+export async function closeThreadWindow(threadId: string): Promise<void> {
+  await invoke("close_thread_window", { threadId });
+}
+
+/** Tells the thread's own window, if it has one, which project the thread now belongs to. */
+export async function retargetThreadWindow(threadId: string, workspaceId: string): Promise<void> {
+  await invoke("retarget_thread_window", { threadId, workspaceId });
+}
+
 export async function deleteThread(workspaceId: string, threadId: string) {
   return invoke<any>("delete_thread", { workspaceId, threadId });
 }

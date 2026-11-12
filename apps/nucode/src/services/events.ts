@@ -3,6 +3,7 @@ import type { ComputerRun } from "@/features/computer/computer";
 import { listen } from "@tauri-apps/api/event";
 import type {
   AppServerEvent,
+  AppSettings,
   DictationEvent,
   DictationModelStatus,
   TrayOpenThreadPayload,
@@ -114,6 +115,12 @@ const updaterCheckHub = createEventHub<void>("updater-check");
 const trayOpenThreadHub = createEventHub<TrayOpenThreadPayload>("tray-open-thread");
 export type MenuViewAction = "zoom_in" | "zoom_out" | "zoom_reset" | "toggle_side_panel" | "back" | "forward" | "previous_tab" | "next_tab" | "new_browser_tab" | "mode_code" | "mode_chat" | "mode_work";
 export const subscribeMenuViewAction = createEventHub<MenuViewAction>("menu-view-action").subscribe;
+/** Another window saved the app settings. `origin` is the label of the window that saved them. */
+export type AppSettingsUpdated = { origin: string; settings: AppSettings };
+export const subscribeAppSettingsUpdated = createEventHub<AppSettingsUpdated>("app-settings-updated").subscribe;
+/** A thread window is told which project its thread now belongs to. */
+export const subscribeThreadWindowRetarget = createEventHub<string>("thread-window-retarget").subscribe;
+export const subscribeMenuOpenThreadWindow = createEventHub<void>("menu-open-thread-window").subscribe;
 const menuNewAgentHub = createEventHub<void>("menu-new-agent");
 const menuNewWorktreeAgentHub = createEventHub<void>("menu-new-worktree-agent");
 const menuNewCloneAgentHub = createEventHub<void>("menu-new-clone-agent");

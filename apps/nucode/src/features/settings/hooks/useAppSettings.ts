@@ -4,7 +4,8 @@ import { defaultAgentPolicy } from "../registry";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettings } from "@/types";
 import { getAppSettings, runCodexDoctor, updateAppSettings } from "@services/tauri";
-import { subscribeImportsChanged, subscribeSetupChanged } from "@services/events";
+import { subscribeAppSettingsUpdated, subscribeImportsChanged, subscribeSetupChanged } from "@services/events";
+import { currentWindowLabel } from "@/features/layout/hooks/useWindowLabel";
 import { clampUiScale, UI_SCALE_DEFAULT } from "@utils/uiScale";
 import { CHAT_SCROLLBACK_DEFAULT, normalizeChatHistoryScrollbackItems } from "@utils/chatScrollback";
 import {
@@ -302,6 +303,13 @@ export function useAppSettings() {
   }), [defaultSettings]);
   useEffect(() => subscribeImportsChanged(() => {
     void getAppSettings().then(response => setSettings(normalizeAppSettings({ ...defaultSettings, ...response }))).catch(() => {});
+  }), [defaultSettings]);
+
+  // Another window saved: take its settings as they are. Only a save sends this event, and this listener never saves,
+  // so two windows cannot echo each other.
+  useEffect(() => subscribeAppSettingsUpdated(({ origin, settings: updated }) => {
+    if (origin === currentWindowLabel()) return;
+    setSettings(normalizeAppSettings({ ...defaultSettings, ...updated }));
   }), [defaultSettings]);
 
   useEffect(() => {

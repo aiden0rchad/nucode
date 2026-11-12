@@ -17,6 +17,16 @@ vi.mock("@services/tauri", () => ({
   runCodexDoctor: vi.fn(),
 }));
 
+let settingsUpdated: ((payload: { origin: string; settings: AppSettings }) => void) | null = null;
+vi.mock("@services/events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@services/events")>()),
+  subscribeAppSettingsUpdated: (listener: typeof settingsUpdated) => {
+    settingsUpdated = listener;
+    return () => { settingsUpdated = null; };
+  },
+}));
+vi.mock("@/features/layout/hooks/useWindowLabel", () => ({ currentWindowLabel: () => "thread-t1" }));
+
 const getAppSettingsMock = vi.mocked(getAppSettings);
 const updateAppSettingsMock = vi.mocked(updateAppSettings);
 const runCodexDoctorMock = vi.mocked(runCodexDoctor);
@@ -172,5 +182,28 @@ describe("useAppSettings", () => {
     await expect(result.current.doctor("/bin/codex", null)).resolves.toEqual(
       response,
     );
+  });
+
+  it("replaces its copy when another window saved, without saving again", async () => {
+    getAppSettingsMock.mockResolvedValue({ uiScale: 1, personality: "friendly" } as AppSettings);
+    const { result } = renderHook(() => useAppSettings());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => settingsUpdated?.({ origin: "main", settings: { uiScale: 1.2, personality: "pragmatic" } as AppSettings }));
+
+    expect(result.current.settings.uiScale).toBe(1.2);
+    expect(result.current.settings.personality).toBe("pragmatic");
+    expect(updateAppSettingsMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores the echo of its own save", async () => {
+    getAppSettingsMock.mockResolvedValue({ uiScale: 1 } as AppSettings);
+    const { result } = renderHook(() => useAppSettings());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => settingsUpdated?.({ origin: "thread-t1", settings: { uiScale: 1.4 } as AppSettings }));
+
+    expect(result.current.settings.uiScale).toBe(1);
+    expect(updateAppSettingsMock).not.toHaveBeenCalled();
   });
 });
