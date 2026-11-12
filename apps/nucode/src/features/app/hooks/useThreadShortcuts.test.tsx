@@ -55,22 +55,45 @@ describe("useThreadShortcuts", () => {
     expect(rename).not.toHaveBeenCalled();
   });
 
-  it("is ignored while a modal is open or a text field has focus", () => {
+  it("fires while the composer or another ordinary text field has focus", () => {
     const rename = vi.fn();
     renderHook(() =>
       useThreadShortcuts({ isEnabled: true, shortcuts: [{ shortcut: "ctrl+alt+r", onTrigger: rename }] }),
     );
+    const composer = document.createElement("textarea");
     const input = document.createElement("input");
-    document.body.append(input);
+    document.body.append(composer, input);
+    press({ key: "r", ctrlKey: true, altKey: true }, composer);
     press({ key: "r", ctrlKey: true, altKey: true }, input);
+    expect(rename).toHaveBeenCalledTimes(2);
+  });
+
+  it("is ignored inside a dialog, inside the context menu, and on key repeat", () => {
+    const rename = vi.fn();
+    renderHook(() =>
+      useThreadShortcuts({ isEnabled: true, shortcuts: [{ shortcut: "ctrl+alt+r", onTrigger: rename }] }),
+    );
+    const menu = document.createElement("div");
+    menu.setAttribute("data-ctx-menu-panel", "");
+    const field = document.createElement("input");
+    menu.append(field);
+    document.body.append(menu);
+    press({ key: "r", ctrlKey: true, altKey: true }, field);
     expect(rename).not.toHaveBeenCalled();
-    input.remove();
-    const modal = document.createElement("div");
-    modal.className = "ds-modal";
-    document.body.append(modal);
+    menu.remove();
+
+    press({ key: "r", ctrlKey: true, altKey: true, repeat: true });
+    expect(rename).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const prompt = document.createElement("input");
+    dialog.append(prompt);
+    document.body.append(dialog);
+    press({ key: "r", ctrlKey: true, altKey: true }, prompt);
     press({ key: "r", ctrlKey: true, altKey: true });
     expect(rename).not.toHaveBeenCalled();
-    modal.remove();
+    dialog.remove();
     press({ key: "r", ctrlKey: true, altKey: true });
     expect(rename).toHaveBeenCalledTimes(1);
   });

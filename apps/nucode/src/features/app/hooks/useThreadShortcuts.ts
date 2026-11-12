@@ -6,18 +6,10 @@ type ThreadShortcut = {
   onTrigger: () => void;
 };
 
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  if (target.isContentEditable) {
-    return true;
-  }
-  return Boolean(
-    target.closest(
-      'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]',
-    ),
-  );
+// These combinations type no text, so they fire from the composer and other ordinary
+// fields. The context menu's own name field is the exception.
+function isMenuField(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest("[data-ctx-menu-panel]"));
 }
 
 // Option changes event.key on macOS ("r" becomes a symbol), so letters and digits are
@@ -38,12 +30,12 @@ function matches(event: KeyboardEvent, shortcut: string) {
 }
 
 function isModalOpen() {
-  return Boolean(document.querySelector(".ds-modal, [aria-modal='true']"));
+  return Boolean(document.querySelector(".ds-modal, [aria-modal='true'], [role='dialog']"));
 }
 
 /**
  * Shortcuts that act on the active thread. They do nothing without one, while a
- * text field has focus, or while a modal is open. A cleared shortcut never fires.
+ * modal or dialog is open, inside the context menu, or on key repeat. A cleared shortcut never fires.
  */
 export function useThreadShortcuts({
   isEnabled,
@@ -60,7 +52,7 @@ export function useThreadShortcuts({
       return undefined;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target) || isModalOpen()) {
+      if (event.defaultPrevented || event.repeat || isMenuField(event.target) || isModalOpen()) {
         return;
       }
       const match = shortcutsRef.current.find(

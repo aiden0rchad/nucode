@@ -405,6 +405,7 @@ export function useSidebarMenus({
             {
               id: "fork-here",
               label: "Fork in this project",
+              icon: <GitFork size={16} />,
               disabled: !forkSupported,
               disabledReason: "Fork is not supported for this engine",
               onSelect: () => onForkThread(workspaceId, threadId),

@@ -612,6 +612,14 @@ describe("backend thread items", () => {
     expect(screen.getByRole("menuitem", { name: "Fork into a new worktree" }).getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("gives both fork rows an icon so their labels line up", () => {
+    openMenu(backend(), { kind: "thread" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Fork" }), { key: "ArrowRight" });
+    for (const name of ["Fork in this project", "Fork into a new worktree"]) {
+      expect(screen.getByRole("menuitem", { name }).querySelector(".ctx-icon svg")).toBeTruthy();
+    }
+  });
+
   it("puts Permanently delete last, under Archive, and asks naming the thread before deleting", async () => {
     ask.mockResolvedValue(true);
     const handlers = backend();
