@@ -22,6 +22,8 @@ function normalizeShortcutDefinitionForPlatform(
 }
 
 const MODIFIER_ORDER = ["cmd", "ctrl", "alt", "shift"] as const;
+// macOS writes modifiers as Control, Option, Shift, Command, then the key.
+const MODIFIER_ORDER_MAC = ["ctrl", "alt", "shift", "cmd"] as const;
 const MODIFIER_LABELS_MAC: Record<string, string> = {
   cmd: "⌘",
   ctrl: "⌃",
@@ -110,7 +112,7 @@ export function formatShortcut(value: string | null | undefined): string {
   const useSymbols = isMacPlatform();
   const normalized = normalizeShortcutDefinitionForPlatform(parsed, useSymbols);
   const modifierLabels = useSymbols ? MODIFIER_LABELS_MAC : MODIFIER_LABELS_OTHER;
-  const modifiers = MODIFIER_ORDER.flatMap((modifier) => {
+  const modifiers = (useSymbols ? MODIFIER_ORDER_MAC : MODIFIER_ORDER).flatMap((modifier) => {
     if (modifier === "cmd" && normalized.meta) {
       return modifierLabels.cmd;
     }

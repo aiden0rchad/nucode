@@ -50,7 +50,9 @@ describe("shortcuts", () => {
 
   it("requires both cmd and ctrl on macOS", () => {
     withNavigatorPlatform("MacIntel", () => {
-      expect(formatShortcut("cmd+ctrl+a")).toBe("⌘⌃A");
+      expect(formatShortcut("cmd+ctrl+a")).toBe("⌃⌘A");
+      expect(formatShortcut("cmd+shift+n")).toBe("⇧⌘N");
+      expect(formatShortcut("cmd+alt+r")).toBe("⌥⌘R");
       expect(toMenuAccelerator("cmd+ctrl+a")).toBe("Cmd+Ctrl+A");
 
       const cmdCtrl = new KeyboardEvent("keydown", {

@@ -30,7 +30,7 @@ it("hosts side chat only in the panel, with shared messages and composer, and op
   const pane = document.querySelector(".side-chat-pane")!;
   expect(pane.closest('.dock-pane[data-dock-pane="sidechat"]')).toBeTruthy();
   expect(document.querySelector(".side-chat-split")).toBeNull();
-  expect(document.querySelector(".main-header button[title='Side chat (⌘⇧K)']")).toBeNull();
+  expect(document.querySelector(".main-header button[title='Side chat (⇧⌘K)']")).toBeNull();
   expect(pane.querySelector(".side-chat-messages .messages-inner")).toBeTruthy();
   expect(pane.querySelector(".composer-shell .reasoning-chip")).toBeTruthy();
   expect(pane.querySelector("select")).toBeNull();

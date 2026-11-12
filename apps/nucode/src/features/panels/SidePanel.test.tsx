@@ -22,7 +22,7 @@ const tools: PanelTool[] = [
   { id: "git", label: "Changes", shortcut: "⌃⇧G", content: <p>Changed files</p> },
   { id: "terminal", label: "Terminal", shortcut: "⌃`", content: <p>Terminal session</p> },
   { id: "files", label: "Files", shortcut: "⌘P", content: <p>Project files</p> },
-  { id: "sidechat", label: "Side chat", shortcut: "⌘⇧K", content: <p>Side conversation</p> },
+  { id: "sidechat", label: "Side chat", shortcut: "⇧⌘K", content: <p>Side conversation</p> },
   { id: "agents", label: "Agents", content: <p>Agent tree</p> },
   { id: "prompts", label: "Prompts", content: <p>Saved prompts</p> },
 ];
