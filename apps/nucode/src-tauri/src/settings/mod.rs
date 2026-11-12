@@ -64,6 +64,12 @@ pub(crate) async fn update_app_settings(
         *state.remote_backend.lock().await = None;
     }
     ensure_remote_runtime_for_settings(&updated, state).await;
+    // Every window keeps its own copy of the settings; tell the others this one changed.
+    let _ = crate::event_sink::emit(
+        window.app_handle(),
+        "app-settings-updated",
+        serde_json::json!({ "origin": window.label(), "settings": &updated }),
+    );
     Ok(updated)
 }
 

@@ -54,6 +54,7 @@ mod window_material;
 #[cfg(test)]
 mod multiwebview_tests;
 mod themes;
+mod thread_window;
 mod workspaces;
 
 #[cfg(desktop)]
@@ -131,6 +132,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, WindowEvent::Destroyed) {
                 window_material::cleanup(window);
+            }
+            // Where closing main destroys it, its thread windows go with it. Closing a thread window only destroys it.
+            #[cfg(all(desktop, not(target_os = "macos")))]
+            if window.label() == "main" && matches!(event, WindowEvent::Destroyed) {
+                thread_window::close_all(window.app_handle());
             }
             if window.label() != "main" {
                 return;
@@ -242,7 +248,7 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(
         tauri_plugin_window_state::Builder::default()
-            .with_filter(|label| !label.starts_with("browser-"))
+            .with_filter(|label| !label.starts_with("browser-") && !thread_window::is_thread_window_label(label))
             // Size, position and maximize are restored by window::restore_main_bounds, on the saved screen.
             .with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::SIZE - tauri_plugin_window_state::StateFlags::POSITION - tauri_plugin_window_state::StateFlags::MAXIMIZED)
             .build(),
@@ -308,6 +314,7 @@ pub fn run() {
             github::issue_report_draft,
             github::issue_report_open,
             github::issue_report_screenshot,
+            thread_window::open_thread_window, thread_window::close_thread_window, thread_window::retarget_thread_window,
             settings::get_app_settings,
             settings::update_app_settings,
             settings::get_codex_config_path,

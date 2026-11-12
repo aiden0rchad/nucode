@@ -51,7 +51,7 @@ pub(crate) fn work_status<R: tauri::Runtime>(app: &AppHandle<R>, message: &serde
 
 // Explicit allowlist: new/untrusted child webviews never inherit app data events.
 pub(crate) fn is_app_webview(label: &str) -> bool {
-    matches!(label, "main" | "about")
+    matches!(label, "main" | "about") || crate::thread_window::is_thread_window_label(label)
 }
 
 pub(crate) fn emit<R: tauri::Runtime, S: serde::Serialize + Clone>(

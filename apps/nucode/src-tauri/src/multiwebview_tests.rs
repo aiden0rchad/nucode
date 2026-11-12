@@ -36,11 +36,14 @@ fn ipc(
 
 #[test]
 fn trusted_webview_labels_are_explicit() {
-    for label in ["main", "about"] {
+    for label in ["main", "about", "thread-1", "thread-:6120", "thread-019a-bc_D9"] {
         assert!(event_sink::is_app_webview(label));
     }
     for label in [
         "browser-x",
+        "browser-thread-1",
+        "thread",
+        "threads-1",
         "browser-main",
         "browser-",
         "",

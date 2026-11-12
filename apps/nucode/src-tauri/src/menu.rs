@@ -98,6 +98,9 @@ pub(crate) fn build_menu<R: tauri::Runtime>(
         MenuItemBuilder::with_id("file_add_workspace_from_url", "Add Workspace from URL...")
             .build(handle)?;
 
+    let open_thread_window_item =
+        MenuItemBuilder::with_id("file_open_thread_window", "Open Thread in New Window").build(handle)?;
+
     registry.register("file_new_agent", &new_agent_item);
     registry.register("file_new_worktree_agent", &new_worktree_agent_item);
     registry.register("file_new_clone_agent", &new_clone_agent_item);
@@ -119,6 +122,8 @@ pub(crate) fn build_menu<R: tauri::Runtime>(
                 &add_workspace_item,
                 &add_workspace_from_url_item,
                 &PredefinedMenuItem::separator(handle)?,
+                &open_thread_window_item,
+                &PredefinedMenuItem::separator(handle)?,
                 &close_window_item,
                 &quit_item,
             ],
@@ -136,6 +141,8 @@ pub(crate) fn build_menu<R: tauri::Runtime>(
             &PredefinedMenuItem::separator(handle)?,
             &add_workspace_item,
             &add_workspace_from_url_item,
+            &PredefinedMenuItem::separator(handle)?,
+            &open_thread_window_item,
             &PredefinedMenuItem::separator(handle)?,
             &PredefinedMenuItem::close_window(handle, None)?,
             #[cfg(not(target_os = "macos"))]
@@ -409,8 +416,14 @@ pub(crate) fn handle_menu_event<R: tauri::Runtime>(
         "file_add_workspace" => emit_menu_event(app, "menu-add-workspace"),
         "file_add_workspace_from_url" => emit_menu_event(app, "menu-add-workspace-from-url"),
         "file_open_settings" => emit_menu_event(app, "menu-open-settings"),
+        "file_open_thread_window" => {
+            // A thread window is already its own window; the entry is for the main one.
+            if focused_thread_window_label(app).is_none() {
+                emit_menu_event(app, "menu-open-thread-window");
+            }
+        }
         "file_close_window" | "window_close" => {
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = focused_app_window(app) {
                 let _ = window.close();
             }
         }
@@ -418,7 +431,7 @@ pub(crate) fn handle_menu_event<R: tauri::Runtime>(
             app.exit(0);
         }
         "view_fullscreen" => {
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = focused_app_window(app) {
                 let is_fullscreen = window.is_fullscreen().unwrap_or(false);
                 let _ = window.set_fullscreen(!is_fullscreen);
             }
@@ -437,17 +450,17 @@ pub(crate) fn handle_menu_event<R: tauri::Runtime>(
         "view_prev_agent" => emit_menu_event(app, "menu-prev-agent"),
         "view_next_workspace" => emit_menu_event(app, "menu-next-workspace"),
         "view_prev_workspace" => emit_menu_event(app, "menu-prev-workspace"),
-        "composer_cycle_model" => emit_menu_event(app, "menu-composer-cycle-model"),
-        "composer_cycle_access" => emit_menu_event(app, "menu-composer-cycle-access"),
-        "composer_cycle_reasoning" => emit_menu_event(app, "menu-composer-cycle-reasoning"),
-        "composer_cycle_collaboration" => emit_menu_event(app, "menu-composer-cycle-collaboration"),
+        "composer_cycle_model" => emit_composer_event(app, "menu-composer-cycle-model"),
+        "composer_cycle_access" => emit_composer_event(app, "menu-composer-cycle-access"),
+        "composer_cycle_reasoning" => emit_composer_event(app, "menu-composer-cycle-reasoning"),
+        "composer_cycle_collaboration" => emit_composer_event(app, "menu-composer-cycle-collaboration"),
         "window_minimize" => {
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = focused_app_window(app) {
                 let _ = window.minimize();
             }
         }
         "window_maximize" => {
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = focused_app_window(app) {
                 let _ = window.maximize();
             }
         }
@@ -461,4 +474,34 @@ fn emit_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: &str) {
         let _ = window.set_focus();
     }
     let _ = app.emit_to(tauri::EventTarget::webview("main"), event, ());
+}
+
+/// The label of the focused thread window, if a thread window has the focus.
+fn focused_thread_window_label<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
+    app.windows()
+        .into_iter()
+        .find(|(label, window)| {
+            crate::thread_window::is_thread_window_label(label) && window.is_focused().unwrap_or(false)
+        })
+        .map(|(label, _)| label)
+}
+
+/// The focused app window, or main when none of them is (the menu can fire while a browser view has the focus).
+fn focused_app_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<tauri::Window<R>> {
+    let focused = app.windows().into_iter().find(|(label, window)| {
+        (label == "main" || label == "about" || crate::thread_window::is_thread_window_label(label))
+            && window.is_focused().unwrap_or(false)
+    });
+    focused.map(|(_, window)| window).or_else(|| app.get_window("main"))
+}
+
+/// Composer shortcuts belong to the window they were pressed in. A thread window gets them directly, without
+/// bringing main forward; everything else goes to main as before.
+fn emit_composer_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: &str) {
+    match focused_thread_window_label(app) {
+        Some(label) => {
+            let _ = app.emit_to(tauri::EventTarget::webview(label), event, ());
+        }
+        None => emit_menu_event(app, event),
+    }
 }
