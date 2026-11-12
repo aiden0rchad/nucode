@@ -51,18 +51,14 @@ export function SettingsOpenAppsSection({
       title="Open in apps"
       subtitle="The apps offered by the Open in menu in the title bar and in file previews."
     >
-      {onShowOpenInEditorChange && (
-        <SettingsGroup>
-          <SettingsToggleRow title="Show in the title bar" subtitle="Adds an Open in button to each thread's title bar. File previews always offer it.">
-            <SettingsToggleSwitch aria-label="Show Open in button in the title bar" pressed={showOpenInEditor} onClick={() => onShowOpenInEditorChange(!showOpenInEditor)} />
-          </SettingsToggleRow>
-        </SettingsGroup>
-      )}
       <SettingsGroup
         title="Apps"
         subtitle={<>The Default app opens when you click Open in. A command receives the selected path as its last argument. {isMacPlatform() ? "An app is started with open -a and your optional arguments." : "An app is started as an executable with your optional arguments."}</>}
         actions={<SettingsButton type="button" onClick={onAddOpenApp}><Plus aria-hidden />Add app</SettingsButton>}
       >
+        {onShowOpenInEditorChange && <SettingsToggleRow title="Show in the title bar" subtitle="Adds an Open in button to each thread's title bar. File previews always offer it.">
+            <SettingsToggleSwitch aria-label="Show Open in button in the title bar" pressed={showOpenInEditor} onClick={() => onShowOpenInEditorChange(!showOpenInEditor)} />
+          </SettingsToggleRow>}
         {openAppDrafts.map((target, index) => {
           const iconSrc = getKnownOpenAppIcon(target.id) ?? openAppIconById[target.id] ?? GENERIC_APP_ICON;
           const labelValid = isOpenAppLabelValid(target.label);
@@ -132,7 +128,7 @@ export function SettingsOpenAppsSection({
                   </label>
                 )}
                 {target.kind === "command" && (
-                  <label className="settings-open-app-field">
+                  <label className="settings-open-app-field is-wide">
                     <span className="settings-visually-hidden">Command</span>
                     <SettingsTextField
                       identifier
@@ -147,7 +143,7 @@ export function SettingsOpenAppsSection({
                   </label>
                 )}
                 {target.kind !== "finder" && (
-                  <label className="settings-open-app-field">
+                  <label className="settings-open-app-field is-wide">
                     <span className="settings-visually-hidden">Args</span>
                     <SettingsTextField
                       identifier

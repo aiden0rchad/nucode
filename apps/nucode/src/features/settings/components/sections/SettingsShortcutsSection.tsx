@@ -1,4 +1,4 @@
-import { SettingsButton, SettingsEmpty, SettingsGroup, SettingsIconButton, SettingsKeycaps, SettingsPage, SettingsRow, SettingsRowText, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsButton, SettingsCallout, SettingsEmpty, SettingsGroup, SettingsIconButton, SettingsKeycaps, SettingsPage, SettingsRow, SettingsRowText, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
 import Search from "lucide-react/dist/esm/icons/search";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import X from "lucide-react/dist/esm/icons/x";
@@ -40,6 +40,15 @@ type SettingsShortcutsSectionProps = {
 
 const MODIFIER_GLYPHS = "⌃⌥⇧⌘";
 
+/** macOS order: ⌃ ⌥ ⇧ ⌘ with the key last (⇧⌘N). Other platforms keep their own order. */
+export function orderedShortcutLabel(value: string | null | undefined): string {
+  const label = formatShortcut(value);
+  if (!isMacPlatform() || !value) return label;
+  const glyphs = [...label].filter(char => MODIFIER_GLYPHS.includes(char));
+  const rest = [...label].filter(char => !MODIFIER_GLYPHS.includes(char)).join("");
+  return [...MODIFIER_GLYPHS].filter(glyph => glyphs.includes(glyph)).join("") + rest;
+}
+
 /** One keycap per key: macOS glyphs are one character each, other platforms join keys with "+". */
 export function shortcutKeys(label: string): string[] {
   const cap = (key: string) => key.length > 1 && /^[a-z]/.test(key) ? key[0].toUpperCase() + key.slice(1) : key;
@@ -64,9 +73,9 @@ function ShortcutRow({
 }) {
   const [recording, setRecording] = useState(false);
   const value = shortcutDrafts[item.draftKey];
-  const label = formatShortcut(value);
-  const defaultLabel = formatShortcut(item.defaultValue);
-  const changed = label !== defaultLabel;
+  const label = orderedShortcutLabel(value);
+  const defaultLabel = orderedShortcutLabel(item.defaultValue);
+  const changed = formatShortcut(value) !== formatShortcut(item.defaultValue);
   return (
     <SettingsRow className="settings-shortcut-row">
       <SettingsRowText title={item.label} />
@@ -76,13 +85,13 @@ function ShortcutRow({
         <span className={`settings-shortcut-editor${recording ? " is-recording" : ""}`}>
           <SettingsTextField
             className="settings-input--shortcut"
-            value={label}
+            value={formatShortcut(value)}
             onKeyDown={(event) => onShortcutKeyDown(event, item.settingKey)}
             onFocus={() => setRecording(true)}
             onBlur={() => setRecording(false)}
             placeholder="Type shortcut"
             aria-label={item.label}
-            title="Click, then press the new keys"
+            title={`Click, then press the new keys (default ${defaultLabel})`}
             readOnly
           />
           <span aria-hidden="true">{recording ? <span className="settings-shortcut-placeholder is-recording">Press keys…</span> : value ? <SettingsKeycaps keys={shortcutKeys(label)} /> : <span className="settings-shortcut-placeholder">Not set</span>}</span>
@@ -258,6 +267,8 @@ export function SettingsShortcutsSection({
     [isMac],
   );
 
+  const [confirmReset, setConfirmReset] = useState(false);
+  const changedItems = groups.flatMap(group => group.items).filter(item => formatShortcut(shortcutDrafts[item.draftKey]) !== formatShortcut(item.defaultValue));
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredGroups = useMemo(() => {
     if (!normalizedSearchQuery) {
@@ -279,16 +290,25 @@ export function SettingsShortcutsSection({
       title="Shortcuts"
       subtitle="Click a shortcut, then press the keys you want. Backspace clears it."
     >
-      <div className="settings-shortcuts-search">
-        <Search aria-hidden />
-        <SettingsTextField
-          type="search"
-          aria-label="Search shortcuts"
-          placeholder="Search shortcuts"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-        />
+      <div className="settings-shortcuts-bar">
+        <div className="settings-shortcuts-search">
+          <Search aria-hidden />
+          <SettingsTextField
+            type="search"
+            aria-label="Search shortcuts"
+            placeholder="Search shortcuts"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </div>
+        {onSetShortcut && <SettingsButton type="button" disabled={!changedItems.length} onClick={() => setConfirmReset(true)}>Reset all…</SettingsButton>}
       </div>
+      {confirmReset && onSetShortcut && (
+        <SettingsCallout tone="warning" role="alertdialog" aria-label="Reset all shortcuts?" className="settings-shortcuts-confirm">
+          Reset {changedItems.length} {changedItems.length === 1 ? "shortcut" : "shortcuts"} to the defaults?
+          <div className="settings-callout-actions"><SettingsButton type="button" onClick={() => setConfirmReset(false)}>Cancel</SettingsButton><SettingsButton type="button" className="primary" onClick={() => { for (const item of changedItems) onSetShortcut(item.settingKey, item.defaultValue); setConfirmReset(false); }}>Reset all</SettingsButton></div>
+        </SettingsCallout>
+      )}
       {filteredGroups.map((group) => (
         <SettingsGroup key={group.title} title={group.title} subtitle={group.subtitle}>
           {group.items.map((item) => (

@@ -1,4 +1,4 @@
-import { SettingsFieldRow, SettingsGroup, SettingsPage, SettingsTextArea, SettingsButton, SettingsSelect, SettingsSwitchRow } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsFieldRow, SettingsGroup, SettingsPage, SettingsTextArea, SettingsSelect, SettingsSwitchRow, SettingsUnsaved } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { AppSettings, ModelOption } from "@/types";
 
 type SettingsGitSectionProps = {
@@ -26,18 +26,12 @@ export function SettingsGitSection({
 }: SettingsGitSectionProps) {
   const flip = (key: "preloadGitDiffs" | "gitDiffIgnoreWhitespaceChanges") => () => void onUpdateAppSettings({ ...appSettings, [key]: !appSettings[key] });
   return (
-    <SettingsPage title="Git" subtitle="How diffs load in the Git sidebar and how commit messages are written.">
+    <SettingsPage title="Git" subtitle="How diffs load in the Git sidebar and how commit messages are written." actions={<SettingsUnsaved dirty={commitMessagePromptDirty} saving={commitMessagePromptSaving} onDiscard={() => { void onResetCommitMessagePrompt(); }} onSave={() => { void onSaveCommitMessagePrompt(); }} />}>
       <SettingsGroup title="Diffs">
         <SettingsSwitchRow title="Preload git diffs" subtitle="Loads diffs ahead of time so the Git sidebar opens faster." pressed={appSettings.preloadGitDiffs} onClick={flip("preloadGitDiffs")} />
         <SettingsSwitchRow title="Ignore whitespace changes" subtitle="Hides whitespace-only changes in local and commit diffs." pressed={appSettings.gitDiffIgnoreWhitespaceChanges} onClick={flip("gitDiffIgnoreWhitespaceChanges")} />
       </SettingsGroup>
-      <SettingsGroup
-        title="Commit messages"
-        actions={<>
-          <SettingsButton type="button" onClick={() => { void onResetCommitMessagePrompt(); }} disabled={commitMessagePromptSaving || !commitMessagePromptDirty}>Reset</SettingsButton>
-          <SettingsButton type="button" className="primary" onClick={() => { void onSaveCommitMessagePrompt(); }} disabled={commitMessagePromptSaving || !commitMessagePromptDirty}>{commitMessagePromptSaving ? "Saving…" : "Save"}</SettingsButton>
-        </>}
-      >
+      <SettingsGroup title="Commit messages">
         {models.length > 0 && (
           <SettingsFieldRow title="Commit message model" subtitle="The model that writes commit messages. Default uses the project's model.">
             <SettingsSelect

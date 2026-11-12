@@ -406,9 +406,9 @@ export function createPreviewHandler(publish: Publish = () => {}, search = "") {
       }
       case "codegraph_status": case "codegraph_rebuild": return { state: "ready", detail: "Preview index ready" };
       case "is_mobile_runtime": case "is_macos_debug_build": return false;
-      case "tailscale_status": return { installed: false, running: false, version: null, dnsName: null, hostName: null, tailnetName: null, ipv4: [], ipv6: [], suggestedRemoteHost: null, message: "Unavailable in browser preview" };
+      case "tailscale_status": return { installed: true, running: true, version: "1.76.6", dnsName: "studio.tail1a2b3c.ts.net", hostName: "studio", tailnetName: "tail1a2b3c.ts.net", ipv4: ["100.64.0.12"], ipv6: [], suggestedRemoteHost: "studio.tail1a2b3c.ts.net:4732", message: "Tailscale is running" };
       case "tailscale_daemon_status": return { state: "stopped", pid: null, startedAtMs: null, lastError: null, listenAddr: null };
-      case "tailscale_daemon_command_preview": return { command: "", daemonPath: "", args: [], tokenConfigured: false };
+      case "tailscale_daemon_command_preview": return { command: "codex-monitor-daemon --listen 0.0.0.0:4732 --token <remote-backend-token>", daemonPath: "codex-monitor-daemon", args: ["--listen", "0.0.0.0:4732", "--token", "<remote-backend-token>"], tokenConfigured: false };
       case "is_workspace_path_dir": return true;
       case "app_build_type": return "debug";
       case "get_open_app_icon": return null;

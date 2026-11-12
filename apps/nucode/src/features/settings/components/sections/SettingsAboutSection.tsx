@@ -94,15 +94,15 @@ export function SettingsAboutSection({ appSettings, onToggleAutomaticAppUpdateCh
       <SettingsGroup title="Help">
         <SettingsRow>
           <SettingsRowText title="Run setup" subtitle="Walk through the first-run setup again." />
-          <SettingsButton onClick={() => window.dispatchEvent(new Event("nucode:run-setup"))}>Run setup</SettingsButton>
+          <SettingsButton onClick={() => window.dispatchEvent(new Event("nucode:run-setup"))}>Run</SettingsButton>
         </SettingsRow>
         <SettingsRow>
           <SettingsRowText title="Report an issue" subtitle="Opens a prefilled GitHub issue that you can review and edit before posting." />
-          <SettingsButton onClick={() => setReporting(true)}>Report an issue…</SettingsButton>
+          <SettingsButton onClick={() => setReporting(true)}>Open…</SettingsButton>
         </SettingsRow>
       </SettingsGroup>
       <SettingsGroup title="Build">
-        {Object.entries({ Version: __APP_VERSION__, "Build type": appBuildType, Branch: __APP_GIT_BRANCH__ || "unknown", Commit: __APP_COMMIT_HASH__ || "unknown", "Build date": buildDateLabel }).map(([label, value]) =>
+        {Object.entries({ "Build type": appBuildType, Branch: __APP_GIT_BRANCH__ || "unknown", Commit: __APP_COMMIT_HASH__ || "unknown", "Build date": buildDateLabel }).map(([label, value]) =>
           <SettingsRow key={label}><div className="settings-toggle-title">{label}</div><code className="settings-build-value">{value}</code></SettingsRow>)}
       </SettingsGroup>
       {reporting && <IssueReportDialog onClose={() => setReporting(false)} />}

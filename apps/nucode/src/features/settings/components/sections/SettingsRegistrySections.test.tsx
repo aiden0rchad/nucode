@@ -72,25 +72,24 @@ describe("provider registry settings", () => {
   it("saves only changed policy, acknowledges success, and preserves edits after failure", async () => {
     const save = vi.fn().mockRejectedValueOnce(new Error("Save failed")).mockResolvedValue(undefined);
     render(<SettingsAgentPolicySection appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={save} tab="subagents" />);
-    const button = screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.classList.contains("primary")).toBe(true);
-    expect(button.closest(".settings-page-actions")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
     const a = defaultAgentPolicy.subagents.maxConcurrent === 5 ? 6 : 5, b = a === 5 ? 6 : 5;
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
-    expect(button.disabled).toBe(false);
+    const button = screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
+    expect(button.classList.contains("primary")).toBe(true);
+    expect(button.closest(".settings-page-actions")).toBeTruthy();
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
     fireEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Error: Save failed");
-    expect(button.disabled).toBe(false);
-    fireEvent.click(button);
-    expect(await screen.findByRole("button", { name: "Saved" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull());
     expect(screen.getByRole("status").textContent).toBe("Policy saved");
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ maxConcurrent: a }) }) }));
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(b) } });
     expect(screen.getByRole("button", { name: "Save changes" })).toHaveProperty("disabled", false);
     fireEvent.change(screen.getByLabelText("Max concurrent"), { target: { value: String(a) } });
-    expect(screen.getByRole("button", { name: "Saved" })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
   });
   it("shows the default engine read-only with a link to Engines", () => {
     const manage = vi.fn();
@@ -172,9 +171,9 @@ describe("provider registry settings", () => {
   it("shows engine enforcement and the merged workspace policy", () => {
     const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false, agentPolicy: { subagents: { maxConcurrent: 2 } } } };
     render(<SettingsAgentPolicySection workspace={workspace} appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={vi.fn()} />);
-    expect(screen.getAllByText("How many subagents one turn may start. Pi only.").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Leave empty to allow any enabled model. Pi only.").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("How many subagents run at once. Pi and Codex.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("How many subagents one turn may start. pi only.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Leave empty to allow any enabled model. pi only.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("How many subagents run at once. pi and Codex.").length).toBeGreaterThan(0);
     expect(screen.getByText("Effective policy for Project (app + workspace)")).toBeTruthy();
     const disclosure = screen.getByRole("button", { name: "Effective policy for Project (app + workspace)" });
     expect(disclosure.querySelector("svg")).toBeTruthy();

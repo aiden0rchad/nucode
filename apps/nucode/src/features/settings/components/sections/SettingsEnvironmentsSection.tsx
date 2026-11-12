@@ -1,4 +1,4 @@
-import { SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsPage, SettingsTextField, SettingsButton, SettingsSelect, SettingsTextArea } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsPage, SettingsTextField, SettingsButton, SettingsSelect, SettingsTextArea, SettingsUnsaved } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { Dispatch, SetStateAction } from "react";
 import type { WorkspaceInfo } from "@/types";
 import { pushErrorToast } from "@services/toasts";
@@ -70,32 +70,39 @@ export function SettingsEnvironmentsSection({
       pushErrorToast({ title: "Copy failed", message: "Could not write to the clipboard. Copy the script manually instead." });
     });
   };
+  const discard = () => {
+    onSetGlobalWorktreesFolderDraft(_globalWorktreesFolderSaved ?? "");
+    onSetWorktreesFolderDraft(_worktreesFolderSaved ?? "");
+    onSetEnvironmentDraftScript(environmentSavedScript ?? "");
+  };
   const saveDisabled = environmentSaving || (hasProjects ? !hasAnyChanges : !globalWorktreesFolderDirty);
   return (
     <SettingsPage
       title="Environments"
       subtitle="Where new worktrees are created and what runs in them first."
-      actions={<SettingsButton type="button" className="primary lg" onClick={() => { void onSaveEnvironmentSetup(); }} disabled={saveDisabled}>{environmentSaving ? "Saving..." : "Save"}</SettingsButton>}
+      actions={<SettingsUnsaved dirty={hasProjects ? hasAnyChanges : globalWorktreesFolderDirty} saving={environmentSaving} disabled={saveDisabled} onSave={() => { void onSaveEnvironmentSetup(); }} onDiscard={discard} />}
     >
       {environmentError && <SettingsCallout tone="error" style={{ marginBottom: 16 }}>{environmentError}</SettingsCallout>}
-      <SettingsGroup
-        title="Worktree locations"
-        actions={!hasProjects ? <SettingsButton type="button" onClick={() => onSetGlobalWorktreesFolderDraft(_globalWorktreesFolderSaved ?? "")} disabled={environmentSaving || !globalWorktreesFolderDirty}>Reset</SettingsButton> : undefined}
-      >
+      {!hasProjects ? (
+        <SettingsGroup title="Worktrees">        <SettingsFieldRow stacked title="Global worktrees root" subtitle="Where new worktrees go unless a project sets its own. Each project gets a subfolder.">
+          <div className="settings-field-actions">
+            <SettingsTextField identifier className="is-fill is-mono" type="text" value={globalWorktreesFolderDraft} onChange={(event) => onSetGlobalWorktreesFolderDraft(event.target.value)} placeholder="/path/to/worktrees-root" disabled={environmentSaving} />
+            <SettingsButton type="button" onClick={() => void browse("Select global worktrees root", onSetGlobalWorktreesFolderDraft)} disabled={environmentSaving}>Browse…</SettingsButton>
+          </div>
+        </SettingsFieldRow>
+<SettingsEmpty>No projects yet.</SettingsEmpty></SettingsGroup>
+      ) : (
+        <SettingsGroup
+          title="Worktrees"
+          subtitle="Choose a project to give it its own worktrees folder and setup script."
+        >
         <SettingsFieldRow stacked title="Global worktrees root" subtitle="Where new worktrees go unless a project sets its own. Each project gets a subfolder.">
           <div className="settings-field-actions">
             <SettingsTextField identifier className="is-fill is-mono" type="text" value={globalWorktreesFolderDraft} onChange={(event) => onSetGlobalWorktreesFolderDraft(event.target.value)} placeholder="/path/to/worktrees-root" disabled={environmentSaving} />
             <SettingsButton type="button" onClick={() => void browse("Select global worktrees root", onSetGlobalWorktreesFolderDraft)} disabled={environmentSaving}>Browse…</SettingsButton>
           </div>
         </SettingsFieldRow>
-      </SettingsGroup>
-      {!hasProjects ? (
-        <SettingsGroup title="Project setup"><SettingsEmpty>No projects yet.</SettingsEmpty></SettingsGroup>
-      ) : (
-        <SettingsGroup
-          title="Project setup"
-          subtitle="Choose a project, then set where its worktrees live and what runs when one is created."
-        >
+
           <SettingsFieldRow title="Project" subtitle={environmentWorkspace?.path}>
             <SettingsSelect
               value={environmentWorkspace?.id ?? ""}

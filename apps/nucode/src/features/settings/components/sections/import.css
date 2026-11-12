@@ -6,7 +6,7 @@
 .import-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .import-source { padding: 0; }
 .import-source > summary { padding: 12px 16px; cursor: pointer; font-weight: 500; overflow-wrap: anywhere; }
-.import-project { margin: 0; border-top: 1px solid var(--border-muted); }
+.import-project { margin: 0; border-top: 1px solid var(--sf-divider); }
 .import-project > summary { padding: 8px 16px 8px 28px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-subtle); }
 .import-entry small { display: block; font-size: 12px; color: var(--text-subtle); overflow-wrap: anywhere; }
 .import-history-link { display: block; text-align: left; }
@@ -14,7 +14,7 @@
 .import-transcript p, .import-transcript pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .import-transcript pre { max-height: 400px; overflow: auto; font-size: 12px; }
 /* Inside a settings card the import blocks are rows. */
-.settings-group-card .chat-migration > * + * { border-top: 1px solid var(--border-muted); }
+.settings-group-card .chat-migration > * + * { border-top: 1px solid var(--sf-divider); }
 .settings-group-card :is(.import-note, .import-actions, .import-source > details, .import-source > p, .import-transcript) { padding: 12px 16px; }
 .settings-group-card .import-source > .settings-row, .settings-group-card .import-project > .settings-row { padding-left: 28px; }
-.settings-group-card > * + .import-source, .settings-group-card > .import-source + .import-source { border-top: 1px solid var(--border-muted); }
+.settings-group-card > * + .import-source, .settings-group-card > .import-source + .import-source { border-top: 1px solid var(--sf-divider); }

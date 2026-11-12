@@ -698,7 +698,7 @@ describe("SettingsView About", () => {
     const row = screen.getByText("Check for updates automatically").closest(".settings-toggle-row") as HTMLElement;
     fireEvent.click(within(row).getByRole("button"));
     expect(onToggleAutomaticAppUpdateChecks).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Report an issue…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open…" })).toBeTruthy();
   });
 });
 
@@ -724,7 +724,7 @@ describe("SettingsView Environments", () => {
 
     const input = screen.getByLabelText("Global worktrees root");
     fireEvent.change(input, { target: { value: "I:/cm-worktrees" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
@@ -747,7 +747,7 @@ describe("SettingsView Environments", () => {
 
     const textarea = screen.getByPlaceholderText("pnpm install");
     fireEvent.change(textarea, { target: { value: "echo updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {
@@ -776,7 +776,7 @@ describe("SettingsView Environments", () => {
     fireEvent.change(screen.getByPlaceholderText("pnpm install"), {
       target: { value: "echo updated" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(
       await screen.findByText("Failed to save workspace settings"),
@@ -784,7 +784,7 @@ describe("SettingsView Environments", () => {
     expect(onUpdateAppSettings).toHaveBeenCalledTimes(1);
     expect(onUpdateWorkspaceSettings).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledTimes(2);
@@ -802,7 +802,7 @@ describe("SettingsView Environments", () => {
     expect(screen.getByText("No projects yet.")).toBeTruthy();
     const input = screen.getByLabelText("Global worktrees root");
     fireEvent.change(input, { target: { value: "I:/cm-worktrees" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
@@ -827,11 +827,11 @@ describe("SettingsView Environments", () => {
     fireEvent.change(screen.getByLabelText("Global worktrees root"), {
       target: { value: "I:/cm-worktrees" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: "Saving..." }) as HTMLButtonElement).disabled,
+        (screen.getByRole("button", { name: "Saving…" }) as HTMLButtonElement).disabled,
       ).toBe(true);
     });
     expect((screen.getByLabelText("Global worktrees root") as HTMLInputElement).disabled).toBe(
@@ -839,7 +839,7 @@ describe("SettingsView Environments", () => {
     );
     expect(onUpdateAppSettings).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Saving..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Saving…" }));
     expect(onUpdateAppSettings).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -848,9 +848,7 @@ describe("SettingsView Environments", () => {
     });
 
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
-        true,
-      );
+      expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
     });
   });
 
@@ -872,7 +870,7 @@ describe("SettingsView Environments", () => {
       "I:/typing",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     await waitFor(() => {
       expect((screen.getByLabelText("Global worktrees root") as HTMLInputElement).value).toBe(
@@ -892,7 +890,7 @@ describe("SettingsView Environments", () => {
 
     const input = screen.getByLabelText("Global worktrees root");
     fireEvent.change(input, { target: { value: "I:/cm-worktrees" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(
       await screen.findByText("Failed to save global worktrees root"),
@@ -914,7 +912,7 @@ describe("SettingsView Environments", () => {
     const textarea = screen.getByPlaceholderText("pnpm install");
     fireEvent.change(input, { target: { value: "I:/cm-worktrees" } });
     fireEvent.change(textarea, { target: { value: "echo updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(
       await screen.findByText("Failed to save workspace settings"),
@@ -935,7 +933,7 @@ describe("SettingsView Environments", () => {
     expect((input as HTMLInputElement).value).toBe("I:/cm-worktrees");
 
     onUpdateWorkspaceSettings.mockResolvedValueOnce(undefined);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledTimes(2);
@@ -954,7 +952,7 @@ describe("SettingsView Environments", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("echo one");
 
     fireEvent.change(textarea, { target: { value: "echo updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {
@@ -970,7 +968,7 @@ describe("SettingsView Environments", () => {
 
     const textarea = screen.getByPlaceholderText("pnpm install");
     fireEvent.change(textarea, { target: { value: "   \n\t" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useState } from "react";
-import { SettingsBadge, SettingsButton, SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsKeycaps, SettingsListRow, SettingsPage, SettingsSection, SettingsSelect, SettingsSegmented, SettingsStatus, SettingsSwitchRow, SettingsTextField, SettingsToggleSwitch } from "./SettingsPrimitives";
+import { SettingsBadge, SettingsButton, SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsKeycaps, SettingsListRow, SettingsPage, SettingsSection, SettingsSelect, SettingsSegmented, SettingsStatus, SettingsSwitchRow, SettingsTextField, SettingsToggleSwitch, SettingsUnsaved } from "./SettingsPrimitives";
 import { shortcutKeys } from "@settings/components/sections/SettingsShortcutsSection";
 
 afterEach(cleanup);
@@ -107,4 +107,16 @@ it("splits shortcut labels into one keycap per key", () => {
   expect(shortcutKeys("⇧tab")).toEqual(["⇧", "Tab"]);
   expect(shortcutKeys("⌘⌃↓")).toEqual(["⌘", "⌃", "↓"]);
   expect(shortcutKeys("Ctrl+Alt+Down")).toEqual(["Ctrl", "Alt", "Down"]);
+});
+
+it("shows the save controls only while there are unsaved edits", () => {
+  const discard = vi.fn(), save = vi.fn();
+  const { container, rerender } = render(<SettingsUnsaved dirty={false} onDiscard={discard} onSave={save} />);
+  expect(container.textContent).toBe("");
+  rerender(<SettingsUnsaved dirty onDiscard={discard} onSave={save} />);
+  expect(screen.getByText("Unsaved changes")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(discard).toHaveBeenCalledOnce();
+  expect(save).toHaveBeenCalledOnce();
 });

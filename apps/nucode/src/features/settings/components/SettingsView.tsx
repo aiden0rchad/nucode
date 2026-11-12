@@ -216,7 +216,7 @@ export function SettingsView({
                <SettingsSectionContainers
                 activeSection={activeSection}
                 orchestration={orchestration}
-                projectsExtra={groupedWorkspaces.some(g => g.workspaces.length) ? <SettingsGroup title="Agent policy" subtitle="Override the app's agent policy for a single project."><div className="settings-card-block settings-policy-list">{groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}</div></SettingsGroup> : null}
+                projectsExtra={groupedWorkspaces.some(g => g.workspaces.length) ? <SettingsGroup title="Project overrides" subtitle="Override the app defaults from Models & Agents for a single project."><div className="settings-card-block settings-policy-list">{groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}</div></SettingsGroup> : null}
               />}
             </div>
           </div>

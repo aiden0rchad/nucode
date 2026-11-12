@@ -158,7 +158,7 @@ describe("computer use", () => {
     expect(screen.queryByText(/Return is allowed in ordinary text fields of full-access apps/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Typing confirmation"), { target: { value: "risky-only" } });
     expect(screen.getByText(/Return is allowed in ordinary text fields of full-access apps/)).toBeTruthy();
-    fireEvent.click(screen.getByText("Save Computer Use"));
+    fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ confirmTyping: "risky-only" }) })));
   });
   it("persists typing confirmation and app access, migrating strings and locking System Settings", async () => {
@@ -176,7 +176,7 @@ describe("computer use", () => {
     fireEvent.change(screen.getByLabelText("Access for com.apple.TextEdit"), { target: { value: "read-only" } });
     fireEvent.change(screen.getByLabelText("Allowed apps"), { target: { value: "com.apple.TextEdit\ncom.apple.systempreferences\ncom.apple.Preview" } });
     expect((screen.getByLabelText("Access for com.apple.Preview") as HTMLSelectElement).value).toBe("full");
-    fireEvent.click(screen.getByText("Save Computer Use"));
+    fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ confirmTyping: "always", allowedApps: [
       { bundleId: "com.apple.TextEdit", access: "read-only" },
       { bundleId: "com.apple.systempreferences", access: "read-only" },
@@ -205,7 +205,7 @@ describe("computer use", () => {
     fireEvent.change(screen.getByLabelText("Input mode"), { target: { value: "foreground" } });
     fireEvent.click(screen.getByLabelText("Allow foreground fallback"));
     fireEvent.click(screen.getByLabelText("Show virtual cursor"));
-    fireEvent.click(screen.getByText("Save Computer Use"));
+    fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ mode: "foreground", allowForegroundFallback: true, virtualCursor: false }) })));
   });
   it.each([
@@ -363,7 +363,7 @@ describe("computer use", () => {
     fireEvent.change(screen.getByLabelText("App access"), { target: { value: "listed" } });
     expect(screen.queryByText("com.apple.Maps")).toBeNull();
     expect(screen.getByLabelText("Allowed apps")).toBeTruthy();
-    fireEvent.click(screen.getByText("Save Computer Use"));
+    fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ askApproval: true }) })));
   });
   it("shows registry models, coordinate presets and permission states", async () => {
@@ -377,7 +377,7 @@ describe("computer use", () => {
     expect(screen.queryByLabelText("Grounding coordinates")).toBeNull();
     fireEvent.change(screen.getByLabelText("Grounding mode"), { target: { value: "ui-tars" } });
     fireEvent.change(screen.getByLabelText("Grounding coordinates"), { target: { value: "1000x1000" } });
-    fireEvent.click(screen.getByText("Save Computer Use"));
+    fireEvent.click(screen.getByText("Save changes"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ groundingMode: "ui-tars", groundingWidth: 1000, groundingHeight: 1000 }) })));
     fireEvent.click(screen.getByRole("button", { name: "Open System Settings — Accessibility" })); expect(computerRequest).toHaveBeenCalledWith({ action: "permissions", pane: "accessibility" });
   });

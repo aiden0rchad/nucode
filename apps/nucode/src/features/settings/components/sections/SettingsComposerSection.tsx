@@ -24,7 +24,7 @@ export function SettingsComposerSection({
   const flip = (key: keyof AppSettings) => () => void onUpdateAppSettings({ ...appSettings, [key]: !appSettings[key] });
   return (
     <SettingsPage title="Composer" subtitle="How the message editor handles follow-ups, pasted code and lists.">
-      <SettingsGroup title="Follow-ups" subtitle="What happens when you send a message while a run is still going.">
+      <SettingsGroup title="Conversation" subtitle="What happens when you send a message and how agents answer.">
         <SettingsFieldRow
           title="Follow-up behavior"
           subtitle={<>Queue: send after the current run. Steer: redirect the run in progress. Press {followUpShortcutLabel} to use the other one for a single message.{steerUnavailable && " Steer is unavailable in the current Codex config, so follow-ups will queue."}</>}
@@ -39,8 +39,6 @@ export function SettingsComposerSection({
           pressed={appSettings.composerFollowUpHintEnabled}
           onClick={flip("composerFollowUpHintEnabled")}
         />
-      </SettingsGroup>
-      <SettingsGroup title="Responses">
         <SettingsFieldRow title="Response style" subtitle="How much agents explain and how far they carry a task before stopping. Applies from the next turn.">
           <SettingsSelect
             value={appSettings.responseStyle ?? "standard"}
@@ -57,8 +55,8 @@ export function SettingsComposerSection({
           </SettingsSelect>
         </SettingsFieldRow>
       </SettingsGroup>
-      <SettingsGroup title="Presets">
-        <SettingsFieldRow title="Preset" subtitle="Sets the editor toggles below to a starting point. You can still change any of them afterwards.">
+      <SettingsGroup title="Editor helpers" subtitle="Code fences, pasting and lists in the message editor.">
+        <SettingsFieldRow title="Preset" subtitle="Sets the switches below to a starting point. You can still change any of them afterwards.">
           <SettingsSelect
             value={appSettings.composerEditorPreset}
             onChange={(event) => onComposerPresetChange(event.target.value as ComposerPreset)}
@@ -68,19 +66,13 @@ export function SettingsComposerSection({
             ))}
           </SettingsSelect>
         </SettingsFieldRow>
-      </SettingsGroup>
-      <SettingsGroup title="Code fences">
         <SettingsSwitchRow title="Expand fences on Space" subtitle="Typing ``` then Space inserts a fenced block." pressed={appSettings.composerFenceExpandOnSpace} onClick={flip("composerFenceExpandOnSpace")} />
         <SettingsSwitchRow title="Expand fences on Enter" subtitle="Pressing Enter on a ``` line also inserts a fenced block." pressed={appSettings.composerFenceExpandOnEnter} onClick={flip("composerFenceExpandOnEnter")} />
         <SettingsSwitchRow title="Support language tags" subtitle="Lets ```lang then Space start a fence in that language." pressed={appSettings.composerFenceLanguageTags} onClick={flip("composerFenceLanguageTags")} />
         <SettingsSwitchRow title="Wrap selection in fences" subtitle="Wraps the selected text when you start a fence." pressed={appSettings.composerFenceWrapSelection} onClick={flip("composerFenceWrapSelection")} />
         <SettingsSwitchRow title="Copy blocks without fences" subtitle={<>Copy gives plain text. Hold {optionKeyLabel} to include the ``` fences.</>} pressed={appSettings.composerCodeBlockCopyUseModifier} onClick={flip("composerCodeBlockCopyUseModifier")} />
-      </SettingsGroup>
-      <SettingsGroup title="Pasting">
         <SettingsSwitchRow title="Auto-wrap multi-line paste" subtitle="Puts pasted text that spans several lines inside a fenced block." pressed={appSettings.composerFenceAutoWrapPasteMultiline} onClick={flip("composerFenceAutoWrapPasteMultiline")} />
         <SettingsSwitchRow title="Auto-wrap code-like single lines" subtitle="Puts a pasted single line that looks like code inside a fenced block." pressed={appSettings.composerFenceAutoWrapPasteCodeLike} onClick={flip("composerFenceAutoWrapPasteCodeLike")} />
-      </SettingsGroup>
-      <SettingsGroup title="Lists">
         <SettingsSwitchRow title="Continue lists on Shift+Enter" subtitle="Shift+Enter on a numbered or bulleted line starts the next item." pressed={appSettings.composerListContinuation} onClick={flip("composerListContinuation")} />
       </SettingsGroup>
     </SettingsPage>

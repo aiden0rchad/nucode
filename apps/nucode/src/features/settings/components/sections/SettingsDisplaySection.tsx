@@ -170,6 +170,7 @@ export function SettingsDisplaySection({
         </SettingsFieldRow>
         <SettingsToggleRow title="Interface scale" subtitle={<span title={scaleShortcutTitle}>{scaleShortcutText}</span>}>
           <div className="settings-field-actions">
+            <SettingsButton type="button" className="ghost" onClick={() => { void onResetScale(); }}>Reset</SettingsButton>
             <SettingsTextField
               id="ui-scale"
               type="text"
@@ -181,13 +182,13 @@ export function SettingsDisplaySection({
               onBlur={() => { void onCommitScale(); }}
               onKeyDown={commitOnEnter(() => { void onCommitScale(); })}
             />
-            <SettingsButton type="button" className="ghost" onClick={() => { void onResetScale(); }}>Reset</SettingsButton>
           </div>
         </SettingsToggleRow>
-        <SettingsFieldRow title="UI font family" subtitle="Used for all interface text. Leave empty for the system font.">
+        <SettingsFieldRow stacked title="UI font family" subtitle="Used for all interface text. Leave empty for the system font.">
           <div className="settings-field-actions">
             <SettingsTextField
               type="text"
+              className="is-fill is-mono"
               value={uiFontDraft}
               onChange={(event) => onSetUiFontDraft(event.target.value)}
               onBlur={() => { void onCommitUiFont(); }}
@@ -199,10 +200,11 @@ export function SettingsDisplaySection({
             }}>Reset</SettingsButton>
           </div>
         </SettingsFieldRow>
-        <SettingsFieldRow title="Code font family" subtitle="Used for diffs and other monospaced text.">
+        <SettingsFieldRow stacked title="Code font family" subtitle="Used for diffs and other monospaced text.">
           <div className="settings-field-actions">
             <SettingsTextField
               type="text"
+              className="is-fill is-mono"
               value={codeFontDraft}
               onChange={(event) => onSetCodeFontDraft(event.target.value)}
               onBlur={() => { void onCommitCodeFont(); }}
@@ -261,6 +263,18 @@ export function SettingsDisplaySection({
         </SettingsFieldRow>
         <SettingsFieldRow title="Max items per thread" subtitle={`From ${CHAT_SCROLLBACK_MIN} to ${CHAT_SCROLLBACK_MAX}. Counts messages, tool calls and other conversation items.`} disabled={scrollbackUnlimited}>
           <div className="settings-field-actions">
+            <SettingsButton
+              type="button"
+              className="ghost"
+              data-scrollback-control="true"
+              disabled={scrollbackUnlimited}
+              onClick={() => {
+                setScrollbackDraft(String(CHAT_SCROLLBACK_DEFAULT));
+                void onUpdateAppSettings({ ...appSettings, chatHistoryScrollbackItems: CHAT_SCROLLBACK_DEFAULT });
+              }}
+            >
+              Reset
+            </SettingsButton>
             <SettingsTextField
               type="text"
               inputMode="numeric"
@@ -275,18 +289,6 @@ export function SettingsDisplaySection({
               }}
               onKeyDown={commitOnEnter(commitScrollback)}
             />
-            <SettingsButton
-              type="button"
-              className="ghost"
-              data-scrollback-control="true"
-              disabled={scrollbackUnlimited}
-              onClick={() => {
-                setScrollbackDraft(String(CHAT_SCROLLBACK_DEFAULT));
-                void onUpdateAppSettings({ ...appSettings, chatHistoryScrollbackItems: CHAT_SCROLLBACK_DEFAULT });
-              }}
-            >
-              Reset
-            </SettingsButton>
           </div>
         </SettingsFieldRow>
       </SettingsGroup>

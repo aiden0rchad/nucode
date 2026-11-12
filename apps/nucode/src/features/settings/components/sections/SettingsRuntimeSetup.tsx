@@ -30,7 +30,7 @@ export function SettingsRuntimeSetup({ engine, onManage }: { engine?: string; on
       const installing = busy === runtime.engine || ["preparing", "installing"].includes(runtime.state);
       const status = installing ? "Installing" : runtime.state === "ready" ? "Ready" : runtime.state === "error" ? "Error" : "Missing";
       const tone = installing ? "busy" : status === "Ready" ? "ready" : status === "Error" ? "error" : "idle";
-      return <SettingsListRow key={runtime.engine} aria-busy={installing} title={runtimeName(runtime.engine)} badge={<SettingsStatus tone={tone} role="status" title={runtime.message}>{status}</SettingsStatus>} meta={runtime.message.replace(/^Mock /i, "")}>
+      return <SettingsListRow key={runtime.engine} aria-busy={installing} title={runtimeName(runtime.engine)} badge={<SettingsStatus tone={tone} role="status" title={runtime.message}>{status}</SettingsStatus>} meta={/^(mock )?ready\b/i.test(runtime.message) ? undefined : runtime.message.replace(/^Mock /i, "")}>
         {engine ? <SettingsButton onClick={onManage}>Manage</SettingsButton> : <SettingsButton disabled={busy !== null || installing} onClick={() => void prepare(runtime.engine)}>{busy === runtime.engine ? "Preparing…" : `Set up ${runtime.engine}`}</SettingsButton>}
       </SettingsListRow>;
     })}

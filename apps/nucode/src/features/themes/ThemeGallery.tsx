@@ -89,7 +89,7 @@ export function ThemeGallery({ settings, update }: { settings: AppSettings; upda
             grid.current?.querySelectorAll<HTMLButtonElement>('.theme-card-select')[next]?.focus();
           }}>
             <ThemePreview theme={preview} compact selected={settings.theme === t.id} />
-            <span className="theme-card-name"><strong>{t.name}</strong>{custom && <span className="theme-custom-chip">Custom</span>}</span><small aria-hidden={!(custom || t.author !== 'nucode') || undefined}>{custom || t.author !== 'nucode' ? t.author || 'Unknown author' : '\u00a0'}</small>
+            <span className="theme-card-name"><strong>{t.name}</strong>{custom && <span className="theme-custom-chip">Custom</span>}</span><small>{custom || t.author !== 'nucode' ? t.author || 'Unknown author' : `Built in · ${t.appearance}`}</small>
           </button>
           {t.id !== 'system' && <IconButton aria-haspopup="menu" aria-expanded={menu?.id === t.id} className="theme-card-menu ghost" aria-label={'Actions for '+t.name} onClick={event => { anchor.current = event.currentTarget; setMenu(menu?.id === t.id ? null : t); }}><MoreHorizontal size={18} aria-hidden /></IconButton>}
         </article>;

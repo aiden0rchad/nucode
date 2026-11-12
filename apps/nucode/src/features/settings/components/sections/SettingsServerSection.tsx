@@ -1,5 +1,5 @@
 import { SettingsBadge, SettingsButton, SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsIconButton, SettingsListRow, SettingsPage, SettingsRow, SettingsRowText, SettingsSelect, SettingsStatus, SettingsSwitchRow, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import X from "lucide-react/dist/esm/icons/x";
 import Plus from "lucide-react/dist/esm/icons/plus";
@@ -119,6 +119,11 @@ export function SettingsServerSection({
   const [addRemoteHostDraft, setAddRemoteHostDraft] = useState("");
   const [addRemoteTokenDraft, setAddRemoteTokenDraft] = useState("");
   const isMobileSimplified = isMobilePlatform;
+  const [generated, setGenerated] = useState<string | null>(null);
+  // Commit a generated token once the draft state holds it, so the existing commit handler sees it.
+  useEffect(() => {
+    if (generated !== null && remoteTokenDraft === generated) { setGenerated(null); void onCommitRemoteToken(); }
+  }, [generated, remoteTokenDraft, onCommitRemoteToken]);
   const pendingDeleteRemote = useMemo(
     () =>
       pendingDeleteRemoteId == null
@@ -195,18 +200,22 @@ export function SettingsServerSection({
   );
   const tokenField = (
     <SettingsFieldRow title="Token" subtitle="The secret that mobile clients and remote mode use to sign in.">
-      <SettingsTextField
-        type="password"
-        value={remoteTokenDraft}
-        placeholder="Token (required)"
-        onChange={(event) => onSetRemoteTokenDraft(event.target.value)}
-        onBlur={() => { void onCommitRemoteToken(); }}
-        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onCommitRemoteToken(); } }}
-        aria-label="Remote backend token"
-      />
+      <div className="settings-field-actions">
+        <SettingsButton type="button" onClick={() => { const bytes = new Uint8Array(24); crypto.getRandomValues(bytes); const token = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); setGenerated(token); onSetRemoteTokenDraft(token); }}>Generate</SettingsButton>
+        <SettingsTextField
+          type="password"
+          value={remoteTokenDraft}
+          placeholder="Token"
+          onChange={(event) => onSetRemoteTokenDraft(event.target.value)}
+          onBlur={() => { void onCommitRemoteToken(); }}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onCommitRemoteToken(); } }}
+          aria-label="Remote backend token"
+        />
+      </div>
     </SettingsFieldRow>
   );
   const tokenMissing = !remoteTokenDraft.trim();
+  const hasSavedToken = !!appSettings.remoteBackendToken?.trim();
   return (
     <SettingsPage
       title="Server"
@@ -253,8 +262,13 @@ export function SettingsServerSection({
         </>
       ) : (
         <>
-          <SettingsGroup title="Connect to a remote server" subtitle="Local keeps everything on this computer. Remote sends requests to the server below, the same way mobile clients connect.">
-            <SettingsFieldRow title="Backend mode">
+          <SettingsGroup title="Connection details" subtitle="Used when this app connects to a remote server and when your phone connects to this computer.">
+            {hostField}
+            {tokenField}
+            {tokenMissing && <SettingsCallout tone="warning">Set a token before connecting or letting devices connect to this computer.</SettingsCallout>}
+          </SettingsGroup>
+          <SettingsGroup title="This app">
+            <SettingsFieldRow title="Backend mode" subtitle={appSettings.backendMode === "remote" ? "Requests go to the remote server in Connection details, the same way mobile clients connect." : "Everything runs on this computer."}>
               <SettingsSelect
                 value={appSettings.backendMode}
                 onChange={(event) => void onUpdateAppSettings({ ...appSettings, backendMode: event.target.value as AppSettings["backendMode"] })}
@@ -263,43 +277,40 @@ export function SettingsServerSection({
                 <option value="remote">Remote (daemon)</option>
               </SettingsSelect>
             </SettingsFieldRow>
-            {hostField}
-            {tokenField}
-            {tokenMissing && <SettingsCallout tone="warning">A token is required. Set one before connecting or letting devices connect to this computer.</SettingsCallout>}
           </SettingsGroup>
-          <SettingsGroup title="Allow mobile connections" subtitle="Lets devices on your network connect to this computer with the host and token above.">
-            <SettingsSwitchRow
-              title="Keep daemon running after app closes"
-              subtitle="When off, nucode stops its mobile daemon when you quit."
-              pressed={appSettings.keepDaemonRunningAfterAppClose}
-              onClick={() => void onUpdateAppSettings({ ...appSettings, keepDaemonRunningAfterAppClose: !appSettings.keepDaemonRunningAfterAppClose })}
-            />
+          <SettingsGroup title="Mobile access">
             <SettingsRow>
-              <SettingsRowText
-                title="Mobile access"
-                subtitle={<><SettingsStatus tone={tcpStatusTone}>{tcpStatusLabel}</SettingsStatus>{" · "}Lets devices on your network connect. It listens on {tcpAddress}; start it before connecting from iOS.{tcpDaemonStatus?.startedAtMs ? ` Started ${new Date(tcpDaemonStatus.startedAtMs).toLocaleString()}.` : ""}</>}
-              />
+              <div className="settings-row-text">
+                <div className="settings-toggle-title settings-title-with-status">Mobile access <SettingsStatus tone={tcpStatusTone} className="settings-status-pill">{tcpStatusLabel}</SettingsStatus></div>
+                <div className="settings-toggle-subtitle">{!hasSavedToken ? "Set a token to start" : tcpRunning ? `Devices on your network can connect on ${tcpAddress}.` : "Lets devices on your network connect to this computer."}</div>
+              </div>
               <div className="settings-row-controls">
                 <SettingsIconButton aria-label="Refresh status" title="Refresh status" onClick={() => { void onTcpDaemonStatus(); }} disabled={tcpDaemonBusyAction !== null}><RefreshCw aria-hidden className={tcpDaemonBusyAction === "status" ? "settings-spin" : undefined} /></SettingsIconButton>
                 {tcpRunning
                   ? <SettingsButton type="button" onClick={() => { void onTcpDaemonStop(); }} disabled={tcpDaemonBusyAction !== null}>{tcpDaemonBusyAction === "stop" ? "Stopping…" : "Stop"}</SettingsButton>
-                  : <SettingsButton type="button" className="primary" onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
+                  : <SettingsButton type="button" className="primary" onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null || !hasSavedToken}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
               </div>
             </SettingsRow>
-            <SettingsRow className={tailscaleStatusError || (tailscaleStatus && !tailscaleStatus.installed) ? "is-disabled" : undefined}>
+            <SettingsSwitchRow
+              title="Keep running after the app closes"
+              subtitle="When off, nucode stops its mobile daemon when you quit."
+              pressed={appSettings.keepDaemonRunningAfterAppClose}
+              onClick={() => void onUpdateAppSettings({ ...appSettings, keepDaemonRunningAfterAppClose: !appSettings.keepDaemonRunningAfterAppClose })}
+            />
+            {(() => { const unavailable = !!tailscaleStatusError || (!!tailscaleStatus && !tailscaleStatus.installed); return <SettingsRow className={unavailable ? "is-disabled" : undefined}>
               <SettingsRowText
                 title="Tailscale"
-                subtitle={tailscaleStatusError ?? (tailscaleStatus ? <>{tailscaleStatus.message.replace(/\.?\s*$/, ".")} {tailscaleStatus.installed ? `Version ${tailscaleStatus.version ?? "unknown"}.` : "Install Tailscale on both desktop and iOS to continue."}{tailscaleStatus.tailnetName && <> Tailnet: <code>{tailscaleStatus.tailnetName}</code>.</>}{tailscaleStatus.suggestedRemoteHost && <> Suggested host: <code>{tailscaleStatus.suggestedRemoteHost}</code>.</>}</> : "Finds this computer's Tailscale address so your phone can reach it.")}
+                subtitle={tailscaleStatusError ?? (tailscaleStatus ? <>{tailscaleStatus.message.replace(/\.?\s*$/, ".")} {tailscaleStatus.installed ? `Version ${tailscaleStatus.version ?? "unknown"}.` : "Install Tailscale on both desktop and iOS to use it."}{tailscaleStatus.tailnetName && <> Tailnet: <code>{tailscaleStatus.tailnetName}</code>.</>}{tailscaleStatus.suggestedRemoteHost && <> Suggested host: <code>{tailscaleStatus.suggestedRemoteHost}</code>.</>}</> : "Finds this computer's Tailscale address so your phone can reach it.")}
               />
               <div className="settings-row-controls">
                 {tailscaleStatus?.suggestedRemoteHost && <SettingsButton type="button" onClick={() => { void onUseSuggestedTailscaleHost(); }}>Use host</SettingsButton>}
-                <SettingsButton type="button" onClick={onRefreshTailscaleStatus} disabled={tailscaleStatusBusy}>{tailscaleStatusBusy ? "Checking…" : "Detect"}</SettingsButton>
+                <SettingsButton type="button" onClick={onRefreshTailscaleStatus} disabled={tailscaleStatusBusy || unavailable}>{tailscaleStatusBusy ? "Checking…" : "Detect"}</SettingsButton>
               </div>
-            </SettingsRow>
+            </SettingsRow>; })()}
             <SettingsFieldRow
               stacked
               title="Command to start the daemon by hand"
-              subtitle={tailscaleCommandError ? <span className="settings-help-error">{tailscaleCommandError}</span> : tailscaleCommandPreview && !tailscaleCommandPreview.tokenConfigured ? <span className="settings-help-error">The token is empty. Set one before exposing daemon access.</span> : "A fallback if Start does not work."}
+              subtitle={tailscaleCommandError ? <span className="settings-help-error">{tailscaleCommandError}</span> : "A fallback if Start does not work."}
             >
               {tailscaleCommandPreview
                 ? <div className="settings-command-block"><pre className="settings-command-preview"><code>{tailscaleCommandPreview.command}</code></pre><SettingsIconButton aria-label="Copy command" title="Copy command" onClick={() => copyCommand(tailscaleCommandPreview.command)}><Copy aria-hidden /></SettingsIconButton></div>

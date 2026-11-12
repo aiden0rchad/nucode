@@ -104,7 +104,7 @@ export function SettingsFeaturesSection({
       title="Codex flags"
       subtitle="Turn Codex features on or off. These flags are written to the Codex config file."
     >
-      <SettingsGroup>
+      <SettingsGroup title="Stable" subtitle="Ready to use and on by default.">
         <SettingsToggleRow
           title="Config file"
           subtitle={`Open the Codex config in ${fileManagerName()}.`}
@@ -114,8 +114,6 @@ export function SettingsFeaturesSection({
           </SettingsButton>
         </SettingsToggleRow>
         {openConfigError && <SettingsCallout tone="error">{openConfigError}</SettingsCallout>}
-      </SettingsGroup>
-      <SettingsGroup title="Stable" subtitle="Ready to use and on by default.">
         <SettingsToggleRow
           title="Personality"
           subtitle={<>How Codex talks to you (written to <code>personality</code> in config.toml).</>}
@@ -150,13 +148,13 @@ export function SettingsFeaturesSection({
         {stableFeatures.map(featureRow)}
         {hasFeatureWorkspace && !featuresLoading && !featureError && stableFeatures.length === 0 && note("Codex returned no stable feature flags.")}
       </SettingsGroup>
-      <SettingsGroup title="Experimental" subtitle="Previews and features still in development.">
+      {(experimentalFeatures.length > 0 || featuresLoading || !hasFeatureWorkspace || !!featureError || (hasFeatureWorkspace && hasDynamicFeatureRows)) && <SettingsGroup title="Experimental" subtitle="Previews and features still in development.">
         {experimentalFeatures.map(featureRow)}
         {hasFeatureWorkspace && !featuresLoading && !featureError && hasDynamicFeatureRows && experimentalFeatures.length === 0 && note("Codex returned no experimental feature flags.")}
         {featuresLoading && note("Loading Codex feature flags…")}
         {!hasFeatureWorkspace && !featuresLoading && note("Open a project to load Codex feature flags.")}
         {featureError && <SettingsCallout tone="error">{featureError}</SettingsCallout>}
-      </SettingsGroup>
+      </SettingsGroup>}
     </SettingsPage>
   );
 }

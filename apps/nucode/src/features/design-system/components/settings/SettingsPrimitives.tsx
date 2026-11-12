@@ -127,8 +127,7 @@ export function SettingsSelect({ children, className, onChange, value, defaultVa
     setActive(null);
     anchor.current.focus();
   };
-  const longest = options.map(item => text(item.label)).reduce((a, b) => b.length > a.length ? b : a, "");
-  return <span className={joinClassNames("settings-select-control", multiple && "is-multiple")} data-longest={multiple ? undefined : longest}>
+  return <span className={joinClassNames("settings-select-control", multiple && "is-multiple")}>
     {!multiple && <span className="settings-select-value" aria-hidden="true"><span className="settings-select-label">{option?.label}</span><ChevronRight className="settings-select-chevron" size={14} /></span>}
     <select id={id} {...props} ref={anchor} title={[text(option?.label), option?.recommended && "Recommended", option?.description].filter(Boolean).join(" — ")} aria-expanded={multiple ? undefined : open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${listId}-${active}` : undefined} className={joinClassNames("settings-select", className)} value={value} defaultValue={defaultValue} multiple={multiple} disabled={disabled || inherited}
       onMouseDown={event => { if (!multiple) { event.preventDefault(); anchor.current?.focus(); setActive(open ? null : Math.max(0, selectedIndex)); } }}
@@ -301,4 +300,14 @@ export function SettingsEmpty({ children, action }: { children: ReactNode; actio
 /** A shortcut as one keycap per key. */
 export function SettingsKeycaps({ keys, className }: { keys: string[]; className?: string }) {
   return <span className={joinClassNames("settings-keycaps", className)}>{keys.map((key, index) => <kbd key={`${key}-${index}`} className="settings-keycap">{key}</kbd>)}</span>;
+}
+
+/** Header actions for pages that stage edits: nothing while clean; otherwise "Unsaved changes", Discard and Save changes. */
+export function SettingsUnsaved({ dirty, saving = false, disabled = false, onDiscard, onSave, form }: { dirty: boolean; saving?: boolean; disabled?: boolean; onDiscard: () => void; onSave?: () => void; form?: string }) {
+  if (!dirty && !saving) return null;
+  return <>
+    <span className="settings-unsaved">Unsaved changes</span>
+    <SettingsButton className="ghost" disabled={saving} onClick={onDiscard}>Discard</SettingsButton>
+    <SettingsButton className="primary lg" type={form ? "submit" : "button"} form={form} disabled={disabled || saving} onClick={form ? undefined : onSave}>{saving ? "Saving…" : "Save changes"}</SettingsButton>
+  </>;
 }

@@ -47,7 +47,7 @@ it("uses shared settings pages, groups and rows in every section, with independe
   }
   for (const selector of [".settings-master", ".settings-nav-list", ".settings-content"]) {
     const styles = getComputedStyle(dialog.querySelector(selector));
-    expect(styles.overflowY, selector).toBe("auto");
+    expect(styles.overflowY, selector).toMatch(/^(auto|scroll)$/);
     expect(styles.minHeight, selector).toBe("0");
   }
   fireEvent.click(within(dialog).getByRole("button", { name: "Computer Use" }));

@@ -70,12 +70,10 @@ export function SettingsConnectorsSection({ appSettings, onUpdateAppSettings, wo
   const newConnector = () => { setDraft(empty()); setEditing(null); setSecrets({}); setSaved({}); setResult(null); };
   return <SettingsPage title="Connectors" subtitle="Connect external tools (MCP servers) to your agents."
     actions={undefined}>
-    <SettingsGroup>
-      <SettingsFieldRow title="Scope" subtitle="Connectors set for all workspaces apply everywhere. A single project can switch any of them on or off for itself."><SettingsSelect disabled={busy} value={local ? "workspace" : "app"} onChange={e => { setScope(e.target.value); setDraft(null); setEditing(null); setResult(null); }}><option value="app">All workspaces</option>{workspace && <option value="workspace">{workspace.name}</option>}</SettingsSelect></SettingsFieldRow>
-    </SettingsGroup>
     {error && <SettingsCallout tone="error">{error}</SettingsCallout>}
-    <SettingsGroup title="Connectors" subtitle="Connectors that are on are available to agents. Changes apply the next time an engine starts."
+    <SettingsGroup title="Connectors" subtitle="Connectors that are on are available to agents after an engine restarts."
       actions={<SettingsButton disabled={busy} onClick={newConnector}><Plus aria-hidden />Add connector</SettingsButton>}>
+      <SettingsFieldRow title="Scope" subtitle="Connectors set for all workspaces apply everywhere. A single project can switch any of them on or off for itself."><SettingsSelect disabled={busy} value={local ? "workspace" : "app"} onChange={e => { setScope(e.target.value); setDraft(null); setEditing(null); setResult(null); }}><option value="app">All workspaces</option>{workspace && <option value="workspace">{workspace.name}</option>}</SettingsSelect></SettingsFieldRow>
       {entries.map(s => {
         const inherited = local && globals.some(g => g.id === s.id);
         const name = s.name || s.id;

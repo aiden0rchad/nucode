@@ -6,7 +6,7 @@
 .diagnostics-page .settings-select-control { min-width: 0; max-width: 100%; }
 .diagnostics-page .settings-textarea { min-width: 0; max-width: 100%; }
 .diagnostics-page .diagnostics-feedback-button { display: inline-flex; align-items: center; gap: 6px; }
-.diagnostics-level, .diagnostics-path, .diagnostics-stats, .diagnostics-confirm { padding: 12px; gap: 8px; }
+.diagnostics-level, .diagnostics-path, .diagnostics-stats, .diagnostics-confirm { padding: 12px 16px; gap: 8px; }
 .diagnostics-level { border-block: 1px solid var(--border-muted); }
 .diagnostics-path { width: 100%; }
 .diagnostics-actions, .diagnostics-identifiers { gap: 8px; margin-top: 12px; }

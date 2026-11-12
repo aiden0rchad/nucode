@@ -1,4 +1,4 @@
-import { SettingsPage, SettingsGroup, SettingsSelect, SettingsTextArea, SettingsNumberStepper, SettingsTextField, SettingsButton, SettingsCallout, SettingsListRow, SettingsFieldRow, SettingsRow, SettingsRowText, SettingsStatus, SettingsSwitchRow } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsPage, SettingsGroup, SettingsSelect, SettingsTextArea, SettingsNumberStepper, SettingsTextField, SettingsButton, SettingsCallout, SettingsListRow, SettingsFieldRow, SettingsRow, SettingsRowText, SettingsStatus, SettingsSwitchRow, SettingsUnsaved } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { SettingsRuntimeSetup } from "./SettingsRuntimeSetup";
 import { useEffect, useState } from "react";
 import type { AppSettings } from "@/types";
@@ -14,6 +14,9 @@ function allowedApps(entries: (string | ComputerSettings["allowedApps"][number])
 }
 export function SettingsComputerSection({ appSettings, onUpdateAppSettings, onManageEngines }: { onManageEngines?: () => void; appSettings: AppSettings; onUpdateAppSettings: (s: AppSettings) => Promise<void> }) {
   const [draft, setDraft] = useState({ ...defaultComputerSettings, ...appSettings.computer, allowedApps: allowedApps(appSettings.computer?.allowedApps ?? []) });
+  const storedDraft = () => ({ ...defaultComputerSettings, ...appSettings.computer, allowedApps: allowedApps(appSettings.computer?.allowedApps ?? []) });
+  const [baseline, setBaseline] = useState(() => JSON.stringify(storedDraft()));
+  const dirty = JSON.stringify(draft) !== baseline;
   const [status, setStatus] = useState<ComputerRun>({ steps: [] });
   const [busy, setBusy] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -46,6 +49,7 @@ export function SettingsComputerSection({ appSettings, onUpdateAppSettings, onMa
       if (draft.enabled && (!draft.planner || !draft.grounding)) throw new Error("Select planner and grounding models");
       if (draft.enabled) { setStatus(s => ({ ...s, setup: "Preparing Python 3.12 environment…" })); await computerRequest({ action: "prepare" }); }
       await onUpdateAppSettings({ ...appSettings, computer: { ...draft, allowedApps: allowedApps(draft.allowedApps.map(a => ({ ...a, bundleId: a.bundleId.trim() })).filter(a => a.bundleId)), deniedApps: draft.deniedApps.map(s => s.trim()).filter(Boolean) } });
+      setBaseline(JSON.stringify(draft));
       await refresh();
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   };
@@ -53,7 +57,7 @@ export function SettingsComputerSection({ appSettings, onUpdateAppSettings, onMa
   const readOnlySystem = (id: string) => id.trim().toLowerCase() === "com.apple.systempreferences";
   const appsLabel = draft.appAccess !== "ask" ? "Allowed apps" : draft.askApproval ? "Apps allowed without asking" : "Listed apps";
   return <SettingsPage className="computer-settings" title="Computer Use" subtitle="Let agents see and operate apps on your Mac, with the limits you set here."
-    actions={<SettingsButton className="primary lg" disabled={busy || requesting} onClick={() => void save()}>{busy ? "Preparing…" : "Save Computer Use"}</SettingsButton>}>
+    actions={<SettingsUnsaved dirty={dirty} saving={busy} disabled={requesting} onDiscard={() => { setDraft(JSON.parse(baseline)); setError(""); }} onSave={() => void save()} />}>
     <SettingsRuntimeSetup engine="computer" onManage={onManageEngines} />
     {error && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{error}</SettingsCallout>}
     {status.setup && <SettingsCallout tone="info" role="status" style={{ marginTop: 16 }}>{status.setup}</SettingsCallout>}
@@ -63,7 +67,7 @@ export function SettingsComputerSection({ appSettings, onUpdateAppSettings, onMa
       <SettingsSwitchRow title="Allow foreground fallback" subtitle={<>When an app ignores background input, such as Notes' search field, it comes forward briefly and uses the mouse for that step{draft.askApproval ? ", after you approve" : ""}.</>} pressed={draft.allowForegroundFallback} onClick={() => update({ allowForegroundFallback: !(draft.allowForegroundFallback) })} />
       <SettingsSwitchRow title="Ask for approval" subtitle="Asks before using a new app and before risky actions such as send, buy or delete. When off, Computer Use goes ahead without asking." pressed={draft.askApproval} onClick={() => update({ askApproval: !(draft.askApproval) })} />
       <SettingsSwitchRow title="Show virtual cursor" subtitle="Shows where the agent is pointing." pressed={draft.virtualCursor} onClick={() => update({ virtualCursor: !(draft.virtualCursor) })} />
-      <SettingsFieldRow title="Typing confirmation" help={<>{draft.confirmTyping === "risky-only" ? "Return is allowed in ordinary text fields of full-access apps. " : ""}Typing in ordinary text fields of full-access apps goes ahead. Secure or sensitive fields and Enter need approval. Shortcuts outside the safe list (⌘N, ⌘F, ⌘A, ⌘C, ⌘V, ⌘Z, ⌘⇧Z, arrows, Tab, Escape) need approval, and ⌘S always does.</>}><SettingsSelect value={draft.confirmTyping} onChange={e => update({ confirmTyping: e.target.value as ComputerSettings["confirmTyping"] })}><option value="sensitive">Sensitive fields and risky actions</option><option value="always">Always</option><option value="risky-only" data-description="Allow Return in ordinary text fields.">Risky only</option></SettingsSelect></SettingsFieldRow>
+      <SettingsFieldRow title="Typing confirmation" help={<>Typing in ordinary text fields of full-access apps goes ahead; secure fields and Enter need approval.<details className="settings-inline-details"><summary>Details</summary>{draft.confirmTyping === "risky-only" ? "Return is allowed in ordinary text fields of full-access apps. " : ""}Shortcuts outside the safe list (⌘N, ⌘F, ⌘A, ⌘C, ⌘V, ⌘Z, ⌘⇧Z, arrows, Tab, Escape) need approval, and ⌘S always does.</details></>}><SettingsSelect value={draft.confirmTyping} onChange={e => update({ confirmTyping: e.target.value as ComputerSettings["confirmTyping"] })}><option value="sensitive">Sensitive fields and risky actions</option><option value="always">Always</option><option value="risky-only" data-description="Allow Return in ordinary text fields.">Risky only</option></SettingsSelect></SettingsFieldRow>
     </SettingsGroup>
     <SettingsGroup disabled={busy || requesting} title="Models" subtitle="Pick models from your providers. The planner decides what to do; grounding finds where to click.">
       {(["planner", "grounding"] as const).map(role => <SettingsFieldRow key={role} title={role === "planner" ? "Vision planner model" : "Grounding model"}><SettingsSelect value={modelKey(draft[role])} onChange={e => update({ [role]: modelRef(e.target.value) })}><option value="">Select a registry model</option>{options}</SettingsSelect></SettingsFieldRow>)}
@@ -88,7 +92,7 @@ export function SettingsComputerSection({ appSettings, onUpdateAppSettings, onMa
     <SettingsGroup title="macOS permissions" subtitle="Computer Use needs these to see the screen and operate apps."
       actions={<><SettingsButton disabled={requesting} onClick={() => void refresh()}>Refresh</SettingsButton><SettingsButton className="primary" disabled={requesting || busy} onClick={() => void requestAccess()}>{requesting ? "Requesting…" : "Request access"}</SettingsButton></>}>
       {(["screen", "accessibility"] as const).map(pane => <SettingsRow key={pane}><SettingsRowText title={pane === "screen" ? "Screen Recording" : "Accessibility"} subtitle={<SettingsStatus tone={status.permissions?.[pane] ? "ready" : "warning"}>{status.permissions?.[pane] ? "Granted" : "Not granted"}</SettingsStatus>} /><SettingsButton aria-label={`Open System Settings — ${pane === "screen" ? "Screen Recording" : "Accessibility"}`} onClick={() => void computerRequest({ action: "permissions", pane }).catch(e => setError(String(e)))}>Open System Settings</SettingsButton></SettingsRow>)}
-      <SettingsRow><SettingsRowText title="Quit & Reopen" subtitle="Screen Recording takes effect only after you quit and reopen nucode." /><SettingsButton disabled={requesting || busy} onClick={() => void computerRequest({ action: "restart" }).catch(e => setError(String(e)))}>Quit &amp; Reopen</SettingsButton></SettingsRow>
+      <SettingsRow><SettingsRowText title="Apply Screen Recording" subtitle="Screen Recording takes effect only after you quit and reopen nucode." /><SettingsButton disabled={requesting || busy} onClick={() => void computerRequest({ action: "restart" }).catch(e => setError(String(e)))}>Quit &amp; Reopen</SettingsButton></SettingsRow>
     </SettingsGroup>
   </SettingsPage>;
 }

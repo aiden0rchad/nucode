@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { SettingsShortcutsSection } from "./SettingsShortcutsSection";
+import { SettingsShortcutsSection, orderedShortcutLabel } from "./SettingsShortcutsSection";
 import type { ShortcutDrafts } from "@settings/components/settingsTypes";
 
 afterEach(cleanup);
@@ -25,4 +25,22 @@ it("shows Press keys while recording and Not set for an empty shortcut", () => {
   expect(screen.getAllByText("Not set").length).toBeGreaterThan(0);
   fireEvent.focus(screen.getByRole("textbox", { name: "New Agent" }));
   expect(screen.getByText("Press keys…")).toBeTruthy();
+});
+
+it("puts macOS modifiers in the ⌃ ⌥ ⇧ ⌘ order with the key last", () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  expect(orderedShortcutLabel("cmd+shift+n")).toBe("⇧⌘N");
+  expect(orderedShortcutLabel("cmd+alt+n")).toBe("⌥⌘N");
+  expect(orderedShortcutLabel("cmd+ctrl+a")).toBe("⌃⌘A");
+  expect(orderedShortcutLabel("")).toBe("Not set");
+});
+
+it("resets every changed shortcut after confirmation", () => {
+  const set = vi.fn();
+  render(<SettingsShortcutsSection shortcutDrafts={drafts({ newAgent: "cmd+j", model: "cmd+k" })} onShortcutKeyDown={vi.fn()} onClearShortcut={vi.fn()} onSetShortcut={set} />);
+  fireEvent.click(screen.getByRole("button", { name: "Reset all…" }));
+  expect(set).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
+  expect(set).toHaveBeenCalledWith("newAgentShortcut", "cmd+n");
+  expect(set).toHaveBeenCalledWith("composerModelShortcut", "cmd+shift+m");
 });

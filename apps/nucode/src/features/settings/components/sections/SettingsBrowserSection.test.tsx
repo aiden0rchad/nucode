@@ -9,29 +9,29 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it("defaults web search off and saves a SearXNG instance through browser settings", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={save} />);
-  expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("off");
+  expect((screen.getByLabelText("Web search") as HTMLSelectElement).value).toBe("off");
   expect(screen.queryByLabelText("Instance URL")).toBeNull();
   expect(screen.getByText("Lets agents search in the background without opening the browser.")).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "searxng" } });
+  fireEvent.change(screen.getByLabelText("Web search"), { target: { value: "searxng" } });
   expect(screen.getByLabelText("Instance URL").getAttribute("placeholder")).toBe("https://searx.example.org");
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   expect((await screen.findByRole("alert")).textContent).toBe("Error: Enter the SearXNG instance URL (http or https)");
   expect(save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Instance URL"), { target: { value: "https://searx.example.org" } });
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ browser: expect.objectContaining({ webSearch: { provider: "searxng", url: "https://searx.example.org" } }) })));
-  fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "off" } });
+  fireEvent.change(screen.getByLabelText("Web search"), { target: { value: "off" } });
   expect(screen.queryByLabelText("Instance URL")).toBeNull();
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ browser: expect.objectContaining({ webSearch: { provider: "off", url: "https://searx.example.org" } }) })));
 });
 it("loads configured web search and rejects non-HTTP instance URLs", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<SettingsBrowserSection appSettings={{ browser: { webSearch: { provider: "searxng", url: "https://searx.example.org" } } } as AppSettings} onUpdateAppSettings={save} />);
-  expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("searxng");
+  expect((screen.getByLabelText("Web search") as HTMLSelectElement).value).toBe("searxng");
   expect((screen.getByLabelText("Instance URL") as HTMLInputElement).value).toBe("https://searx.example.org");
   fireEvent.change(screen.getByLabelText("Instance URL"), { target: { value: "file:///search" } });
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   expect((await screen.findByRole("alert")).textContent).toBe("Error: Enter the SearXNG instance URL (http or https)");
   expect(save).not.toHaveBeenCalled();
 });
@@ -41,8 +41,8 @@ it("saves browser settings and requires confirmation before deleting the profile
   fireEvent.change(screen.getByLabelText("Browser binary"),{target:{value:"/custom/chrome"}});
   fireEvent.change(screen.getByLabelText(/Allowed origins/),{target:{value:"https://one.test\nhttps://two.test"}});
   fireEvent.change(screen.getByLabelText(/Blocked origins/),{target:{value:"https://blocked.test"}});
-  fireEvent.change(screen.getByLabelText("Browser tool approval"),{target:{value:"auto"}});
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.change(screen.getByLabelText("Agent browser permissions"),{target:{value:"auto"}});
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({browser:expect.objectContaining({binary:"/custom/chrome",allowedOrigins:["https://one.test","https://two.test"],blockedOrigins:["https://blocked.test"],approval:"auto"})})));
   await screen.findByText(/Saved\./);
   fireEvent.click(screen.getByText("Clear browsing data")); expect(browserRequest).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ it("defaults password toggles on and persists the user's choices", async () => {
   const auth = screen.getByRole("button", { name: "Require authentication to fill" });
   expect(offer.getAttribute("aria-pressed")).toBe("true"); expect(auth.getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(offer); fireEvent.click(auth);
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ browser: expect.objectContaining({ offerToSavePasswords: false, requireAuthToFill: false }) })));
 });
 
@@ -94,7 +94,7 @@ it("defaults session persistence on for old settings and saves opting out", asyn
   const toggle = screen.getByRole("button", { name: "Stay signed in after restart" });
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(toggle);
-  fireEvent.click(screen.getByText("Save browser settings"));
+  fireEvent.click(screen.getByText("Save changes"));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ browser: expect.objectContaining({ keepSessions: false }) })));
   cleanup();
   render(<SettingsBrowserSection appSettings={{ browser: { keepSessions: false } } as AppSettings} onUpdateAppSettings={save} />);

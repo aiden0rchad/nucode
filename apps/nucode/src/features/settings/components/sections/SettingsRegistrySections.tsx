@@ -1,5 +1,5 @@
 import { useEngines } from "@settings/engines";
-import { SettingsCallout, SettingsEmpty, SettingsListRow, SettingsPage, SettingsRow, SettingsRowText, SettingsStatus, SettingsButton, SettingsTextField, SettingsSelect, SettingsNumberStepper, SettingsTextArea, SettingsGroup, SettingsFieldRow, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsCallout, SettingsEmpty, SettingsListRow, SettingsPage, SettingsRow, SettingsRowText, SettingsStatus, SettingsUnsaved, SettingsButton, SettingsTextField, SettingsSelect, SettingsNumberStepper, SettingsTextArea, SettingsGroup, SettingsFieldRow, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { RowMenu } from "@/features/chat/RowMenu";
 import { formatRelativeTimeShort } from "@utils/time";
@@ -54,11 +54,12 @@ export function SettingsProvidersSection({ appSettings, onUpdateAppSettings }: P
       await onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, models: result.models, modelsFetchedAt: Math.floor(Date.now() / 1000) } : v) });
     } catch (error) { setTestErrors(previous => ({ ...previous, [p.id]: String(error) })); }
   });
-  return <SettingsPage title="Providers" subtitle="Use your own API keys or local models."><SettingsGroup subtitle="Providers that are on supply the models you can pick for threads and agents. Turn one off to hide its models." actions={<SettingsButton type="button" disabled={busy} onClick={() => { setDraft(newProvider()); setEditing(null); setStatus(""); }}><Plus aria-hidden />Add provider</SettingsButton>}>
+  return <SettingsPage title="Providers" subtitle="Use your own API keys or local models."><SettingsGroup title="Your providers" subtitle="Providers that are on supply the models you can pick; turn one off to hide them." actions={<SettingsButton type="button" disabled={busy} onClick={() => { setDraft(newProvider()); setEditing(null); setStatus(""); }}><Plus aria-hidden />Add provider</SettingsButton>}>
     {error && <SettingsCallout tone="error">{error}</SettingsCallout>}
     {providers.map(p => { const state = providerStatus(p); return <div key={p.id} className="settings-list-group" role="group" aria-label={`${p.name} provider`}>
       <SettingsListRow className={p.enabled ? undefined : "is-off"} icon={p.name.slice(0, 1).toUpperCase()} title={p.name}
-        meta={<><SettingsStatus tone={state.tone} role={testErrors[p.id] ? "alert" : "status"} title={testErrors[p.id] || undefined}>{testErrors[p.id] || state.label}</SettingsStatus><span>{p.kind} · {p.baseUrl || "Default endpoint"}</span><span>{p.models.length} models{p.modelsFetchedAt ? ` · tested ${Date.now() / 1000 - p.modelsFetchedAt < 60 ? "just now" : formatRelativeTimeShort(p.modelsFetchedAt * 1000) + " ago"}` : ""}</span></>}>
+        meta={<><SettingsStatus tone={state.tone} role={testErrors[p.id] ? "alert" : "status"} title={testErrors[p.id] || undefined}>{testErrors[p.id] || state.label}</SettingsStatus><span>{p.kind}</span><span>{p.baseUrl || "Default endpoint"}</span><span>{p.models.length} models{p.modelsFetchedAt ? ` · tested ${Date.now() / 1000 - p.modelsFetchedAt < 60 ? "just now" : formatRelativeTimeShort(p.modelsFetchedAt * 1000) + " ago"}` : ""}</span></>}>
+        {p.enabled && state.tone !== "ready" && <SettingsButton type="button" className="ghost" aria-label={`Test ${p.name}`} disabled={busy} onClick={() => test(p)}>Test</SettingsButton>}
         <SettingsToggleSwitch aria-label={`Enable ${p.name}`} pressed={p.enabled} disabled={busy} onClick={() => void run(() => onUpdateAppSettings({ ...appSettings, providers: providers.map(v => v.id === p.id ? { ...v, enabled: !p.enabled } : v) }))} />
         <RowMenu portal size="md" label={p.name} actions={[
           { label: "Test & fetch models", icon: <RefreshCw size={14} />, disabled: busy, onClick: () => test(p) },
@@ -131,24 +132,26 @@ export function AgentPolicyEditor({ policy, providers, onChange, tab, scope, eng
   const chain = sub.enabled && sub.mode === "chain-of-command";
   const claudeReady = providers.some(p => p.enabled && providerEngines(p).includes("claude") && p.models.some(m => m.enabled));
   const modelSelect = (label: string, value: string, change: (value: string) => void) => <SettingsFieldRow title={label}><SettingsSelect value={value} onChange={e => change(e.target.value)}><option value="">Inherit</option>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>;
+  const mode = !sub.enabled ? "single" : sub.mode ?? "custom";
+  const modeNote = mode === "single" ? "One model handles every request; delegation to subagents is off. Your roles and model choices are kept." : mode === "chain-of-command" ? "The conversation model is the commander: colonels delegate, majors verify and enlisted agents implement. Only in Code, on pi or oh-my-pi." : "The main agent can hand tasks to subagents you define as roles, within the limits on the Subagents tab. Chat and Work always use a single model.";
+  const modeRow = <SettingsFieldRow title="How agents work" subtitle={modeNote}><SettingsSelect aria-label="Agent mode" value={mode} onChange={e => {
+    const next = setAgentMode(policy, e.target.value as "single" | "custom" | "chain-of-command");
+    if (next.subagents.enabled && next.subagents.mode === "chain-of-command" && !engines.some(engine => engine.id === next.defaultEngine && engine.protocol === "pi-rpc")) next.defaultEngine = "pi";
+    onChange(next);
+  }}><option value="single">Single model</option><option value="chain-of-command">Chain of Command</option><option value="custom">Custom delegation</option></SettingsSelect></SettingsFieldRow>;
   const engineName = engines.find(e => e.id === policy.defaultEngine)?.name ?? policy.defaultEngine;
   return <div className="registry-policy">
-    <SettingsGroup title="Working mode" subtitle="Choose one model or a team of agents. Chain of Command is only available in Code; Chat and Work always use a single model.">
-      <SettingsFieldRow title="Agent mode" subtitle={chain ? "The conversation model is the commander. Colonels delegate, majors verify and enlisted agents implement. Runs on Pi or OMP." : !sub.enabled ? "Delegation is off. Your role and model choices are kept." : undefined}><SettingsSelect value={!sub.enabled ? "single" : sub.mode ?? "custom"} onChange={e => {
-        const next = setAgentMode(policy, e.target.value as "single" | "custom" | "chain-of-command");
-        if (next.subagents.enabled && next.subagents.mode === "chain-of-command" && !engines.some(engine => engine.id === next.defaultEngine && engine.protocol === "pi-rpc")) next.defaultEngine = "pi";
-        onChange(next);
-      }}><option value="single">Single model</option><option value="chain-of-command">Chain of Command</option><option value="custom">Custom delegation</option></SettingsSelect></SettingsFieldRow>
-    </SettingsGroup>
-    {(!tab || tab === "defaults") && <SettingsGroup title="Defaults" subtitle="Pi applies every setting here. Codex applies concurrency, depth, the default subagent model and roles.">
+    {(!tab || tab === "defaults") && <SettingsGroup title="Defaults" subtitle="Which engine and model new threads use.">
+      {modeRow}
       {engineControl === "summary"
         ? <SettingsRow><SettingsRowText title="Default engine" subtitle={<>New threads start with {engineName}. You change it in Engines.</>} /><SettingsButton type="button" onClick={onManageEngines} disabled={!onManageEngines}>Manage engines</SettingsButton></SettingsRow>
         : <SettingsFieldRow title={scope === "project" ? "Engine for this project" : "Default engine"} subtitle={!claudeReady ? "Claude Code needs an enabled Anthropic or Anthropic-compatible provider and model." : undefined}><SettingsSelect value={policy.defaultEngine} onChange={e => onChange({ ...policy, defaultEngine: e.target.value as AgentPolicy["defaultEngine"] })}>{engines.filter(e => e.enabled).map(e => <option key={e.id} value={e.id} disabled={chain && e.protocol !== "pi-rpc" || e.id === "claude" && !claudeReady}>{e.name}</option>)}</SettingsSelect></SettingsFieldRow>}
       {modelSelect("Default model", modelKey(policy.defaultModel), v => onChange({ ...policy, defaultModel: modelRef(v) }))}
     </SettingsGroup>}
     {(!tab || tab === "subagents") && <SettingsGroup title="Subagents" subtitle={chain ? "Turn and concurrency limits are shared by the whole command tree. Waiting coordinators share their slots with workers." : "Limits apply to each delegator. Nested custom roles have their own per-turn budgets."}>
-      {([["maxConcurrent", "Max concurrent", 16, "How many subagents run at once. Pi and Codex."], ["maxPerTurn", "Max per turn", 32, "How many subagents one turn may start. Pi only."], ["maxDepth", "Max depth", 3, "How many levels of delegation are allowed. Pi and Codex."]] as const).map(([field, label, max, note]) => <SettingsFieldRow key={field} title={label} subtitle={note}><SettingsNumberStepper type="number" min={1} max={max} value={sub[field]} onChange={e => onChange({ ...policy, subagents: { ...sub, [field]: Number(e.target.value) } })} /></SettingsFieldRow>)}
-      <SettingsFieldRow stacked title="Allowed models" subtitle="Leave empty to allow any enabled model. Pi only."><SettingsSelect multiple value={sub.allowedModels.map(modelKey)} onChange={e => onChange({ ...policy, subagents: { ...sub, allowedModels: Array.from(e.target.selectedOptions).flatMap(o => { const m = modelRef(o.value); return m ? [m] : []; }) } })}>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>
+      {modeRow}
+      {([["maxConcurrent", "Max concurrent", 16, "How many subagents run at once. pi and Codex."], ["maxPerTurn", "Max per turn", 32, "How many subagents one turn may start. pi only."], ["maxDepth", "Max depth", 3, "How many levels of delegation are allowed. pi and Codex."]] as const).map(([field, label, max, note]) => <SettingsFieldRow key={field} title={label} subtitle={note}><SettingsNumberStepper type="number" min={1} max={max} value={sub[field]} onChange={e => onChange({ ...policy, subagents: { ...sub, [field]: Number(e.target.value) } })} /></SettingsFieldRow>)}
+      <SettingsFieldRow stacked title="Allowed models" subtitle="Leave empty to allow any enabled model. pi only."><SettingsSelect multiple value={sub.allowedModels.map(modelKey)} onChange={e => onChange({ ...policy, subagents: { ...sub, allowedModels: Array.from(e.target.selectedOptions).flatMap(o => { const m = modelRef(o.value); return m ? [m] : []; }) } })}>{models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</SettingsSelect></SettingsFieldRow>
       {modelSelect("Default subagent model", modelKey(sub.defaultModel), v => onChange({ ...policy, subagents: { ...sub, defaultModel: modelRef(v) } }))}
     </SettingsGroup>}
     {chain && (!tab || tab === "subagents") && <ExecutionLimits policy={policy} onChange={onChange} />}
@@ -158,6 +161,7 @@ export function AgentPolicyEditor({ policy, providers, onChange, tab, scope, eng
     {(!tab || tab === "roles") && <>
       <SettingsGroup title="Roles" subtitle={<>Named specialists with their own model, tools and instructions.{scope === "all" ? <> <strong>All projects:</strong> these roles apply to every project without its own roles. To give one project different roles, use its agent policy in Settings → Projects.</> : scope === "project" ? <> <strong>This project only:</strong> these roles replace the ones set for all projects.</> : null}</>}
         actions={!chain ? <SettingsButton type="button" onClick={() => onChange({ ...policy, subagents: { ...sub, roles: [...sub.roles, { name: "role-" + (sub.roles.length + 1), description: "", model: null, toolAccess: "read-only", instructions: "" }] } })}><Plus aria-hidden />Add role</SettingsButton> : undefined}>
+        {modeRow}
         {!sub.roles.length && <SettingsEmpty>No roles yet.</SettingsEmpty>}
         {sub.roles.map((role, index) => chain && !isCommandRole(role) ? null : <div key={index} className="settings-card-block settings-role-summary">{chain ? commandRoleTitle(role.name) : role.name || `Role ${index + 1}`}</div>)}
       </SettingsGroup>
@@ -204,12 +208,11 @@ export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, w
     } catch (e) { setError(String(e)); setSaveState("idle"); }
   };
   const actions = <>
-    {dirty && <span className="settings-unsaved">Unsaved changes</span>}
-    {tab === "roles" && dirty && <SettingsButton disabled={saveState === "saving"} onClick={() => { setPolicy(savedPolicy); setError(""); }}>Discard changes</SettingsButton>}
-    <SettingsButton className="primary lg" disabled={!dirty || !!validation || saveState === "saving"} onClick={() => void save()}>{saveState === "saving" ? "Saving…" : !dirty && saveState === "saved" ? "Saved" : "Save changes"}</SettingsButton>
+    <SettingsUnsaved dirty={dirty} saving={saveState === "saving"} disabled={!!validation} onDiscard={() => { setPolicy(savedPolicy); setError(""); }} onSave={() => void save()} />
     <span className="settings-visually-hidden" role="status">{!dirty && saveState === "saved" ? "Policy saved" : ""}</span>
   </>;
   return <SettingsPage title="Models & Agents" subtitle="Choose default models, delegate work to subagents and define roles." actions={actions}>
+    <p className="settings-scope-line">{tab === "roles" && scope === "project" ? "This project only. These roles replace the ones set for all projects." : "App defaults. They apply to new threads in every project; a project can override them in Projects."}</p>
     {pageTabs}
     {tab === "roles" && <SettingsGroup><SettingsFieldRow title="Apply roles to" subtitle="Roles for all projects, or only for the current project."><SettingsSelect aria-label="Agent scope" value={scope} disabled={dirty || saveState === "saving"} onChange={e => {
       const nextScope = e.target.value as "all" | "project";
@@ -218,6 +221,7 @@ export function SettingsAgentPolicySection({ appSettings, onUpdateAppSettings, w
     }}><option value="project" disabled={!workspace || !onUpdateWorkspaceSettings}>This project{workspace ? ` — ${workspace.name}` : " (select a project first)"}</option><option value="all">All projects</option></SettingsSelect></SettingsFieldRow></SettingsGroup>}
     <AgentPolicyEditor tab={tab} scope={scope} policy={policy} providers={appSettings.providers ?? []} onChange={next => { setPolicy(next); setError(""); }} engineControl={scope === "all" ? "summary" : "select"} onManageEngines={onManageEngines} />
     {(validation || error) && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{validation || error}</SettingsCallout>}
+    <details className="settings-disclosure settings-engine-support"><summary>What each engine supports</summary><p className="settings-note">pi applies every setting on these pages. Codex applies concurrency, depth, the default subagent model and roles.</p></details>
     {workspace && scope === "all" && tab !== "roles" && <div className="settings-effective"><SettingsGroup collapsible title={<>Effective policy for {workspace.name} (app + workspace)</>} disabled><AgentPolicyEditor policy={mergePolicy(savedPolicy, workspace.settings.agentPolicy)} providers={appSettings.providers ?? []} onChange={() => {}} /></SettingsGroup></div>}
   </SettingsPage>;
 }
