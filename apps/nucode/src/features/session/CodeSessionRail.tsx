@@ -221,19 +221,7 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
   const foldedEmpty = preferences.order.filter(folds);
   const reportShare = props.contextReport ? reportPercent(props.contextReport) : null;
   const headerValue = (section: Section) => section === "Context" ? (props.contextReport ? (reportShare === null ? undefined : `${reportShare}%`) : usage && usage.percent !== null ? `${usage.percent}%` : undefined) : counts[section];
-  const meter = props.contextReport && props.contextReport.used !== null && reportShare !== null ? { used: props.contextReport.used, capacity: props.contextReport.window, percent: reportShare }
-    : !props.contextReport && usage && usage.capacity !== null && usage.percent !== null ? { used: usage.used, capacity: usage.capacity, percent: usage.percent } : null;
   return <div ref={railRef} className="code-session-rail" role="region" aria-label="Session details" tabIndex={0}>
-    {meter && <header className="code-session-rail-header">
-      <span>Context</span>
-      <div className="code-session-context-usage ds-tooltip-trigger" data-warning={meter.used / meter.capacity >= 0.8}
-        role="meter" aria-label="Session context usage" aria-valuemin={0} aria-valuemax={meter.capacity} aria-valuenow={Math.min(meter.used, meter.capacity)}
-        aria-valuetext={`Context: ${meter.used} of ${meter.capacity} tokens`} title={`Context: ${meter.used} of ${meter.capacity} tokens`}
-        data-tooltip={`Context: ${meter.used} of ${meter.capacity} tokens`} data-tooltip-placement="bottom" tabIndex={0}>
-        <span>{meter.percent}%</span>
-        <span className="code-session-context-meter" aria-hidden><span style={{ width: `${meter.percent}%` }} /></span>
-      </div>
-    </header>}
     {error && <p role="alert">{error}</p>}
     {preferences.order.map((section, index) => {
       if (folds(section)) return null;

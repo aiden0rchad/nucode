@@ -1,11 +1,5 @@
 .code-session-rail { height: 100%; overflow: auto; min-width: 0; padding: 8px 10px 24px; box-sizing: border-box; color: var(--text-primary); font-size: 12.5px; scrollbar-gutter: stable; mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
 /* One continuous panel: sections separated by hairlines, not a stack of bordered cards. */
-.code-session-rail-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 12px; }
-.code-session-context-usage { display: flex; align-items: center; gap: 8px; color: var(--text-accent); font-variant-numeric: tabular-nums; }
-.code-session-context-usage[data-warning="true"] { color: var(--status-warning); }
-.code-session-context-usage:focus-visible { outline: 2px solid var(--border-accent); outline-offset: 3px; border-radius: var(--radius-row); }
-.code-session-context-meter { width: 48px; height: 3px; overflow: hidden; border-radius: var(--radius-row); background: var(--surface-card-strong); }
-.code-session-context-meter > span { display: block; height: 100%; background: currentColor; }
 .code-session-card { border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; margin: 0; background: transparent; }
 .code-session-card:last-child { border-bottom: 0; }
 .code-session-card-header { display: flex; align-items: center; min-height: 38px; gap: 2px; padding: 0 6px; position: relative; }

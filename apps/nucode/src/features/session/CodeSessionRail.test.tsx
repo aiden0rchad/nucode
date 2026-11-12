@@ -17,30 +17,12 @@ function props(): CodeSessionRailProps {
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 afterEach(cleanup);
 describe("Code session rail", () => {
-  it.each([
-    [0, 0, false],
-    [420, 42, false],
-    [799, 80, false],
-    [800, 80, true],
-    [1200, 100, true],
-  ])("shows header context usage for %i tokens", (used, percent, warning) => {
-    const last = { totalTokens: used, inputTokens: used, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
-    render(<CodeSessionRail {...props()} usage={{ last, total: { ...last, totalTokens: 9000 }, modelContextWindow: 1000 }} />);
-    const meter = screen.getByRole("meter", { name: "Session context usage" });
-    expect(meter.closest("header")).toBeTruthy();
-    expect(meter.textContent).toBe(`${percent}%`);
-    expect(meter.title).toBe(`Context: ${used} of 1000 tokens`);
-    expect(meter.getAttribute("data-tooltip")).toBe(meter.title);
-    expect(meter.getAttribute("aria-valuetext")).toBe(meter.title);
-    expect(meter.getAttribute("aria-valuenow")).toBe(String(Math.min(used, 1000)));
-    expect(meter.getAttribute("aria-valuemax")).toBe("1000");
-    expect(meter.getAttribute("data-warning")).toBe(String(warning));
-    expect(meter.querySelector<HTMLElement>(".code-session-context-meter > span")?.style.width).toBe(`${percent}%`);
-  });
-  it.each([null, 0, -1])("hides the header readout when capacity is %s", modelContextWindow => {
+  it("shows context usage once, in the Context section, with no header row above the sections", () => {
     const last = { totalTokens: 420, inputTokens: 420, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
-    render(<CodeSessionRail {...props()} usage={{ last, total: last, modelContextWindow }} />);
+    render(<CodeSessionRail {...props()} usage={{ last, total: { ...last, totalTokens: 9000 }, modelContextWindow: 1000 }} />);
+    expect(document.querySelector(".code-session-rail > header")).toBeNull();
     expect(screen.queryByRole("meter", { name: "Session context usage" })).toBeNull();
+    expect(screen.getAllByText("42%")).toHaveLength(1);
   });
   it("persists card collapse and keyboard reorder", () => {
     const data = props(); const view = render(<CodeSessionRail {...data} />);
@@ -107,7 +89,6 @@ describe("Code session rail", () => {
   it("keeps unavailable usage honest and cleanup available when Terminal is off", () => {
     render(<CodeSessionRail {...props()} tasksEnabled={false} />);
     expect(screen.getByText("Usage not reported yet")).toBeTruthy();
-    expect(screen.queryByRole("meter", { name: "Session context usage" })).toBeNull();
     expect(screen.getByText("Skill inventory not reported")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop server Dev server" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Start a background task" })).toBeNull();
@@ -162,7 +143,6 @@ it("keeps empty sections compact, opens new output, and remembers explicit discl
       expect(document.querySelectorAll(".code-context-bar > span").length).toBe(7);
       expect(screen.getByText("mcp__a__one")).toBeTruthy();
       expect(screen.getByText("150k until auto-compact")).toBeTruthy();
-      expect(screen.getByRole("meter", { name: "Session context usage" }).textContent).toBe("62%");
       fireEvent.click(screen.getByRole("button", { name: "Compact session" }));
       expect(onCompact).toHaveBeenCalledTimes(1);
     });
@@ -170,7 +150,6 @@ it("keeps empty sections compact, opens new output, and remembers explicit discl
       render(<CodeSessionRail {...props()} contextReport={{ ...report, used: null, autoCompact: false, untilCompact: null, rows: report.rows.map(row => row.id === "messages" || row.id === "free" ? { ...row, tokens: null } : row) }} onCompact={vi.fn()} />);
       expect(screen.getByText("Auto-compact is off")).toBeTruthy();
       expect(screen.getByText("— used")).toBeTruthy();
-      expect(screen.queryByRole("meter", { name: "Session context usage" })).toBeNull();
     });
     it("says auto-compact is on without a number when the threshold is unknown", () => {
       render(<CodeSessionRail {...props()} contextReport={{ ...report, reserve: null, untilCompact: null }} onCompact={vi.fn()} />);
