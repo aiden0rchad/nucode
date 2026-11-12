@@ -1,22 +1,20 @@
-.import-settings { max-width: 900px; }
 .chat-migration { min-width: 0; }
-.import-mode { display: grid; gap: 12px; margin-block: 18px; }
-.import-mode p { color: var(--text-muted); line-height: 1.5; margin: 0; }
-/* The page-wide `.registry-settings button` fill would cover the segmented pill. */
-.import-settings .chat-migration .settings-segmented button.settings-segmented-option.settings-button:not(.primary) { background: transparent; color: var(--text-muted); }
-.import-settings .chat-migration .settings-segmented button.settings-segmented-option.settings-button[aria-pressed="true"]:not(.primary) { color: var(--text-strong); }
-.import-auto-status { color: var(--text-muted); font-size: 12px; }
-.chat-migration progress { display: block; width: 100%; margin-block: 10px; }
+.chat-migration progress, .import-settings progress { display: block; width: 100%; margin-block: 8px; accent-color: var(--accent-fill); }
 .chat-work .chat-placeholder:has(.import-settings) { display: block; text-align: left; overflow: auto; padding: 24px; }
-.import-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
-.import-source { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px; margin-block: 10px; }
-.import-source summary { cursor: pointer; overflow-wrap: anywhere; }
-.import-project { margin: 10px 0 0 12px; }
-.import-entry { display: flex; align-items: start; gap: 8px; padding: 7px 0; }
-.import-entry small { display: block; color: var(--text-muted); overflow-wrap: anywhere; }
-.import-history-link { display: block; margin-block: 8px; text-align: left; }
-.import-transcript { border-top: 1px solid var(--border-subtle); margin-top: 20px; padding-top: 12px; }
+.import-note { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-subtle); overflow-wrap: anywhere; }
+.import-note p { margin: 0 0 6px; }
+.import-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.import-source { padding: 0; }
+.import-source > summary { padding: 12px 16px; cursor: pointer; font-weight: 500; overflow-wrap: anywhere; }
+.import-project { margin: 0; border-top: 1px solid var(--border-muted); }
+.import-project > summary { padding: 8px 16px 8px 28px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-subtle); }
+.import-entry small { display: block; font-size: 12px; color: var(--text-subtle); overflow-wrap: anywhere; }
+.import-history-link { display: block; text-align: left; }
+.import-transcript { padding: 12px 16px; }
 .import-transcript p, .import-transcript pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.import-transcript pre { max-height: 400px; overflow: auto; }
-.import-settings progress { display: block; width: 100%; margin-block: 10px; }
-@media (max-width: 600px) { .import-project { margin-left: 4px; } }
+.import-transcript pre { max-height: 400px; overflow: auto; font-size: 12px; }
+/* Inside a settings card the import blocks are rows. */
+.settings-group-card .chat-migration > * + * { border-top: 1px solid var(--border-muted); }
+.settings-group-card :is(.import-note, .import-actions, .import-source > details, .import-source > p, .import-transcript) { padding: 12px 16px; }
+.settings-group-card .import-source > .settings-row, .settings-group-card .import-project > .settings-row { padding-left: 28px; }
+.settings-group-card > * + .import-source, .settings-group-card > .import-source + .import-source { border-top: 1px solid var(--border-muted); }

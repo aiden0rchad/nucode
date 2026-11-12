@@ -141,7 +141,7 @@ export function useSettingsViewOrchestration({
     onUpdateAppSettings,
   });
 
-  const { shortcutDrafts, handleShortcutKeyDown, clearShortcut } =
+  const { shortcutDrafts, handleShortcutKeyDown, clearShortcut, setShortcut } =
     useSettingsShortcutDrafts({
       appSettings,
       onUpdateAppSettings,
@@ -248,6 +248,7 @@ export function useSettingsViewOrchestration({
       shortcutDrafts,
       onShortcutKeyDown: handleShortcutKeyDown,
       onClearShortcut: clearShortcut,
+      onSetShortcut: setShortcut,
     },
     openAppsSectionProps: {
       openAppDrafts,

@@ -1,4 +1,4 @@
-import { SettingsRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsTextArea, SettingsSection } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsCallout, SettingsEmpty, SettingsFieldRow, SettingsGroup, SettingsPage, SettingsTextField, SettingsButton, SettingsSelect, SettingsTextArea } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { Dispatch, SetStateAction } from "react";
 import type { WorkspaceInfo } from "@/types";
 import { pushErrorToast } from "@services/toasts";
@@ -48,221 +48,80 @@ export function SettingsEnvironmentsSection({
     environmentDirty || globalWorktreesFolderDirty || worktreesFolderDirty;
   const hasProjects = mainWorkspaces.length > 0;
 
+  const browse = async (title: string, set: (value: string) => void) => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true, multiple: false, title });
+      if (selected && typeof selected === "string") set(selected);
+    } catch (error) {
+      pushErrorToast({
+        title: "Failed to open folder picker",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+  const copyScript = () => {
+    const clipboard = typeof navigator === "undefined" ? null : navigator.clipboard;
+    if (!clipboard?.writeText) {
+      pushErrorToast({ title: "Copy failed", message: "Clipboard access is unavailable in this environment. Copy the script manually instead." });
+      return;
+    }
+    void clipboard.writeText(environmentDraftScript).catch(() => {
+      pushErrorToast({ title: "Copy failed", message: "Could not write to the clipboard. Copy the script manually instead." });
+    });
+  };
+  const saveDisabled = environmentSaving || (hasProjects ? !hasAnyChanges : !globalWorktreesFolderDirty);
   return (
-    <SettingsSection
+    <SettingsPage
       title="Environments"
-      subtitle="Configure per-project setup scripts and worktree locations."
+      subtitle="Where new worktrees are created and what runs in them first."
+      actions={<SettingsButton type="button" className="primary lg" onClick={() => { void onSaveEnvironmentSetup(); }} disabled={saveDisabled}>{environmentSaving ? "Saving..." : "Save"}</SettingsButton>}
     >
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="settings-global-worktrees-folder">
-          Global worktrees root
-        </label>
-        <div className="settings-help">
-          Default location for new worktrees when a project does not override it. Each
-          project gets its own subfolder under this root.
-        </div>
-        <div className="settings-field-row">
-          <SettingsTextField
-            identifier
-            id="settings-global-worktrees-folder"
-            type="text"
-            className="settings-input"
-            value={globalWorktreesFolderDraft}
-            onChange={(event) => onSetGlobalWorktreesFolderDraft(event.target.value)}
-            placeholder="/path/to/worktrees-root"
-            disabled={environmentSaving}
-          />
-          <SettingsButton
-            type="button"
-            className="ghost settings-button-compact"
-            onClick={async () => {
-              try {
-                const { open } = await import("@tauri-apps/plugin-dialog");
-                const selected = await open({
-                  directory: true,
-                  multiple: false,
-                  title: "Select global worktrees root",
-                });
-                if (selected && typeof selected === "string") {
-                  onSetGlobalWorktreesFolderDraft(selected);
-                }
-              } catch (error) {
-                pushErrorToast({
-                  title: "Failed to open folder picker",
-                  message: error instanceof Error ? error.message : String(error),
-                });
-              }
-            }}
-            disabled={environmentSaving}
-          >
-            Browse
-          </SettingsButton>
-        </div>
-        {!hasProjects ? (
+      {environmentError && <SettingsCallout tone="error" style={{ marginBottom: 16 }}>{environmentError}</SettingsCallout>}
+      <SettingsGroup
+        title="Worktree locations"
+        actions={!hasProjects ? <SettingsButton type="button" onClick={() => onSetGlobalWorktreesFolderDraft(_globalWorktreesFolderSaved ?? "")} disabled={environmentSaving || !globalWorktreesFolderDirty}>Reset</SettingsButton> : undefined}
+      >
+        <SettingsFieldRow stacked title="Global worktrees root" subtitle="Where new worktrees go unless a project sets its own. Each project gets a subfolder.">
           <div className="settings-field-actions">
-            <SettingsButton
-              type="button"
-              className="ghost settings-button-compact"
-              onClick={() => onSetGlobalWorktreesFolderDraft(_globalWorktreesFolderSaved ?? "")}
-              disabled={environmentSaving || !globalWorktreesFolderDirty}
-            >
-              Reset
-            </SettingsButton>
-            <SettingsButton
-              type="button"
-              className="primary settings-button-compact"
-              onClick={() => {
-                void onSaveEnvironmentSetup();
-              }}
-              disabled={environmentSaving || !globalWorktreesFolderDirty}
-            >
-              {environmentSaving ? "Saving..." : "Save"}
-            </SettingsButton>
+            <SettingsTextField identifier className="is-fill is-mono" type="text" value={globalWorktreesFolderDraft} onChange={(event) => onSetGlobalWorktreesFolderDraft(event.target.value)} placeholder="/path/to/worktrees-root" disabled={environmentSaving} />
+            <SettingsButton type="button" onClick={() => void browse("Select global worktrees root", onSetGlobalWorktreesFolderDraft)} disabled={environmentSaving}>Browse…</SettingsButton>
           </div>
-        ) : null}
-        {!hasProjects && environmentError ? (
-          <div className="settings-agents-error">{environmentError}</div>
-        ) : null}
-      </SettingsRow>
-
+        </SettingsFieldRow>
+      </SettingsGroup>
       {!hasProjects ? (
-        <div className="settings-empty">No projects yet.</div>
+        <SettingsGroup title="Project setup"><SettingsEmpty>No projects yet.</SettingsEmpty></SettingsGroup>
       ) : (
-        <>
-          <SettingsRow className="settings-field">
-            <label className="settings-field-label" htmlFor="settings-environment-project">
-              Project
-            </label>
+        <SettingsGroup
+          title="Project setup"
+          subtitle="Choose a project, then set where its worktrees live and what runs when one is created."
+        >
+          <SettingsFieldRow title="Project" subtitle={environmentWorkspace?.path}>
             <SettingsSelect
-              id="settings-environment-project"
-              className="settings-select"
               value={environmentWorkspace?.id ?? ""}
               onChange={(event) => onSetEnvironmentWorkspaceId(event.target.value)}
               disabled={environmentSaving}
             >
               {mainWorkspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
+                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
               ))}
             </SettingsSelect>
-            {environmentWorkspace ? (
-              <div className="settings-help">{environmentWorkspace.path}</div>
-            ) : null}
-          </SettingsRow>
-
-          <SettingsRow className="settings-field">
-            <div className="settings-field-label">Setup script</div>
-            <div className="settings-help">
-              Runs once in a dedicated terminal after each new worktree is created.
-            </div>
-            {environmentError ? (
-              <div className="settings-agents-error">{environmentError}</div>
-            ) : null}
-            <SettingsTextArea
-              className="settings-agents-textarea"
-              value={environmentDraftScript}
-              onChange={(event) => onSetEnvironmentDraftScript(event.target.value)}
-              placeholder="pnpm install"
-              spellCheck={false}
-              disabled={environmentSaving}
-            />
+          </SettingsFieldRow>
+          <SettingsFieldRow stacked title="Worktrees folder" subtitle="Where this project's worktrees go. Leave empty to use the global root or the default.">
             <div className="settings-field-actions">
-              <SettingsButton
-                type="button"
-                className="ghost settings-button-compact"
-                onClick={() => {
-                  const clipboard = typeof navigator === "undefined" ? null : navigator.clipboard;
-                  if (!clipboard?.writeText) {
-                    pushErrorToast({
-                      title: "Copy failed",
-                      message:
-                        "Clipboard access is unavailable in this environment. Copy the script manually instead.",
-                    });
-                    return;
-                  }
-
-                  void clipboard.writeText(environmentDraftScript).catch(() => {
-                    pushErrorToast({
-                      title: "Copy failed",
-                      message:
-                        "Could not write to the clipboard. Copy the script manually instead.",
-                    });
-                  });
-                }}
-                disabled={environmentSaving || environmentDraftScript.length === 0}
-              >
-                Copy
-              </SettingsButton>
-              <SettingsButton
-                type="button"
-                className="ghost settings-button-compact"
-                onClick={() => onSetEnvironmentDraftScript(environmentSavedScript ?? "")}
-                disabled={environmentSaving || !environmentDirty}
-              >
-                Reset
-              </SettingsButton>
-              <SettingsButton
-                type="button"
-                className="primary settings-button-compact"
-                onClick={() => {
-                  void onSaveEnvironmentSetup();
-                }}
-                disabled={environmentSaving || !hasAnyChanges}
-              >
-                {environmentSaving ? "Saving..." : "Save"}
-              </SettingsButton>
+              <SettingsTextField identifier className="is-fill is-mono" type="text" value={worktreesFolderDraft} onChange={(event) => onSetWorktreesFolderDraft(event.target.value)} placeholder="/path/to/worktrees" disabled={environmentSaving} />
+              <SettingsButton type="button" onClick={() => void browse("Select worktrees folder", onSetWorktreesFolderDraft)} disabled={environmentSaving}>Browse…</SettingsButton>
             </div>
-          </SettingsRow>
-
-          <SettingsRow className="settings-field">
-            <label className="settings-field-label" htmlFor="settings-worktrees-folder">
-              Worktrees folder
-            </label>
-            <div className="settings-help">
-              Custom location for this project's worktrees. Leave empty to use the global root or
-              the built-in default.
+          </SettingsFieldRow>
+          <SettingsFieldRow stacked title="Setup script" subtitle="Runs once in its own terminal after each new worktree is created.">
+            <SettingsTextArea className="is-mono" value={environmentDraftScript} onChange={(event) => onSetEnvironmentDraftScript(event.target.value)} placeholder="pnpm install" spellCheck={false} disabled={environmentSaving} />
+            <div className="settings-field-actions">
+              <SettingsButton type="button" onClick={copyScript} disabled={environmentSaving || environmentDraftScript.length === 0}>Copy</SettingsButton>
+              <SettingsButton type="button" onClick={() => onSetEnvironmentDraftScript(environmentSavedScript ?? "")} disabled={environmentSaving || !environmentDirty}>Reset</SettingsButton>
             </div>
-            <div className="settings-field-row">
-              <SettingsTextField
-                identifier
-                id="settings-worktrees-folder"
-                type="text"
-                className="settings-input"
-                value={worktreesFolderDraft}
-                onChange={(event) => onSetWorktreesFolderDraft(event.target.value)}
-                placeholder="/path/to/worktrees"
-                disabled={environmentSaving}
-              />
-              <SettingsButton
-                type="button"
-                className="ghost settings-button-compact"
-                onClick={async () => {
-                  try {
-                    const { open } = await import("@tauri-apps/plugin-dialog");
-                    const selected = await open({
-                      directory: true,
-                      multiple: false,
-                      title: "Select worktrees folder",
-                    });
-                    if (selected && typeof selected === "string") {
-                      onSetWorktreesFolderDraft(selected);
-                    }
-                  } catch (error) {
-                    pushErrorToast({
-                      title: "Failed to open folder picker",
-                      message: error instanceof Error ? error.message : String(error),
-                    });
-                  }
-                }}
-                disabled={environmentSaving}
-              >
-                Browse
-              </SettingsButton>
-            </div>
-          </SettingsRow>
-        </>
+          </SettingsFieldRow>
+        </SettingsGroup>
       )}
-    </SettingsSection>
+    </SettingsPage>
   );
 }

@@ -1,12 +1,6 @@
 .theme-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
-.theme-page > .settings-group { margin-top: 0; }
-.theme-page > .settings-group > .settings-group-card { background: transparent; border: 0; }
-.theme-page .settings-row.theme-toolbar { display: flex; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 0 0 16px; }
-/* Theme management is secondary to picking a theme: compact ghost buttons aligned under the heading. */
-.theme-toolbar .settings-button { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; background: transparent; border: 1px solid var(--border-subtle); }
-.theme-toolbar .settings-button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; }
-.theme-toolbar svg { width: 15px; height: 15px; }
-.theme-page .theme-gallery { margin: 16px 0; }
+.theme-gallery-group > .settings-group-card { overflow: visible; border: 0; background: transparent; padding: 0; }
+.theme-gallery-group { margin-bottom: 28px; }
 .theme-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
 .theme-card { position: relative; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface-card); color: var(--text-primary); transition: border-color 120ms ease, box-shadow 120ms ease; }
 .theme-card[data-selected="true"] { outline: 2px solid var(--border-accent); outline-offset: 2px; }
@@ -16,7 +10,7 @@
 .theme-card-name { display: flex; align-items: center; gap: 8px; padding: 3px 28px 0 6px; }
 .theme-card-name strong { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .theme-card-select > small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 28px 0 6px; color: var(--text-muted); }
-.theme-custom-chip { font-size: 11px; padding: 2px 5px; border-radius: 5px; border: 1px solid var(--border-subtle); color: var(--text-muted); }
+.theme-custom-chip { font-size: 12px; padding: 2px 5px; border-radius: 5px; border: 1px solid var(--border-subtle); color: var(--text-muted); }
 .theme-mini, .theme-app-preview { --preview-ui: var(--ui-font-family); --preview-mono: var(--code-font-family); --preview-prose: var(--ui-font-family); font-family: var(--preview-ui); }
 .theme-mini.squircle, .theme-app-preview.squircle { --squircle-background: var(--surface-app); }
 .theme-preview-project.squircle { --squircle-background: var(--surface-card); }
@@ -36,14 +30,12 @@
 .theme-menu { width: 220px; padding: 6px; }
 .theme-menu .ds-popover-item { width: 100%; }
 .theme-menu .theme-menu-danger { color: var(--status-error); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
-.theme-error-card { padding: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; border-color: var(--status-error); }
+.theme-error-card { padding: 12px 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border-color: var(--border-strong); background: var(--surface-card); }
+.theme-error-card p { display: none; }
+.theme-error-file { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--code-font-family); font-size: 12px; color: var(--text-subtle); }
 .theme-error-card > svg { color: var(--status-error); }
-.theme-error-card strong, .theme-error-card p { font-size: 12px; margin: 0; }
-/* File names and tokens never break mid-word: monospace, one line, ellipsis. */
-.theme-error-card strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--code-font-family); font-weight: 500; }
-.theme-error-card p { overflow-wrap: normal; word-break: normal; }
-.theme-error-card p { color: var(--text-muted); }
-.theme-error-card .settings-button { display: flex; gap: 6px; align-items: center; margin-top: auto; height: 28px; padding: 0 10px; border-radius: 8px; background: transparent; border: 1px solid var(--border-subtle); font-size: 12.5px; font-weight: 500; }
+.theme-error-card strong { font-size: 13px; font-weight: 500; margin: 0; }
+.theme-error-card .settings-button { margin-top: 6px; }
 .theme-dialog { z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; }
 .theme-dialog > .ds-modal-backdrop { background: rgba(0, 0, 0, .5); }
 .theme-dialog .ds-modal-card { position: relative; top: auto; left: auto; transform: none; animation: theme-dialog-in 150ms ease both; width: min(660px, 92vw); max-height: 88vh; overflow: auto; padding: 24px; }

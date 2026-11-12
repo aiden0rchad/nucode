@@ -130,7 +130,8 @@ it('validates pasted JSON inline and lists broken files', async () => {
   expect(await screen.findByText('Unknown token: --evil')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Reveal file'}));
   await waitFor(() => expect(themesRevealFile).toHaveBeenCalledWith('broken.nucode-theme.json'));
-  fireEvent.click(screen.getByText('Paste theme'));
+  fireEvent.click(screen.getByRole('button',{name:'Actions for themes'}));
+  fireEvent.click(screen.getByRole('menuitem',{name:'Paste theme'}));
   fireEvent.change(screen.getByLabelText('Theme JSON'),{ target:{value:JSON.stringify({...builtins[0],id:'custom',tokens:{'--evil':'#fff'}})} });
   expect(screen.getAllByRole('alert').some(e => e.textContent?.includes('Unknown token: --evil'))).toBe(true);
   expect(screen.getByText('Import theme')).toHaveProperty('disabled',true);

@@ -1,4 +1,4 @@
-import { SettingsRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsSection, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsButton, SettingsCallout, SettingsFieldRow, SettingsGroup, SettingsPage, SettingsSelect, SettingsSwitchRow, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { useEffect, useMemo, useRef } from "react";
 import Stethoscope from "lucide-react/dist/esm/icons/stethoscope";
 import type { Dispatch, SetStateAction } from "react";
@@ -224,368 +224,171 @@ export function SettingsCodexSection({
     selectedEffort,
   ]);
 
+  const codegraphOn = appSettings.mcpServers?.find(s => s.id === "codegraph")?.enabled ?? appSettings.codegraphEnabled ?? true;
+  const editorClasses = {
+    container: "settings-file-editor",
+    header: "settings-file-editor-header",
+    title: "settings-toggle-title",
+    actions: "settings-file-editor-actions",
+    meta: "settings-toggle-subtitle",
+    iconButton: "ds-icon-button ds-icon-button--ghost settings-icon-button",
+    error: "settings-callout is-error",
+    textarea: "settings-textarea is-mono",
+    help: "settings-toggle-subtitle",
+  };
+  const doctor = doctorState.result;
+  const update = codexUpdateState.result;
   return (
-    <SettingsSection
+    <SettingsPage
       title="Codex"
-      subtitle="Configure the Codex CLI used by nucode and validate the install."
+      subtitle="The Codex CLI that nucode runs, and the defaults it starts with."
+      actions={codexDirty ? <SettingsButton type="button" className="primary lg" onClick={() => { void onSaveCodexSettings(); }} disabled={isSavingSettings}>{isSavingSettings ? "Saving…" : "Save changes"}</SettingsButton> : undefined}
     >
-      <SettingsToggleRow title="CodeGraph" subtitle="Give agents a private code index with compaction-safe deduplication. Changes apply on the next app-server spawn.">
-        <SettingsToggleSwitch aria-label="Enable CodeGraph" pressed={appSettings.mcpServers?.find(s => s.id === "codegraph")?.enabled ?? appSettings.codegraphEnabled ?? true}
-          onClick={() => { const enabled = !(appSettings.mcpServers?.find(s => s.id === "codegraph")?.enabled ?? appSettings.codegraphEnabled ?? true); void onUpdateAppSettings({ ...appSettings, codegraphEnabled: enabled, mcpServers: [...(appSettings.mcpServers ?? []).filter(s => s.id !== "codegraph"), { ...(appSettings.mcpServers?.find(s => s.id === "codegraph") ?? { id: "codegraph", name: "CodeGraph" }), enabled }] }); }} />
-      </SettingsToggleRow>
-
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="codex-path">
-          Default Codex path
-        </label>
-        <div className="settings-field-row">
-          <SettingsTextField
-            id="codex-path"
-            className="settings-input"
-            value={codexPathDraft}
-            placeholder="codex"
-            onChange={(event) => onSetCodexPathDraft(event.target.value)}
-          />
-          <SettingsButton
-            type="button"
-            className="ghost"
-            onClick={() => {
-              void onBrowseCodex();
-            }}
-          >
-            Browse
-          </SettingsButton>
-          <SettingsButton
-            type="button"
-            className="ghost"
-            onClick={() => onSetCodexPathDraft("")}
-          >
-            Use PATH
-          </SettingsButton>
-        </div>
-        <div className="settings-help">Leave empty to use the system PATH resolution.</div>
-        <label className="settings-field-label" htmlFor="codex-args">
-          Default Codex args
-        </label>
-        <div className="settings-field-row">
-          <SettingsTextField
-            id="codex-args"
-            className="settings-input"
-            value={codexArgsDraft}
-            placeholder="--profile personal"
-            onChange={(event) => onSetCodexArgsDraft(event.target.value)}
-          />
-          <SettingsButton
-            type="button"
-            className="ghost"
-            onClick={() => onSetCodexArgsDraft("")}
-          >
-            Clear
-          </SettingsButton>
-        </div>
-        <div className="settings-help">
-          Extra flags passed before <code>app-server</code>. Use quotes for values with spaces.
-        </div>
-        <div className="settings-help">
-          These settings apply to the shared Codex app-server used across all connected workspaces.
-        </div>
-        <div className="settings-help">
-          Per-thread override processing ignores unsupported flags: <code>-m</code>/
-          <code>--model</code>, <code>-a</code>/<code>--ask-for-approval</code>,{" "}
-          <code>-s</code>/<code>--sandbox</code>, <code>--full-auto</code>,{" "}
-          <code>--dangerously-bypass-approvals-and-sandbox</code>, <code>--oss</code>,{" "}
-          <code>--local-provider</code>, and <code>--no-alt-screen</code>.
-        </div>
-        <div className="settings-field-actions">
-          {codexDirty && (
-            <SettingsButton
-              type="button"
-              className="primary"
-              onClick={() => {
-                void onSaveCodexSettings();
-              }}
-              disabled={isSavingSettings}
-            >
-              {isSavingSettings ? "Saving..." : "Save"}
-            </SettingsButton>
-          )}
-          <SettingsButton
-            type="button"
-            className="ghost settings-button-compact"
-            onClick={() => {
-              void onRunDoctor();
-            }}
-            disabled={doctorState.status === "running"}
-          >
+      <SettingsGroup
+        title="Codex CLI"
+        subtitle="Applies to the shared Codex app-server used by every connected project."
+        actions={<>
+          <SettingsButton type="button" onClick={() => { void onRunDoctor(); }} disabled={doctorState.status === "running"}>
             <Stethoscope aria-hidden />
-            {doctorState.status === "running" ? "Running..." : "Run doctor"}
+            {doctorState.status === "running" ? "Running…" : "Run doctor"}
           </SettingsButton>
-          <SettingsButton
-            type="button"
-            className="ghost settings-button-compact"
-            onClick={() => {
-              void onRunCodexUpdate();
-            }}
-            disabled={codexUpdateState.status === "running"}
-            title="Update Codex"
-          >
-            <Stethoscope aria-hidden />
-            {codexUpdateState.status === "running" ? "Updating..." : "Update"}
+          <SettingsButton type="button" onClick={() => { void onRunCodexUpdate(); }} disabled={codexUpdateState.status === "running"} title="Update Codex">
+            {codexUpdateState.status === "running" ? "Updating…" : "Update"}
           </SettingsButton>
-        </div>
-
-        {doctorState.result && (
-          <div className={`settings-doctor ${doctorState.result.ok ? "ok" : "error"}`}>
-            <div className="settings-doctor-title">
-              {doctorState.result.ok ? "Codex looks good" : "Codex issue detected"}
-            </div>
-            <div className="settings-doctor-body">
-              <div>Version: {doctorState.result.version ?? "unknown"}</div>
-              <div>App-server: {doctorState.result.appServerOk ? "ok" : "failed"}</div>
-              <div>
-                Node:{" "}
-                {doctorState.result.nodeOk
-                  ? `ok (${doctorState.result.nodeVersion ?? "unknown"})`
-                  : "missing"}
-              </div>
-              {doctorState.result.details && <div>{doctorState.result.details}</div>}
-              {doctorState.result.nodeDetails && <div>{doctorState.result.nodeDetails}</div>}
-              {doctorState.result.path && (
-                <div className="settings-doctor-path">PATH: {doctorState.result.path}</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {codexUpdateState.result && (
-          <div
-            className={`settings-doctor ${codexUpdateState.result.ok ? "ok" : "error"}`}
-          >
-            <div className="settings-doctor-title">
-              {codexUpdateState.result.ok
-                ? codexUpdateState.result.upgraded
-                  ? "Codex updated"
-                  : "Codex already up-to-date"
-                : "Codex update failed"}
-            </div>
-            <div className="settings-doctor-body">
-              <div>Method: {codexUpdateState.result.method}</div>
-              {codexUpdateState.result.package && (
-                <div>Package: {codexUpdateState.result.package}</div>
-              )}
-              <div>
-                Version:{" "}
-                {codexUpdateState.result.afterVersion ??
-                  codexUpdateState.result.beforeVersion ??
-                  "unknown"}
-              </div>
-              {codexUpdateState.result.details && <div>{codexUpdateState.result.details}</div>}
-              {codexUpdateState.result.output && (
-                <details>
-                  <summary>output</summary>
-                  <pre>{codexUpdateState.result.output}</pre>
-                </details>
-              )}
-            </div>
-          </div>
-        )}
-      </SettingsRow>
-
-      <div className="settings-divider" />
-      <div className="settings-field-label settings-field-label--section">
-        Default parameters
-      </div>
-
-      <SettingsToggleRow
-        title={
-          <label htmlFor="default-model">
-            Model
-          </label>
-        }
-        subtitle={
-          defaultModelsConnectedWorkspaceCount === 0
-            ? "Add a workspace to load available models."
-            : defaultModelsLoading
-              ? "Loading models from the first workspace…"
-              : defaultModelsError
-                ? `Couldn’t load models: ${defaultModelsError}`
-                : "Sourced from the first workspace and used when there is no thread-specific override."
-        }
+        </>}
       >
-        <div className="settings-field-row">
+        <SettingsFieldRow stacked title="Default Codex path" subtitle="Leave empty to find codex on your PATH.">
+          <div className="settings-field-actions">
+            <SettingsTextField className="is-fill is-mono" value={codexPathDraft} placeholder="codex" onChange={(event) => onSetCodexPathDraft(event.target.value)} />
+            <SettingsButton type="button" onClick={() => { void onBrowseCodex(); }}>Browse…</SettingsButton>
+            <SettingsButton type="button" className="ghost" onClick={() => onSetCodexPathDraft("")}>Use PATH</SettingsButton>
+          </div>
+        </SettingsFieldRow>
+        <SettingsFieldRow stacked title="Default Codex args" subtitle={<>Extra flags passed before <code>app-server</code>. Use quotes for values with spaces. Per-thread overrides ignore <code>-m</code>, <code>-a</code>, <code>-s</code>, <code>--full-auto</code>, <code>--dangerously-bypass-approvals-and-sandbox</code>, <code>--oss</code>, <code>--local-provider</code> and <code>--no-alt-screen</code>.</>}>
+          <div className="settings-field-actions">
+            <SettingsTextField className="is-fill is-mono" value={codexArgsDraft} placeholder="--profile personal" onChange={(event) => onSetCodexArgsDraft(event.target.value)} />
+            <SettingsButton type="button" className="ghost" onClick={() => onSetCodexArgsDraft("")}>Clear</SettingsButton>
+          </div>
+        </SettingsFieldRow>
+        {doctor && (
+          <SettingsCallout tone={doctor.ok ? "info" : "error"}>
+            <strong>{doctor.ok ? "Codex looks good" : "Codex issue detected"}</strong>
+            <div>Version: {doctor.version ?? "unknown"} · App-server: {doctor.appServerOk ? "ok" : "failed"} · Node: {doctor.nodeOk ? `ok (${doctor.nodeVersion ?? "unknown"})` : "missing"}</div>
+            {doctor.details && <div>{doctor.details}</div>}
+            {doctor.nodeDetails && <div>{doctor.nodeDetails}</div>}
+            {doctor.path && <div className="settings-doctor-path">PATH: {doctor.path}</div>}
+          </SettingsCallout>
+        )}
+        {update && (
+          <SettingsCallout tone={update.ok ? "info" : "error"}>
+            <strong>{update.ok ? (update.upgraded ? "Codex updated" : "Codex already up-to-date") : "Codex update failed"}</strong>
+            <div>Method: {update.method}{update.package ? ` · Package: ${update.package}` : ""} · Version: {update.afterVersion ?? update.beforeVersion ?? "unknown"}</div>
+            {update.details && <div>{update.details}</div>}
+            {update.output && <details><summary>output</summary><pre>{update.output}</pre></details>}
+          </SettingsCallout>
+        )}
+      </SettingsGroup>
+      <SettingsGroup title="Defaults" subtitle="Used when a thread has no setting of its own.">
+        <SettingsFieldRow
+          title="Model"
+          subtitle={
+            defaultModelsConnectedWorkspaceCount === 0
+              ? "Add a project to load available models."
+              : defaultModelsLoading
+                ? "Loading models from the first project…"
+                : defaultModelsError
+                  ? `Couldn’t load models: ${defaultModelsError}`
+                  : "Models come from the first connected project."
+          }
+        >
+          <div className="settings-field-actions">
+            <SettingsSelect
+              value={selectedModelSlug}
+              disabled={!defaultModels.length || defaultModelsLoading}
+              onChange={(event) => void onUpdateAppSettings({ ...appSettings, lastComposerModelId: event.target.value })}
+              aria-label="Model"
+            >
+              {defaultModels.map((model) => (
+                <option key={model.model} value={model.model}>{model.displayName?.trim() || model.model}</option>
+              ))}
+            </SettingsSelect>
+            <SettingsButton type="button" onClick={onRefreshDefaultModels} disabled={defaultModelsLoading || defaultModelsConnectedWorkspaceCount === 0}>Refresh</SettingsButton>
+          </div>
+        </SettingsFieldRow>
+        <SettingsFieldRow title="Reasoning effort" subtitle={reasoningSupported ? "The options depend on the selected model." : "The selected model has no reasoning effort options."}>
           <SettingsSelect
-            id="default-model"
-            className="settings-select"
-            value={selectedModelSlug}
-            disabled={!defaultModels.length || defaultModelsLoading}
-            onChange={(event) =>
-              void onUpdateAppSettings({
-                ...appSettings,
-                lastComposerModelId: event.target.value,
-              })
-            }
-            aria-label="Model"
+            value={selectedEffort}
+            onChange={(event) => void onUpdateAppSettings({ ...appSettings, lastComposerReasoningEffort: event.target.value })}
+            aria-label="Reasoning effort"
+            disabled={!reasoningSupported}
           >
-            {defaultModels.map((model) => (
-              <option key={model.model} value={model.model}>
-                {model.displayName?.trim() || model.model}
-              </option>
+            {!reasoningSupported && <option value="">not supported</option>}
+            {reasoningOptions.map((effort) => (
+              <option key={effort} value={effort}>{effort}</option>
             ))}
           </SettingsSelect>
-          <SettingsButton
-            type="button"
-            className="ghost"
-            onClick={onRefreshDefaultModels}
-            disabled={defaultModelsLoading || defaultModelsConnectedWorkspaceCount === 0}
+        </SettingsFieldRow>
+        <SettingsFieldRow title="Access mode">
+          <SettingsSelect
+            value={appSettings.defaultAccessMode}
+            onChange={(event) => void onUpdateAppSettings({ ...appSettings, defaultAccessMode: event.target.value as AppSettings["defaultAccessMode"] })}
           >
-            Refresh
-          </SettingsButton>
-        </div>
-      </SettingsToggleRow>
-
-      <SettingsToggleRow
-        title={
-          <label htmlFor="default-effort">
-            Reasoning effort
-          </label>
-        }
-        subtitle={
-          reasoningSupported
-            ? "Available options depend on the selected model."
-            : "The selected model does not expose reasoning effort options."
-        }
-      >
-        <SettingsSelect
-          id="default-effort"
-          className="settings-select"
-          value={selectedEffort}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              lastComposerReasoningEffort: event.target.value,
-            })
-          }
-          aria-label="Reasoning effort"
-          disabled={!reasoningSupported}
-        >
-          {!reasoningSupported && <option value="">not supported</option>}
-          {reasoningOptions.map((effort) => (
-            <option key={effort} value={effort}>
-              {effort}
-            </option>
-          ))}
-        </SettingsSelect>
-      </SettingsToggleRow>
-
-      <SettingsToggleRow
-        title={
-          <label htmlFor="default-access">
-            Access mode
-          </label>
-        }
-        subtitle="Used when there is no thread-specific override."
-      >
-        <SettingsSelect
-          id="default-access"
-          className="settings-select"
-          value={appSettings.defaultAccessMode}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              defaultAccessMode: event.target.value as AppSettings["defaultAccessMode"],
-            })
-          }
-        >
-          <option value="read-only">Read only</option>
-          <option value="current">On-request</option>
-          <option value="full-access">Full access</option>
-        </SettingsSelect>
-      </SettingsToggleRow>
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="review-delivery">
-          Review mode
-        </label>
-        <SettingsSelect
-          id="review-delivery"
-          className="settings-select"
-          value={appSettings.reviewDeliveryMode}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              reviewDeliveryMode: event.target.value as AppSettings["reviewDeliveryMode"],
-            })
-          }
-        >
-          <option value="inline">Inline (same thread)</option>
-          <option value="detached">Detached (new review thread)</option>
-        </SettingsSelect>
-        <div className="settings-help">
-          Choose whether <code>/review</code> runs in the current thread or a detached review
-          thread.
-        </div>
-      </SettingsRow>
-
-      <FileEditorCard
-        title="Global AGENTS.md"
-        meta={globalAgentsMeta}
-        error={globalAgentsError}
-        value={globalAgentsContent}
-        placeholder="Add global instructions for Codex agents…"
-        disabled={globalAgentsLoading}
-        refreshDisabled={globalAgentsRefreshDisabled}
-        saveDisabled={globalAgentsSaveDisabled}
-        saveLabel={globalAgentsSaveLabel}
-        onChange={onSetGlobalAgentsContent}
-        onRefresh={onRefreshGlobalAgents}
-        onSave={onSaveGlobalAgents}
-        helpText={
-          <>
-            Stored in nucode’s managed Codex home.
-          </>
-        }
-        classNames={{
-          container: "settings-field settings-agents",
-          header: "settings-agents-header",
-          title: "settings-field-label",
-          actions: "settings-agents-actions",
-          meta: "settings-help settings-help-inline",
-          iconButton: "ghost settings-icon-button",
-          error: "settings-agents-error",
-          textarea: "settings-agents-textarea",
-          help: "settings-help",
-        }}
-      />
-
-      <FileEditorCard
-        title="Global config.toml"
-        meta={globalConfigMeta}
-        error={globalConfigError}
-        value={globalConfigContent}
-        placeholder="Edit the global Codex config.toml…"
-        disabled={globalConfigLoading}
-        refreshDisabled={globalConfigRefreshDisabled}
-        saveDisabled={globalConfigSaveDisabled}
-        saveLabel={globalConfigSaveLabel}
-        onChange={onSetGlobalConfigContent}
-        onRefresh={onRefreshGlobalConfig}
-        onSave={onSaveGlobalConfig}
-        helpText={
-          <>
-            Nucode regenerates this file from Providers and Agents settings when Codex starts.
-          </>
-        }
-        classNames={{
-          container: "settings-field settings-agents",
-          header: "settings-agents-header",
-          title: "settings-field-label",
-          actions: "settings-agents-actions",
-          meta: "settings-help settings-help-inline",
-          iconButton: "ghost settings-icon-button",
-          error: "settings-agents-error",
-          textarea: "settings-agents-textarea",
-          help: "settings-help",
-        }}
-      />
-    </SettingsSection>
+            <option value="read-only">Read only</option>
+            <option value="current">On-request</option>
+            <option value="full-access">Full access</option>
+          </SettingsSelect>
+        </SettingsFieldRow>
+        <SettingsFieldRow title="Review mode" subtitle={<>Whether <code>/review</code> runs in the current thread or in a new review thread.</>}>
+          <SettingsSelect
+            value={appSettings.reviewDeliveryMode}
+            onChange={(event) => void onUpdateAppSettings({ ...appSettings, reviewDeliveryMode: event.target.value as AppSettings["reviewDeliveryMode"] })}
+          >
+            <option value="inline">Inline (same thread)</option>
+            <option value="detached">Detached (new review thread)</option>
+          </SettingsSelect>
+        </SettingsFieldRow>
+        <SettingsSwitchRow
+          title="CodeGraph"
+          subtitle="Gives agents a private code index. Changes apply the next time the app-server starts."
+          pressed={codegraphOn}
+          switchProps={{ "aria-label": "Enable CodeGraph" }}
+          onClick={() => { const enabled = !codegraphOn; void onUpdateAppSettings({ ...appSettings, codegraphEnabled: enabled, mcpServers: [...(appSettings.mcpServers ?? []).filter(s => s.id !== "codegraph"), { ...(appSettings.mcpServers?.find(s => s.id === "codegraph") ?? { id: "codegraph", name: "CodeGraph" }), enabled }] }); }}
+        />
+      </SettingsGroup>
+      <SettingsGroup title="Instruction files">
+        <FileEditorCard
+          title="Global AGENTS.md"
+          meta={globalAgentsMeta}
+          error={globalAgentsError}
+          value={globalAgentsContent}
+          placeholder="Add global instructions for Codex agents…"
+          disabled={globalAgentsLoading}
+          refreshDisabled={globalAgentsRefreshDisabled}
+          saveDisabled={globalAgentsSaveDisabled}
+          saveLabel={globalAgentsSaveLabel}
+          onChange={onSetGlobalAgentsContent}
+          onRefresh={onRefreshGlobalAgents}
+          onSave={onSaveGlobalAgents}
+          helpText="Stored in nucode’s managed Codex home."
+          classNames={editorClasses}
+        />
+        <FileEditorCard
+          title="Global config.toml"
+          meta={globalConfigMeta}
+          error={globalConfigError}
+          value={globalConfigContent}
+          placeholder="Edit the global Codex config.toml…"
+          disabled={globalConfigLoading}
+          refreshDisabled={globalConfigRefreshDisabled}
+          saveDisabled={globalConfigSaveDisabled}
+          saveLabel={globalConfigSaveLabel}
+          onChange={onSetGlobalConfigContent}
+          onRefresh={onRefreshGlobalConfig}
+          onSave={onSaveGlobalConfig}
+          helpText="nucode regenerates this file from your Providers and Agents settings when Codex starts."
+          classNames={editorClasses}
+        />
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

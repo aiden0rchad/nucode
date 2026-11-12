@@ -57,7 +57,7 @@ export function DiagnosticsSettings({ appSettings, onUpdateAppSettings }: { appS
     { id: "codex", title: "Codex", icon: Bot, description: "Add this server to your Codex configuration.", text: snippets?.codex },
     { id: "watcher", title: "Watcher prompt", icon: Repeat, description: "Ask an agent to review the journal every 30 minutes.", text: "/loop 30m " + watcherPrompt },
   ];
-  return <SettingsPage className="diagnostics-page" title="Diagnostics" subtitle="A private, local journal of issues and improvement signals.">
+  return <SettingsPage wide className="diagnostics-page" title="Diagnostics" subtitle="A private, local journal of issues and improvement signals.">
     <SettingsGroup title="Recording">
       <SettingsToggleRow title="Diagnostics" subtitle="Record issues on this device."><SettingsToggleSwitch pressed={enabled} onClick={() => run(() => onUpdateAppSettings({ ...appSettings, features: { ...appSettings.features, diagnostics: !enabled } }))} /></SettingsToggleRow>
       <div className="diagnostics-level"><div><strong>Recording level</strong><p>{levels[opts.level]}</p></div><SettingsSegmented label="Recording level" value={opts.level} options={Object.keys(levels).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} onChange={value => update({ level: value as typeof opts.level })} /></div>

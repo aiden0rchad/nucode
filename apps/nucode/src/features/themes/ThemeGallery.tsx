@@ -1,7 +1,7 @@
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { AppSettings } from '@/types';
-import { SettingsPage, SettingsGroup, SettingsRow, SettingsSelect, SettingsButton, SettingsTextArea, SettingsToggleRow, SettingsToggleSwitch } from '@/features/design-system/components/settings/SettingsPrimitives';
+import { SettingsPage, SettingsGroup, SettingsFieldRow, SettingsSelect, SettingsButton, SettingsTextArea, SettingsToggleRow, SettingsToggleSwitch } from '@/features/design-system/components/settings/SettingsPrimitives';
 import { themesSave, themesDelete, themesImport, themesExport, themesRevealFile, themesOpenFolder, pickThemeFile, pickThemeExport } from '@services/tauri';
 import { builtins, resolveTheme, selectTheme, themeTokenOverrides } from './builtins';
 import { useThemes, reloadThemes } from './store';
@@ -12,6 +12,7 @@ import { Plus, Upload, ClipboardPaste, FolderOpen, MoreHorizontal, Check, Copy, 
 import { AnchoredPopover } from '@/features/design-system/components/popover/AnchoredPopover';
 import { PopoverMenuItem } from '@/features/design-system/components/popover/PopoverPrimitives';
 import { ThemePreview } from './ThemePreview';
+import { RowMenu } from '@/features/chat/RowMenu';
 import './themes.css';
 
 export function ThemeGallery({ settings, update }: { settings: AppSettings; update: (next: AppSettings) => Promise<void> }) {
@@ -67,10 +68,14 @@ export function ThemeGallery({ settings, update }: { settings: AppSettings; upda
   const cards = [{ ...selectTheme('system',themes,systemDark,settings.themeLight,settings.themeDark), id:'system', name:'System', author:'Follow your device' }, ...themes];
   const closeMenu = () => { setMenu(null); anchor.current?.focus(); };
   const menuAction = (fn: () => void) => { closeMenu(); fn(); };
-  return <SettingsPage title="Appearance" subtitle="Choose a palette, or make one your own." className="theme-page"><SettingsGroup>
-    <SettingsRow className="theme-toolbar"><SettingsButton onClick={() => duplicate(active)}><Plus aria-hidden />New theme</SettingsButton><SettingsButton onClick={() => void run(importFile)}><Upload aria-hidden />Import…</SettingsButton><SettingsButton onClick={() => setPaste('')}><ClipboardPaste aria-hidden />Paste theme</SettingsButton><SettingsButton onClick={() => void run(themesOpenFolder)}><FolderOpen aria-hidden />Open themes folder</SettingsButton></SettingsRow>
-    {settings.theme === 'system' && (['light','dark'] as const).map(a => <SettingsRow key={a}><label htmlFor={'system-'+a}>{a === 'light' ? 'Light theme' : 'Dark theme'}</label><SettingsSelect id={'system-'+a} value={(a === 'light' ? settings.themeLight : settings.themeDark) ?? a} onChange={e => void run(() => update({ ...settings,[a === 'light' ? 'themeLight' : 'themeDark']:e.target.value }))}>{themes.filter(t => t.appearance === a).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</SettingsSelect></SettingsRow>)}
-    <div className="theme-gallery" role="group" aria-label="Themes" ref={grid}>
+  const manage = [
+    { label: 'Import…', icon: <Upload size={14} aria-hidden />, onClick: () => void run(importFile) },
+    { label: 'Paste theme', icon: <ClipboardPaste size={14} aria-hidden />, onClick: () => setPaste('') },
+    { label: 'Open themes folder', icon: <FolderOpen size={14} aria-hidden />, onClick: () => void run(themesOpenFolder) },
+  ];
+  return <SettingsPage title="Appearance" subtitle="Choose a palette, or make one your own." className="theme-page" actions={<><SettingsButton onClick={() => duplicate(active)}><Plus aria-hidden />New theme</SettingsButton><RowMenu portal size="md" label="themes" actions={manage}>{null}</RowMenu></>}>
+    {settings.theme === 'system' && <SettingsGroup title="System theme" subtitle="Which themes to use when your device switches between light and dark.">{(['light','dark'] as const).map(a => <SettingsFieldRow key={a} title={a === 'light' ? 'Light theme' : 'Dark theme'}><SettingsSelect value={(a === 'light' ? settings.themeLight : settings.themeDark) ?? a} onChange={e => void run(() => update({ ...settings,[a === 'light' ? 'themeLight' : 'themeDark']:e.target.value }))}>{themes.filter(t => t.appearance === a).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</SettingsSelect></SettingsFieldRow>)}</SettingsGroup>}
+    <SettingsGroup className="theme-gallery-group"><div className="theme-gallery" role="group" aria-label="Themes" ref={grid}>
       {cards.map((t,index) => {
         const custom = t.id !== 'system' && !builtinIds.includes(t.id);
         const preview = t.id === 'system' ? selectTheme('system',themes,systemDark,settings.themeLight,settings.themeDark) : t;
@@ -89,10 +94,12 @@ export function ThemeGallery({ settings, update }: { settings: AppSettings; upda
           {t.id !== 'system' && <IconButton aria-haspopup="menu" aria-expanded={menu?.id === t.id} className="theme-card-menu ghost" aria-label={'Actions for '+t.name} onClick={event => { anchor.current = event.currentTarget; setMenu(menu?.id === t.id ? null : t); }}><MoreHorizontal size={18} aria-hidden /></IconButton>}
         </article>;
       })}
-      {files.filter(f => f.error).map(f => <article className="theme-card theme-error-card" key={f.file}><AlertCircle size={22} aria-hidden /><strong>{f.file}</strong><p role="alert">{f.error}</p><SettingsButton onClick={() => void run(() => themesRevealFile(f.file))}><FolderOpen size={16} aria-hidden />Reveal file</SettingsButton></article>)}
-    </div>
+      {files.filter(f => f.error).map(f => <article className="theme-card theme-error-card" key={f.file} title={`${f.file}: ${f.error}`}><AlertCircle size={18} aria-hidden /><strong>Couldn’t load theme</strong><small className="theme-error-file">{f.file}</small><p role="alert">{f.error}</p><SettingsButton onClick={() => void run(() => themesRevealFile(f.file))}><FolderOpen size={14} aria-hidden />Reveal file</SettingsButton></article>)}
+    </div></SettingsGroup>
+    {(resolveTheme(active).effects?.digitalRain || resolveTheme(active).effects?.neonGlow) && <SettingsGroup title="Effects">
     {resolveTheme(active).effects?.digitalRain && <SettingsToggleRow title="Animated background" subtitle="A subtle animation in empty conversations. Respects reduced motion."><SettingsToggleSwitch pressed={settings.themeAnimations?.[active.id] !== false} onClick={() => void run(() => update({ ...settings,themeAnimations:{ ...settings.themeAnimations,[active.id]:settings.themeAnimations?.[active.id] === false } }))} /></SettingsToggleRow>}
     {resolveTheme(active).effects?.neonGlow && <SettingsToggleRow title="Glow effects" subtitle="Soft, static glows on accents and focus rings."><SettingsToggleSwitch pressed={settings.themeAnimations?.[`${active.id}:neonGlow`] !== false} onClick={() => void run(() => update({ ...settings,themeAnimations:{ ...settings.themeAnimations,[`${active.id}:neonGlow`]:settings.themeAnimations?.[`${active.id}:neonGlow`] === false } }))} /></SettingsToggleRow>}
+    </SettingsGroup>}
     {menu && <ThemeMenu anchor={anchor} close={closeMenu}>
       <PopoverMenuItem role="menuitem" icon={<Check size={16} />} onClick={() => menuAction(() => void run(() => update({ ...settings,theme:menu.id })))}>Apply</PopoverMenuItem>
       <PopoverMenuItem role="menuitem" icon={<Copy size={16} />} onClick={() => menuAction(() => duplicate(menu))}>Duplicate &amp; edit</PopoverMenuItem>
@@ -106,7 +113,7 @@ export function ThemeGallery({ settings, update }: { settings: AppSettings; upda
     {paste !== null && !conflict && <ThemeDialog title="Paste theme" close={() => setPaste(null)}><SettingsTextArea aria-label="Theme JSON" value={paste} onChange={e => setPaste(e.target.value)} rows={12} />{pasteError && <p role="alert">{pasteError}</p>}<div className="theme-actions"><SettingsButton onClick={() => setPaste(null)}>Cancel</SettingsButton><SettingsButton disabled={!parsed} onClick={() => void run(acceptPaste)}>Import theme</SettingsButton></div></ThemeDialog>}
     {conflict && <ThemeDialog title="Theme id already exists" close={() => setConflict(null)}><p>Replace “{conflict.manifest.id}” or keep both themes?</p><div className="theme-actions"><SettingsButton onClick={() => setConflict(null)}>Cancel</SettingsButton><SettingsButton onClick={() => void run(() => resolveConflict('keepBoth'))}>Keep both</SettingsButton>{!builtinIds.includes(conflict.manifest.id) && conflict.manifest.id !== 'system' && <SettingsButton onClick={() => void run(() => resolveConflict('replace'))}>Replace</SettingsButton>}</div>{error && <p role="alert">{error}</p>}</ThemeDialog>}
     {remove && <ThemeDialog title="Delete theme" close={() => setRemove(null)}><p>Delete “{remove.name}”?</p><div className="theme-actions"><SettingsButton onClick={() => setRemove(null)}>Cancel</SettingsButton><SettingsButton onClick={() => void run(async () => { await themesDelete(remove.id); await reloadThemes(); setRemove(null); })}>Delete theme</SettingsButton></div>{error && <p role="alert">{error}</p>}</ThemeDialog>}
-  </SettingsGroup></SettingsPage>;
+  </SettingsPage>;
 }
 
 

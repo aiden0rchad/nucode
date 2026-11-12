@@ -1,4 +1,4 @@
-import { SettingsButton, SettingsSelect, SettingsPage, SettingsGroup, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsButton, SettingsSelect, SettingsPage, SettingsGroup, SettingsToggleRow, SettingsSwitchRow, SettingsCallout } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { CodexFeature } from "@/types";
 import type { SettingsFeaturesSectionProps } from "@settings/hooks/useSettingsFeaturesSection";
 import { fileManagerName, openInFileManagerLabel } from "@utils/platformPaths";
@@ -88,54 +88,56 @@ export function SettingsFeaturesSection({
   onToggleCodexFeature,
   onUpdateAppSettings,
 }: SettingsFeaturesSectionProps) {
+  const featureRow = (feature: CodexFeature) => (
+    <SettingsSwitchRow
+      key={feature.name}
+      title={formatFeatureLabel(feature)}
+      subtitle={featureSubtitle(feature)}
+      pressed={feature.enabled}
+      onClick={() => onToggleCodexFeature(feature)}
+      disabled={featureUpdatingKey === feature.name}
+    />
+  );
+  const note = (text: string) => <div className="settings-card-block">{text}</div>;
   return (
     <SettingsPage
       title="Codex flags"
-      subtitle="Manage stable and experimental Codex features."
-    ><SettingsGroup title="Preferences">
-      <SettingsToggleRow
-        title="Config file"
-        subtitle={`Open the Codex config in ${fileManagerName()}.`}
-      >
-        <SettingsButton type="button" className="ghost" onClick={onOpenConfig}>
-          {openInFileManagerLabel()}
-        </SettingsButton>
-      </SettingsToggleRow>
-      {openConfigError && <div className="settings-help">{openConfigError}</div>}
-      </SettingsGroup><SettingsGroup
-        title="Stable Features"
-        subtitle="Production-ready features enabled by default."
-      >
-      <SettingsToggleRow
-        title="Personality"
-        subtitle={
-          <>
-            Choose Codex communication style (writes top-level <code>personality</code> in
-            config.toml).
-          </>
-        }
-      >
-        <SettingsSelect
-          id="features-personality-select"
-          className="settings-select"
-          value={appSettings.personality}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              personality: event.target.value as (typeof appSettings)["personality"],
-            })
-          }
-          aria-label="Personality"
+      subtitle="Turn Codex features on or off. These flags are written to the Codex config file."
+    >
+      <SettingsGroup>
+        <SettingsToggleRow
+          title="Config file"
+          subtitle={`Open the Codex config in ${fileManagerName()}.`}
         >
-          <option value="friendly">Friendly</option>
-          <option value="pragmatic">Pragmatic</option>
-        </SettingsSelect>
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Pause queued messages when a response is required"
-        subtitle="Keep queued messages paused while Codex is waiting for plan accept/changes or your answers."
-      >
-        <SettingsToggleSwitch
+          <SettingsButton type="button" onClick={onOpenConfig}>
+            {openInFileManagerLabel()}
+          </SettingsButton>
+        </SettingsToggleRow>
+        {openConfigError && <SettingsCallout tone="error">{openConfigError}</SettingsCallout>}
+      </SettingsGroup>
+      <SettingsGroup title="Stable" subtitle="Ready to use and on by default.">
+        <SettingsToggleRow
+          title="Personality"
+          subtitle={<>How Codex talks to you (written to <code>personality</code> in config.toml).</>}
+        >
+          <SettingsSelect
+            id="features-personality-select"
+            value={appSettings.personality}
+            onChange={(event) =>
+              void onUpdateAppSettings({
+                ...appSettings,
+                personality: event.target.value as (typeof appSettings)["personality"],
+              })
+            }
+            aria-label="Personality"
+          >
+            <option value="friendly">Friendly</option>
+            <option value="pragmatic">Pragmatic</option>
+          </SettingsSelect>
+        </SettingsToggleRow>
+        <SettingsSwitchRow
+          title="Pause queued messages when a response is required"
+          subtitle="Queued messages wait while Codex needs you to accept a plan or answer a question."
           pressed={appSettings.pauseQueuedMessagesWhenResponseRequired}
           onClick={() =>
             void onUpdateAppSettings({
@@ -145,61 +147,16 @@ export function SettingsFeaturesSection({
             })
           }
         />
-      </SettingsToggleRow>
-      {stableFeatures.map((feature) => (
-        <SettingsToggleRow
-          key={feature.name}
-          title={formatFeatureLabel(feature)}
-          subtitle={featureSubtitle(feature)}
-        >
-          <SettingsToggleSwitch
-            pressed={feature.enabled}
-            onClick={() => onToggleCodexFeature(feature)}
-            disabled={featureUpdatingKey === feature.name}
-          />
-        </SettingsToggleRow>
-      ))}
-      {hasFeatureWorkspace &&
-        !featuresLoading &&
-        !featureError &&
-        stableFeatures.length === 0 && (
-        <div className="settings-help">No stable feature flags returned by Codex.</div>
-      )}
-      </SettingsGroup><SettingsGroup
-        title="Experimental Features"
-        subtitle="Preview and under-development features."
-      >
-      {experimentalFeatures.map((feature) => (
-        <SettingsToggleRow
-          key={feature.name}
-          title={formatFeatureLabel(feature)}
-          subtitle={featureSubtitle(feature)}
-        >
-          <SettingsToggleSwitch
-            pressed={feature.enabled}
-            onClick={() => onToggleCodexFeature(feature)}
-            disabled={featureUpdatingKey === feature.name}
-          />
-        </SettingsToggleRow>
-      ))}
-      {hasFeatureWorkspace &&
-        !featuresLoading &&
-        !featureError &&
-        hasDynamicFeatureRows &&
-        experimentalFeatures.length === 0 && (
-          <div className="settings-help">
-            No preview or under-development feature flags returned by Codex.
-          </div>
-        )}
-      {featuresLoading && (
-        <div className="settings-help">Loading Codex feature flags...</div>
-      )}
-      {!hasFeatureWorkspace && !featuresLoading && (
-        <div className="settings-help">
-          Connect a workspace to load Codex feature flags.
-        </div>
-      )}
-      {featureError && <div className="settings-help">{featureError}</div>}
-    </SettingsGroup></SettingsPage>
+        {stableFeatures.map(featureRow)}
+        {hasFeatureWorkspace && !featuresLoading && !featureError && stableFeatures.length === 0 && note("Codex returned no stable feature flags.")}
+      </SettingsGroup>
+      <SettingsGroup title="Experimental" subtitle="Previews and features still in development.">
+        {experimentalFeatures.map(featureRow)}
+        {hasFeatureWorkspace && !featuresLoading && !featureError && hasDynamicFeatureRows && experimentalFeatures.length === 0 && note("Codex returned no experimental feature flags.")}
+        {featuresLoading && note("Loading Codex feature flags…")}
+        {!hasFeatureWorkspace && !featuresLoading && note("Open a project to load Codex feature flags.")}
+        {featureError && <SettingsCallout tone="error">{featureError}</SettingsCallout>}
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

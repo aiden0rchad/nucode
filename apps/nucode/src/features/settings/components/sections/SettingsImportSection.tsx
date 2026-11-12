@@ -1,11 +1,10 @@
-import { SettingsPage, SettingsGroup, SettingsRow, SettingsButton, SettingsToggleRow, SettingsToggleSwitch, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsCallout, SettingsPage, SettingsGroup, SettingsRow, SettingsRowText, SettingsButton, SettingsToggleRow, SettingsToggleSwitch, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, LoaderCircle } from "lucide-react";
 import type { AppSettings, ChatImportScan, ChatImportAutoStatus, ImportDetection, ImportEntry, ImportLog, ImportProgress, ImportedTranscript } from "@/types";
 import { getAppSettings, updateAppSettings, importRequest, pickImportExport } from "@services/tauri";
 import { notifyImportsChanged, notifySetupChanged } from "@services/events";
-import "./registry.css";
 import "./import.css";
 
 const labels: Record<string, string> = { codex: "Codex", "codex-project": "Codex projects", claude: "Claude Code", "claude-cli": "Claude Code CLI", cowork: "Cowork", "codex-mcp": "Codex MCP servers", "claude-mcp": "Claude MCP servers", "claude.ai": "Claude chats", chatgpt: "ChatGPT chats" };
@@ -84,23 +83,22 @@ export function ChatMigration({ wizard = false, actionsTarget, onComplete, onSki
   const none = !!scan && scan.sources.every(s => s.chats === 0);
   const disabled = busy || scanning || !ready;
   return <div className="chat-migration">
-    {(!ready || scanning) && <p role="status">Looking for Claude Code and Codex chats…</p>}
+    {(!ready || scanning) && <p className="import-note" role="status">Looking for Claude Code and Codex chats…</p>}
     {scan?.sources.map(s => <SettingsToggleRow key={s.source} title={labels[s.source]} subtitle={s.chats ? `${s.chats} chats in ${s.projects} folders · ${s.alreadyImported} in nucode` : "None found on this Mac"}><SettingsToggleSwitch aria-label={`Include ${labels[s.source]}`} disabled={disabled} pressed={options.sources.includes(s.source)} onClick={() => void change({ ...options, sources: options.sources.includes(s.source) ? options.sources.filter(v => v !== s.source) : [...options.sources, s.source] })} /></SettingsToggleRow>)}
-    {none && <p>No Claude Code or Codex chats were found on this Mac.</p>}
-    {!none && <div className="import-mode"><strong>When bringing chats over</strong><SettingsSegmented label="When bringing chats over" value={mode} options={[{ value: "copy", label: "Copy", disabled }, { value: "move", label: "Move", disabled }]} onChange={v => setMode(v as "copy" | "move")} /><p>{mode === "copy" ? "Keep the originals in Claude and Codex." : "Send the originals to the Trash after nucode verifies its copy."}</p></div>}
+    {none && <p className="import-note">No Claude Code or Codex chats were found on this Mac.</p>}
+    {!none && <SettingsRow className="import-mode"><SettingsRowText title="When bringing chats over" subtitle={mode === "copy" ? "Keep the originals in Claude and Codex." : "Send the originals to the Trash after nucode verifies its copy."} /><SettingsSegmented label="When bringing chats over" value={mode} options={[{ value: "copy", label: "Copy", disabled }, { value: "move", label: "Move", disabled }]} onChange={v => setMode(v as "copy" | "move")} /></SettingsRow>}
     {!wizard && <SettingsToggleRow title="Include archived chats"><SettingsToggleSwitch aria-label="Include archived chats" pressed={options.includeArchived} disabled={disabled} onClick={() => void change({ ...options, includeArchived: !options.includeArchived })} /></SettingsToggleRow>}
-    <SettingsToggleRow title={wizard ? "Keep bringing in new chats automatically" : "Bring in new chats automatically"} subtitle="Checks on launch and every 15 minutes. Always copies and never touches the originals. Chats used in the last 10 minutes wait until they're idle."><SettingsToggleSwitch aria-label={wizard ? "Keep bringing in new chats automatically" : "Bring in new chats automatically"} pressed={options.auto} disabled={disabled} onClick={() => void change({ ...options, auto: !options.auto })} /></SettingsToggleRow>
-    {!wizard && <p className="import-auto-status">{auto?.lastRunAt ? `Last checked ${Math.max(0, Math.floor((Date.now() - auto.lastRunAt) / 60000))} minutes ago · ${auto.imported} new chats` : "Not checked automatically yet."}{auto?.error && ` · ${auto.error}`}</p>}
-    {scan?.warnings.map((w, i) => <p key={i} role="status">{w}</p>)}
-    {error && <p role="alert">{error}</p>}
-    {busy && <div role="status"><p>Bringing chats over… {progress.completed}/{progress.total}</p><progress aria-label="Chat import progress" max={Math.max(1, progress.total)} value={progress.completed} /><SettingsButton onClick={() => void importRequest("cancel").catch(e => setError(String(e)))}>Cancel</SettingsButton></div>}
+    <SettingsToggleRow title={wizard ? "Keep bringing in new chats automatically" : "Bring in new chats automatically"} subtitle={wizard ? "Checks on launch and every 15 minutes. Always copies and never touches the originals. Chats used in the last 10 minutes wait until they're idle." : `Checks on launch and every 15 minutes, and always copies. Chats used in the last 10 minutes wait until they're idle. ${auto?.lastRunAt ? `Last checked ${Math.max(0, Math.floor((Date.now() - auto.lastRunAt) / 60000))} minutes ago, ${auto.imported} new chats.` : "Not checked automatically yet."}${auto?.error ? ` ${auto.error}` : ""}`}><SettingsToggleSwitch aria-label={wizard ? "Keep bringing in new chats automatically" : "Bring in new chats automatically"} pressed={options.auto} disabled={disabled} onClick={() => void change({ ...options, auto: !options.auto })} /></SettingsToggleRow>
+    {scan?.warnings.map((w, i) => <p className="import-note" key={i} role="status">{w}</p>)}
+    {error && <SettingsCallout tone="error">{error}</SettingsCallout>}
+    {busy && <div className="import-note" role="status"><p>Bringing chats over… {progress.completed}/{progress.total}</p><progress aria-label="Chat import progress" max={Math.max(1, progress.total)} value={progress.completed} /><SettingsButton onClick={() => void importRequest("cancel").catch(e => setError(String(e)))}>Cancel</SettingsButton></div>}
     {wizard && actionsTarget && createPortal(<>
       <SettingsButton type="button" className="ghost setup-skip" disabled={busy} onClick={onSkip}>Skip for now</SettingsButton>
       <SettingsButton type="button" className="primary setup-primary" disabled={disabled || !scan || !none && !pending} aria-busy={busy} onClick={() => void run()}>{busy ? <><LoaderCircle className="setup-spinner" size={16} />Bringing chats over…</> : none ? <>Continue <ArrowRight size={16} /></> : <>Bring them over <ArrowRight size={16} /></>}</SettingsButton>
     </>, actionsTarget)}
-    {!busy && !(wizard && actionsTarget) && <div className="import-actions"><SettingsButton className="primary" disabled={disabled || !scan || !none && !pending} onClick={() => void run()}>{wizard ? none ? "Continue" : "Bring them over" : `Bring chats over (${pending})`}</SettingsButton>{wizard && <SettingsButton disabled={busy} onClick={onSkip}>Skip</SettingsButton>}</div>}
-    {log && <div role="status"><p>{log.undone ? "Import undone." : log.cancelled ? "Import cancelled. Completed chats were kept." : summary}</p>{!!log.skipped.length && <details><summary>Skipped chats ({log.skipped.length})</summary><ul>{log.skipped.map((s, i) => <li key={i}>{s}</li>)}</ul></details>}{log.warnings.map((w, i) => <p key={i}>{w}</p>)}{!log.undone && <SettingsButton disabled={busy} onClick={() => void undo()}>Undo</SettingsButton>}</div>}
-    {!!confirmation.length && <div role="alert"><p>These chats changed in nucode: {confirmation.join(", ")}. Remove their imported files?</p><SettingsButton onClick={() => void undo(true)}>Remove changed imports</SettingsButton><SettingsButton onClick={() => setConfirmation([])}>Keep imports</SettingsButton></div>}
+    {!busy && !(wizard && actionsTarget) && <div className="import-actions"><SettingsButton className="primary lg" disabled={disabled || !scan || !none && !pending} onClick={() => void run()}>{wizard ? none ? "Continue" : "Bring them over" : `Bring chats over (${pending})`}</SettingsButton>{wizard && <SettingsButton disabled={busy} onClick={onSkip}>Skip</SettingsButton>}</div>}
+    {log && <div className="import-note" role="status"><p>{log.undone ? "Import undone." : log.cancelled ? "Import cancelled. Completed chats were kept." : summary}</p>{!!log.skipped.length && <details><summary>Skipped chats ({log.skipped.length})</summary><ul>{log.skipped.map((s, i) => <li key={i}>{s}</li>)}</ul></details>}{log.warnings.map((w, i) => <p key={i}>{w}</p>)}{!log.undone && <SettingsButton disabled={busy} onClick={() => void undo()}>Undo</SettingsButton>}</div>}
+    {!!confirmation.length && <div className="import-note" role="alert"><p>These chats changed in nucode: {confirmation.join(", ")}. Remove their imported files?</p><SettingsButton onClick={() => void undo(true)}>Remove changed imports</SettingsButton><SettingsButton onClick={() => setConfirmation([])}>Keep imports</SettingsButton></div>}
   </div>;
 }
 
@@ -156,18 +154,17 @@ export function SettingsImportSection({ historyOnly = false }: { historyOnly?: b
   };
   const sources = [...new Set(detection?.entries.map(e => e.source))];
   const disabled = busy || progress.running;
-  return <SettingsPage className="registry-settings import-settings" title={historyOnly ? "Imported Work history" : "Import"} subtitle="Bring conversations and projects into nucode.">
+  return <SettingsPage className="import-settings" title={historyOnly ? "Imported Work history" : "Import"} subtitle="Bring conversations and projects from Claude and Codex into nucode.">
     {!historyOnly && <SettingsGroup title="Claude & Codex chats"><ChatMigration onChanged={refresh} /></SettingsGroup>}
-    <SettingsGroup title={historyOnly ? "Imported history" : "Advanced import"}>
-
-    {error && <p role="alert">{error}</p>}
-    {notice && <p role="status">{notice}</p>}
+    {error && <SettingsCallout tone="error" style={{ marginBottom: 16 }}>{error}</SettingsCallout>}
+    {notice && <SettingsCallout tone="info" role="status" style={{ marginBottom: 16 }}>{notice}</SettingsCallout>}
+    {!historyOnly && <SettingsGroup title="Advanced import" subtitle="Find local sources or import an export file, then choose what to bring over.">
     {!historyOnly && <>
-      <SettingsRow className="import-actions"><SettingsButton disabled={disabled} onClick={() => void run(() => detect())}>Detect local sources</SettingsButton><SettingsButton disabled={disabled} onClick={() => void run(async () => { const path = await pickImportExport(); if (path) await detect(path); })}>Import chats from export file…</SettingsButton></SettingsRow>
+      <div className="import-actions"><SettingsButton disabled={disabled} onClick={() => void run(() => detect())}>Detect local sources</SettingsButton><SettingsButton disabled={disabled} onClick={() => void run(async () => { const path = await pickImportExport(); if (path) await detect(path); })}>Import chats from export file…</SettingsButton></div>
       {detection && <>
         <SettingsToggleRow  title={<>Include archived</>}><SettingsToggleSwitch pressed={archived} disabled={disabled} onClick={() => { setArchived(!(archived)); toggle(detection.entries.filter(v => v.archived && v.kind !== "skipped"), !(archived)); }} /></SettingsToggleRow>
-        {detection.warnings.map((warning, i) => <p key={i} role="status">{warning}</p>)}
-        {sources.length === 0 && <p>No supported local history found.</p>}
+        {detection.warnings.map((warning, i) => <p className="import-note" key={i} role="status">{warning}</p>)}
+        {sources.length === 0 && <p className="import-note">No supported local history found.</p>}
         {sources.map(source => {
           const all = detection.entries.filter(e => e.source === source);
           const visible = all.filter(e => archived || !e.archived);
@@ -185,17 +182,18 @@ export function SettingsImportSection({ historyOnly = false }: { historyOnly?: b
             })}
           </details>;
         })}
-        <SettingsButton disabled={disabled || !selected.size} onClick={() => void run(async () => { const log = await importRequest<ImportLog>("run", { keys: [...selected] }); setSummary(log); await refresh(); notifyImportsChanged(); })}>Import selected ({selected.size})</SettingsButton>
+        <div className="import-actions"><SettingsButton className="primary" disabled={disabled || !selected.size} onClick={() => void run(async () => { const log = await importRequest<ImportLog>("run", { keys: [...selected] }); setSummary(log); await refresh(); notifyImportsChanged(); })}>Import selected ({selected.size})</SettingsButton></div>
       </>}
     </>}
-    {disabled && <div role="status"><p>{progress.phase === "detect" ? "Detecting sources…" : "Import operation in progress…"} {progress.completed}/{progress.total}</p><progress aria-label="Import progress" max={Math.max(1, progress.total)} value={progress.completed} /><SettingsButton onClick={() => void importRequest("cancel").catch(e => setError(String(e)))}>Cancel import</SettingsButton></div>}
-    {summary && <div role="status"><h3>{summary.undone ? "Import undone" : summary.cancelled ? "Import cancelled" : "Import complete"}</h3><p>{summary.created.length} imported, {summary.skipped.length} skipped.</p>{[...summary.skipped, ...summary.warnings].map((message,i) => <p key={i}>{message}</p>)}</div>}
-    {confirmation && <div role="alert"><p>These imported items were continued or changed: {confirmation.titles.join(", ")}. Undo will remove their imported files. Continuations created with Continue are kept.</p><SettingsButton disabled={disabled} onClick={() => void run(() => undo(confirmation.id, true))}>Remove changed imports</SettingsButton><SettingsButton onClick={() => setConfirmation(null)}>Keep imports</SettingsButton></div>}
-    <h3>Import history</h3>
-    {!logs.length && <p>No imports yet.</p>}
+    {disabled && <div className="import-note" role="status"><p>{progress.phase === "detect" ? "Detecting sources…" : "Import operation in progress…"} {progress.completed}/{progress.total}</p><progress aria-label="Import progress" max={Math.max(1, progress.total)} value={progress.completed} /><SettingsButton onClick={() => void importRequest("cancel").catch(e => setError(String(e)))}>Cancel import</SettingsButton></div>}
+    {summary && <div className="import-note" role="status"><h3>{summary.undone ? "Import undone" : summary.cancelled ? "Import cancelled" : "Import complete"}</h3><p>{summary.created.length} imported, {summary.skipped.length} skipped.</p>{[...summary.skipped, ...summary.warnings].map((message,i) => <p className="import-note" key={i}>{message}</p>)}</div>}
+    {confirmation && <div className="import-note" role="alert"><p>These imported items were continued or changed: {confirmation.titles.join(", ")}. Undo will remove their imported files. Continuations created with Continue are kept.</p><SettingsButton disabled={disabled} onClick={() => void run(() => undo(confirmation.id, true))}>Remove changed imports</SettingsButton><SettingsButton onClick={() => setConfirmation(null)}>Keep imports</SettingsButton></div>}
+    </SettingsGroup>}
+    <SettingsGroup title={historyOnly ? "Imported history" : "Import history"}>
+    {!logs.length && <p className="import-note">No imports yet.</p>}
     {logs.filter(log => !historyOnly || log.created.some(e => e.kind === "work")).map(log => <details key={log.id} className="import-source"><summary>{log.id} · {log.created.length} items{log.undone ? " · undone" : ""}</summary>
       {!log.undone && <><SettingsButton disabled={disabled} onClick={() => void run(() => undo(log.id))}>Undo import</SettingsButton>{log.created.filter(e => !["connector", "project"].includes(e.kind) && (!historyOnly || e.kind === "work")).map(entry => <SettingsButton className="import-history-link" disabled={disabled} key={entry.key} onClick={() => void run(async () => setHistory({ logId: log.id, key: entry.key, transcript: await importRequest<ImportedTranscript>("read", { logId: log.id, key: entry.key }) }))}>{entry.title}</SettingsButton>)}</>}
-      {[...log.skipped,...log.warnings].map((message,i) => <p key={i}>{message}</p>)}
+      {[...log.skipped,...log.warnings].map((message,i) => <p className="import-note" key={i}>{message}</p>)}
     </details>)}
     {history && <article className="import-transcript" aria-label="Imported transcript"><h3>{history.transcript.title}</h3><p>{history.transcript.kind === "thread" && !history.transcript.readOnly ? "Native conversation" : "Read-only imported snapshot"} · {history.transcript.source}</p>
       {history.transcript.kind === "thread" && !history.transcript.readOnly ? <p>Open this conversation in its project, or in Chat mode for chats without a project, to continue.</p> : history.transcript.kind === "work" ? <p>Available in Work mode with copied outputs and uploads. Open Work mode to continue as a new task.</p> : <SettingsButton disabled={disabled} onClick={() => void run(async () => { await importRequest("continue", { logId: history.logId, key: history.key }); notifyImportsChanged(); setNotice("Continuation created. Open Chat mode to continue in pi."); })}>Continue in pi</SettingsButton>}<SettingsButton onClick={() => setHistory(null)}>Close transcript</SettingsButton>

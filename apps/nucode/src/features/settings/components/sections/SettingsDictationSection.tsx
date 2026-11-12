@@ -1,4 +1,4 @@
-import { SettingsRow, SettingsSelect, SettingsButton, SettingsSection, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsFieldRow, SettingsGroup, SettingsPage, SettingsRow, SettingsRowText, SettingsSelect, SettingsButton, SettingsStatus, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { AppSettings, DictationModelStatus } from "@/types";
 import { formatDownloadSize } from "@utils/formatting";
 
@@ -38,193 +38,144 @@ export function SettingsDictationSection({
 }: SettingsDictationSectionProps) {
   const dictationProgress = dictationModelStatus?.progress ?? null;
 
+  const statusText = dictationModelStatus
+    ? dictationModelStatus.state === "ready" ? "Ready for dictation"
+      : dictationModelStatus.state === "missing" ? "Not downloaded yet"
+      : dictationModelStatus.state === "downloading" ? "Downloading…"
+      : dictationModelStatus.error ?? "Download error"
+    : "";
+  const statusTone = dictationModelStatus?.state === "ready" ? "ready" : dictationModelStatus?.state === "error" ? "error" : dictationModelStatus?.state === "downloading" ? "busy" : "idle";
   return (
-    <SettingsSection
-      title="Dictation"
-      subtitle="Enable microphone dictation with on-device transcription."
-    >
-      <SettingsToggleRow
-        title="Enable dictation"
-        subtitle="Downloads the selected Whisper model on first use."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.dictationEnabled}
-          onClick={() => {
-            const nextEnabled = !appSettings.dictationEnabled;
-            void onUpdateAppSettings({
-              ...appSettings,
-              dictationEnabled: nextEnabled,
-            });
-            if (
-              !nextEnabled &&
-              dictationModelStatus?.state === "downloading" &&
-              onCancelDictationDownload
-            ) {
-              onCancelDictationDownload();
+    <SettingsPage title="Dictation" subtitle="Speak into the composer. Transcription runs on this computer.">
+      <SettingsGroup>
+        <SettingsToggleRow
+          title="Enable dictation"
+          subtitle="Downloads the selected speech model the first time you turn it on."
+        >
+          <SettingsToggleSwitch
+            pressed={appSettings.dictationEnabled}
+            onClick={() => {
+              const nextEnabled = !appSettings.dictationEnabled;
+              void onUpdateAppSettings({
+                ...appSettings,
+                dictationEnabled: nextEnabled,
+              });
+              if (!nextEnabled && dictationModelStatus?.state === "downloading" && onCancelDictationDownload) {
+                onCancelDictationDownload();
+              }
+              if (nextEnabled && dictationModelStatus?.state === "missing" && onDownloadDictationModel) {
+                onDownloadDictationModel();
+              }
+            }}
+          />
+        </SettingsToggleRow>
+        <SettingsFieldRow title="Hold-to-dictate key" subtitle="Hold the key to record and release it to transcribe.">
+          <SettingsSelect
+            value={appSettings.dictationHoldKey ?? ""}
+            onChange={(event) =>
+              void onUpdateAppSettings({
+                ...appSettings,
+                dictationHoldKey: event.target.value,
+              })
             }
-            if (
-              nextEnabled &&
-              dictationModelStatus?.state === "missing" &&
-              onDownloadDictationModel
-            ) {
-              onDownloadDictationModel();
+          >
+            <option value="">Off</option>
+            <option value="alt">{optionKeyLabel}</option>
+            <option value="shift">Shift</option>
+            <option value="control">Control</option>
+            <option value="meta">{metaKeyLabel}</option>
+          </SettingsSelect>
+        </SettingsFieldRow>
+        <SettingsFieldRow title="Preferred language" subtitle="The language is still detected automatically; this nudges the result toward yours.">
+          <SettingsSelect
+            value={appSettings.dictationPreferredLanguage ?? ""}
+            onChange={(event) =>
+              void onUpdateAppSettings({
+                ...appSettings,
+                dictationPreferredLanguage: event.target.value || null,
+              })
             }
-          }}
-        />
-      </SettingsToggleRow>
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="dictation-model">
-          Dictation model
-        </label>
-        <SettingsSelect
-          id="dictation-model"
-          className="settings-select"
-          value={appSettings.dictationModelId}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              dictationModelId: event.target.value,
-            })
-          }
-        >
-          {dictationModels.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.label} ({model.size})
-            </option>
-          ))}
-        </SettingsSelect>
-        <div className="settings-help">
-          {selectedDictationModel.note} Download size: {selectedDictationModel.size}.
-        </div>
-      </SettingsRow>
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="dictation-language">
-          Preferred dictation language
-        </label>
-        <SettingsSelect
-          id="dictation-language"
-          className="settings-select"
-          value={appSettings.dictationPreferredLanguage ?? ""}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              dictationPreferredLanguage: event.target.value || null,
-            })
-          }
-        >
-          <option value="">Auto-detect only</option>
-          <option value="en">English</option>
-          <option value="es">Spanish</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
-          <option value="it">Italian</option>
-          <option value="pt">Portuguese</option>
-          <option value="nl">Dutch</option>
-          <option value="sv">Swedish</option>
-          <option value="no">Norwegian</option>
-          <option value="da">Danish</option>
-          <option value="fi">Finnish</option>
-          <option value="pl">Polish</option>
-          <option value="tr">Turkish</option>
-          <option value="ru">Russian</option>
-          <option value="uk">Ukrainian</option>
-          <option value="ja">Japanese</option>
-          <option value="ko">Korean</option>
-          <option value="zh">Chinese</option>
-        </SettingsSelect>
-        <div className="settings-help">
-          Auto-detect stays on; this nudges the decoder toward your preference.
-        </div>
-      </SettingsRow>
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="dictation-hold-key">
-          Hold-to-dictate key
-        </label>
-        <SettingsSelect
-          id="dictation-hold-key"
-          className="settings-select"
-          value={appSettings.dictationHoldKey ?? ""}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              dictationHoldKey: event.target.value,
-            })
-          }
-        >
-          <option value="">Off</option>
-          <option value="alt">{optionKeyLabel}</option>
-          <option value="shift">Shift</option>
-          <option value="control">Control</option>
-          <option value="meta">{metaKeyLabel}</option>
-        </SettingsSelect>
-        <div className="settings-help">
-          Hold the key to start dictation, release to stop and process.
-        </div>
-      </SettingsRow>
-      {dictationModelStatus && (
-        <SettingsRow className="settings-field">
-          <div className="settings-field-label">Model status ({selectedDictationModel.label})</div>
-          <div className="settings-help">
-            {dictationModelStatus.state === "ready" && "Ready for dictation."}
-            {dictationModelStatus.state === "missing" && "Model not downloaded yet."}
-            {dictationModelStatus.state === "downloading" && "Downloading model..."}
-            {dictationModelStatus.state === "error" &&
-              (dictationModelStatus.error ?? "Download error.")}
-          </div>
-          {dictationProgress && (
-            <div className="settings-download-progress">
-              <div className="settings-download-bar">
-                <div
-                  className="settings-download-fill"
-                  style={{
-                    width: dictationProgress.totalBytes
-                      ? `${Math.min(
-                          100,
-                          (dictationProgress.downloadedBytes / dictationProgress.totalBytes) * 100,
-                        )}%`
-                      : "0%",
-                  }}
-                />
-              </div>
-              <div className="settings-download-meta">
-                {formatDownloadSize(dictationProgress.downloadedBytes)}
-              </div>
+          >
+            <option value="">Auto-detect only</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="nl">Dutch</option>
+            <option value="sv">Swedish</option>
+            <option value="no">Norwegian</option>
+            <option value="da">Danish</option>
+            <option value="fi">Finnish</option>
+            <option value="pl">Polish</option>
+            <option value="tr">Turkish</option>
+            <option value="ru">Russian</option>
+            <option value="uk">Ukrainian</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+          </SettingsSelect>
+        </SettingsFieldRow>
+      </SettingsGroup>
+      <SettingsGroup title="Speech model" subtitle="Bigger models are more accurate but take longer to download and run.">
+        <SettingsFieldRow title="Dictation model" subtitle={<>{selectedDictationModel.note} Download size: {selectedDictationModel.size}.</>}>
+          <SettingsSelect
+            value={appSettings.dictationModelId}
+            onChange={(event) =>
+              void onUpdateAppSettings({
+                ...appSettings,
+                dictationModelId: event.target.value,
+              })
+            }
+          >
+            {dictationModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} ({model.size})
+              </option>
+            ))}
+          </SettingsSelect>
+        </SettingsFieldRow>
+        {dictationModelStatus && (
+          <SettingsRow>
+            <div>
+              <SettingsRowText title={`Model status (${selectedDictationModel.label})`} subtitle={<SettingsStatus tone={statusTone}>{statusText}</SettingsStatus>} />
+              {dictationProgress && (
+                <div className="settings-download-progress">
+                  <div className="settings-download-bar">
+                    <div
+                      className="settings-download-fill"
+                      style={{
+                        width: dictationProgress.totalBytes
+                          ? `${Math.min(100, (dictationProgress.downloadedBytes / dictationProgress.totalBytes) * 100)}%`
+                          : "0%",
+                      }}
+                    />
+                  </div>
+                  <div className="settings-download-meta">{formatDownloadSize(dictationProgress.downloadedBytes)}</div>
+                </div>
+              )}
             </div>
-          )}
-          <div className="settings-field-actions">
-            {dictationModelStatus.state === "missing" && (
-              <SettingsButton
-                type="button"
-                className="primary"
-                onClick={onDownloadDictationModel}
-                disabled={!onDownloadDictationModel}
-              >
-                Download model
-              </SettingsButton>
-            )}
-            {dictationModelStatus.state === "downloading" && (
-              <SettingsButton
-                type="button"
-                className="ghost settings-button-compact"
-                onClick={onCancelDictationDownload}
-                disabled={!onCancelDictationDownload}
-              >
-                Cancel download
-              </SettingsButton>
-            )}
-            {dictationReady && (
-              <SettingsButton
-                type="button"
-                className="ghost settings-button-compact"
-                onClick={onRemoveDictationModel}
-                disabled={!onRemoveDictationModel}
-              >
-                Remove model
-              </SettingsButton>
-            )}
-          </div>
-        </SettingsRow>
-      )}
-    </SettingsSection>
+            <div className="settings-field-actions">
+              {dictationModelStatus.state === "missing" && (
+                <SettingsButton type="button" className="primary" onClick={onDownloadDictationModel} disabled={!onDownloadDictationModel}>
+                  Download
+                </SettingsButton>
+              )}
+              {dictationModelStatus.state === "downloading" && (
+                <SettingsButton type="button" onClick={onCancelDictationDownload} disabled={!onCancelDictationDownload}>
+                  Cancel
+                </SettingsButton>
+              )}
+              {dictationReady && (
+                <SettingsButton type="button" className="danger" onClick={onRemoveDictationModel} disabled={!onRemoveDictationModel}>
+                  Remove
+                </SettingsButton>
+              )}
+            </div>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

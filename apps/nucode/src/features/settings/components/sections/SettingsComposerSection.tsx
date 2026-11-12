@@ -1,4 +1,4 @@
-import { SettingsRow, SettingsSelect, SettingsSection, SettingsSegmented, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsFieldRow, SettingsGroup, SettingsPage, SettingsSelect, SettingsSegmented, SettingsSwitchRow } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { AppSettings } from "@/types";
 
 type ComposerPreset = AppSettings["composerEditorPreset"];
@@ -21,216 +21,68 @@ export function SettingsComposerSection({
   onUpdateAppSettings,
 }: SettingsComposerSectionProps) {
   const steerUnavailable = !appSettings.steerEnabled;
+  const flip = (key: keyof AppSettings) => () => void onUpdateAppSettings({ ...appSettings, [key]: !appSettings[key] });
   return (
-    <SettingsSection
-      title="Composer"
-      subtitle="Control helpers and formatting behavior inside the message editor."
-    >
-      <SettingsRow className="settings-field">
-        <div className="settings-field-label">Follow-up behavior</div>
-        <SettingsSegmented label="Follow-up behavior" value={appSettings.followUpMessageBehavior}
-          options={[{ value: "queue", label: "Queue" }, { value: "steer", label: "Steer", disabled: steerUnavailable }]}
-          onChange={value => void onUpdateAppSettings({ ...appSettings, followUpMessageBehavior: value as "queue" | "steer" })} />
-        <div className="settings-help">
-          Choose the default while a run is active. Press {followUpShortcutLabel} to send the
-          opposite behavior for one message.
-        </div>
-        <SettingsToggleRow
-          title="Show follow-up hint while processing"
-          subtitle="Displays queue/steer shortcut guidance above the composer."
+    <SettingsPage title="Composer" subtitle="How the message editor handles follow-ups, pasted code and lists.">
+      <SettingsGroup title="Follow-ups" subtitle="What happens when you send a message while a run is still going.">
+        <SettingsFieldRow
+          title="Follow-up behavior"
+          subtitle={<>Queue: send after the current run. Steer: redirect the run in progress. Press {followUpShortcutLabel} to use the other one for a single message.{steerUnavailable && " Steer is unavailable in the current Codex config, so follow-ups will queue."}</>}
         >
-          <SettingsToggleSwitch
-            pressed={appSettings.composerFollowUpHintEnabled}
-            onClick={() =>
+          <SettingsSegmented label="Follow-up behavior" value={appSettings.followUpMessageBehavior}
+            options={[{ value: "queue", label: "Queue" }, { value: "steer", label: "Steer", disabled: steerUnavailable }]}
+            onChange={value => void onUpdateAppSettings({ ...appSettings, followUpMessageBehavior: value as "queue" | "steer" })} />
+        </SettingsFieldRow>
+        <SettingsSwitchRow
+          title="Show follow-up hint while processing"
+          subtitle="Shows the Queue and Steer shortcuts above the composer while a run is active."
+          pressed={appSettings.composerFollowUpHintEnabled}
+          onClick={flip("composerFollowUpHintEnabled")}
+        />
+      </SettingsGroup>
+      <SettingsGroup title="Responses">
+        <SettingsFieldRow title="Response style" subtitle="How much agents explain and how far they carry a task before stopping. Applies from the next turn.">
+          <SettingsSelect
+            value={appSettings.responseStyle ?? "standard"}
+            onChange={(event) =>
               void onUpdateAppSettings({
                 ...appSettings,
-                composerFollowUpHintEnabled: !appSettings.composerFollowUpHintEnabled,
+                responseStyle: event.target.value as NonNullable<AppSettings["responseStyle"]>,
               })
             }
-          />
-        </SettingsToggleRow>
-        {steerUnavailable && (
-          <div className="settings-help">
-            Steer is unavailable in the current Codex config. Follow-ups will queue.
-          </div>
-        )}
-      </SettingsRow>
-      <div className="settings-divider" />
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="response-style">
-          Response style
-        </label>
-        <SettingsSelect
-          id="response-style"
-          className="settings-select"
-          value={appSettings.responseStyle ?? "standard"}
-          onChange={(event) =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              responseStyle: event.target.value as NonNullable<AppSettings["responseStyle"]>,
-            })
-          }
-        >
-          <option value="concise">Concise</option>
-          <option value="standard">Standard</option>
-          <option value="detailed">In depth</option>
-        </SettingsSelect>
-        <div className="settings-help">
-          How much agents explain and how far they carry a task before stopping. Applies from the next turn.
-        </div>
-      </SettingsRow>
-      <div className="settings-divider" />
-      <div className="settings-subsection-title">Presets</div>
-      <div className="settings-subsection-subtitle">
-        Choose a starting point and fine-tune the toggles below.
-      </div>
-      <SettingsRow className="settings-field">
-        <label className="settings-field-label" htmlFor="composer-preset">
-          Preset
-        </label>
-        <SettingsSelect
-          id="composer-preset"
-          className="settings-select"
-          value={appSettings.composerEditorPreset}
-          onChange={(event) =>
-            onComposerPresetChange(event.target.value as ComposerPreset)
-          }
-        >
-          {Object.entries(composerPresetLabels).map(([preset, label]) => (
-            <option key={preset} value={preset}>
-              {label}
-            </option>
-          ))}
-        </SettingsSelect>
-        <div className="settings-help">
-          Presets update the toggles below. Customize any setting after selecting.
-        </div>
-      </SettingsRow>
-      <div className="settings-divider" />
-      <div className="settings-subsection-title">Code fences</div>
-      <SettingsToggleRow
-        title="Expand fences on Space"
-        subtitle="Typing ``` then Space inserts a fenced block."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceExpandOnSpace}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceExpandOnSpace: !appSettings.composerFenceExpandOnSpace,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Expand fences on Enter"
-        subtitle="Use Enter to expand ``` lines when enabled."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceExpandOnEnter}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceExpandOnEnter: !appSettings.composerFenceExpandOnEnter,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Support language tags"
-        subtitle="Allows ```lang + Space to include a language."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceLanguageTags}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceLanguageTags: !appSettings.composerFenceLanguageTags,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Wrap selection in fences"
-        subtitle="Wraps selected text when creating a fence."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceWrapSelection}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceWrapSelection: !appSettings.composerFenceWrapSelection,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Copy blocks without fences"
-        subtitle={
-          <>
-            When enabled, Copy is plain text. Hold {optionKeyLabel} to include ``` fences.
-          </>
-        }
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerCodeBlockCopyUseModifier}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerCodeBlockCopyUseModifier:
-                !appSettings.composerCodeBlockCopyUseModifier,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <div className="settings-divider" />
-      <div className="settings-subsection-title">Pasting</div>
-      <SettingsToggleRow
-        title="Auto-wrap multi-line paste"
-        subtitle="Wraps multi-line paste inside a fenced block."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceAutoWrapPasteMultiline}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceAutoWrapPasteMultiline:
-                !appSettings.composerFenceAutoWrapPasteMultiline,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <SettingsToggleRow
-        title="Auto-wrap code-like single lines"
-        subtitle="Wraps long single-line code snippets on paste."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerFenceAutoWrapPasteCodeLike}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerFenceAutoWrapPasteCodeLike:
-                !appSettings.composerFenceAutoWrapPasteCodeLike,
-            })
-          }
-        />
-      </SettingsToggleRow>
-      <div className="settings-divider" />
-      <div className="settings-subsection-title">Lists</div>
-      <SettingsToggleRow
-        title="Continue lists on Shift+Enter"
-        subtitle="Continues numbered and bulleted lists when the line has content."
-      >
-        <SettingsToggleSwitch
-          pressed={appSettings.composerListContinuation}
-          onClick={() =>
-            void onUpdateAppSettings({
-              ...appSettings,
-              composerListContinuation: !appSettings.composerListContinuation,
-            })
-          }
-        />
-      </SettingsToggleRow>
-    </SettingsSection>
+          >
+            <option value="concise">Concise</option>
+            <option value="standard">Standard</option>
+            <option value="detailed">In depth</option>
+          </SettingsSelect>
+        </SettingsFieldRow>
+      </SettingsGroup>
+      <SettingsGroup title="Presets">
+        <SettingsFieldRow title="Preset" subtitle="Sets the editor toggles below to a starting point. You can still change any of them afterwards.">
+          <SettingsSelect
+            value={appSettings.composerEditorPreset}
+            onChange={(event) => onComposerPresetChange(event.target.value as ComposerPreset)}
+          >
+            {Object.entries(composerPresetLabels).map(([preset, label]) => (
+              <option key={preset} value={preset}>{label}</option>
+            ))}
+          </SettingsSelect>
+        </SettingsFieldRow>
+      </SettingsGroup>
+      <SettingsGroup title="Code fences">
+        <SettingsSwitchRow title="Expand fences on Space" subtitle="Typing ``` then Space inserts a fenced block." pressed={appSettings.composerFenceExpandOnSpace} onClick={flip("composerFenceExpandOnSpace")} />
+        <SettingsSwitchRow title="Expand fences on Enter" subtitle="Pressing Enter on a ``` line also inserts a fenced block." pressed={appSettings.composerFenceExpandOnEnter} onClick={flip("composerFenceExpandOnEnter")} />
+        <SettingsSwitchRow title="Support language tags" subtitle="Lets ```lang then Space start a fence in that language." pressed={appSettings.composerFenceLanguageTags} onClick={flip("composerFenceLanguageTags")} />
+        <SettingsSwitchRow title="Wrap selection in fences" subtitle="Wraps the selected text when you start a fence." pressed={appSettings.composerFenceWrapSelection} onClick={flip("composerFenceWrapSelection")} />
+        <SettingsSwitchRow title="Copy blocks without fences" subtitle={<>Copy gives plain text. Hold {optionKeyLabel} to include the ``` fences.</>} pressed={appSettings.composerCodeBlockCopyUseModifier} onClick={flip("composerCodeBlockCopyUseModifier")} />
+      </SettingsGroup>
+      <SettingsGroup title="Pasting">
+        <SettingsSwitchRow title="Auto-wrap multi-line paste" subtitle="Puts pasted text that spans several lines inside a fenced block." pressed={appSettings.composerFenceAutoWrapPasteMultiline} onClick={flip("composerFenceAutoWrapPasteMultiline")} />
+        <SettingsSwitchRow title="Auto-wrap code-like single lines" subtitle="Puts a pasted single line that looks like code inside a fenced block." pressed={appSettings.composerFenceAutoWrapPasteCodeLike} onClick={flip("composerFenceAutoWrapPasteCodeLike")} />
+      </SettingsGroup>
+      <SettingsGroup title="Lists">
+        <SettingsSwitchRow title="Continue lists on Shift+Enter" subtitle="Shift+Enter on a numbered or bulleted line starts the next item." pressed={appSettings.composerListContinuation} onClick={flip("composerListContinuation")} />
+      </SettingsGroup>
+    </SettingsPage>
   );
 }

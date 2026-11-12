@@ -105,9 +105,14 @@ export const useSettingsShortcutDrafts = ({
     void updateShortcut(key, null);
   };
 
+  const setShortcut = (key: ShortcutSettingKey, value: string) => {
+    void updateShortcut(key, value);
+  };
+
   return {
     shortcutDrafts,
     handleShortcutKeyDown,
     clearShortcut,
+    setShortcut,
   };
 };

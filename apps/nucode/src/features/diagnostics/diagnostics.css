@@ -2,7 +2,6 @@
 .diagnostics-page { container: diagnostics / inline-size; min-width: 0; }
 .diagnostics-page *, .diagnostics-page *::before, .diagnostics-page *::after { box-sizing: border-box; }
 .diagnostics-page .settings-group-card > [class^="diagnostics-"] { margin: 0; }
-.diagnostics-page .settings-group-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px; }
 .diagnostics-page .settings-group-actions { flex-wrap: nowrap; min-width: 0; max-width: 100%; margin-left: auto; }
 .diagnostics-page .settings-select-control { min-width: 0; max-width: 100%; }
 .diagnostics-page .settings-textarea { min-width: 0; max-width: 100%; }

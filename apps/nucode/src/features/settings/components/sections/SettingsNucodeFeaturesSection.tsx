@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AppMode, AppSettings } from "@/types";
 import { features, type Features } from "@settings/features";
-import { SettingsPage, SettingsGroup, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsPage, SettingsGroup, SettingsToggleRow, SettingsToggleSwitch, SettingsSelect, SettingsCallout } from "@/features/design-system/components/settings/SettingsPrimitives";
 
 export const featureGroups: [string, [keyof Features, string, string, boolean?][]][] = [
   ["Developer", [["diagnostics", "Diagnostics", "Record issues, performance and improvement signals locally for agents to review"]]],
@@ -22,16 +22,16 @@ export function SettingsNucodeFeaturesSection({ appSettings, onUpdateAppSettings
     try { await onUpdateAppSettings({ ...appSettings, defaultMode: mode ? mode as AppMode : undefined }); setError(""); }
     catch (e) { setError(String(e)); }
   };
-  const openIn = <SettingsToggleRow title="Open in" subtitle="The mode nucode starts in. Last used reopens where you left off.">
-    <select className="settings-select settings-select--compact" aria-label="Mode to open in" value={appSettings.defaultMode ?? ""} onChange={event => { void setDefaultMode(event.target.value); }}>
+  const openIn = <SettingsToggleRow title="Start in" subtitle="The mode nucode opens in. Last used reopens where you left off.">
+    <SettingsSelect aria-label="Mode to open in" value={appSettings.defaultMode ?? ""} onChange={event => { void setDefaultMode(event.target.value); }}>
       <option value="">Last used</option>
       <option value="code">Code</option>
       {value.chatMode && <option value="chat">Chat</option>}
       {value.workMode && <option value="work">Work</option>}
-    </select>
+    </SettingsSelect>
   </SettingsToggleRow>;
   return <SettingsPage title="Features" subtitle="Choose what appears and runs in nucode. Code is always available.">
-    {featureGroups.map(([group, rows]) => <SettingsGroup key={group} title={group}>{rows.map(([key, title, description, session]) => <SettingsToggleRow key={key} title={title} subtitle={<>{description}{session && <small> Applies to new sessions</small>}</>}><SettingsToggleSwitch pressed={value[key]} disabled={key === "worktrees" && !value.git} onClick={() => void toggle(key)} /></SettingsToggleRow>)}{group === "Modes" && openIn}</SettingsGroup>)}
-    {error && <p role="alert">{error}</p>}
+    {featureGroups.map(([group, rows]) => <SettingsGroup key={group} title={group}>{rows.map(([key, title, description, session]) => <SettingsToggleRow key={key} title={title} subtitle={session ? `${description} Applies to new sessions.` : description}><SettingsToggleSwitch pressed={value[key]} disabled={key === "worktrees" && !value.git} onClick={() => void toggle(key)} /></SettingsToggleRow>)}{group === "Modes" && openIn}</SettingsGroup>)}
+    {error && <SettingsCallout tone="error">{error}</SettingsCallout>}
   </SettingsPage>;
 }

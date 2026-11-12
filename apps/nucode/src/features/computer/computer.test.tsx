@@ -14,6 +14,7 @@ const approvalPush = vi.hoisted(() => ({ listener: null as null | ((approval: un
 vi.mock("@services/events", () => ({ subscribeComputerApproval: (listener: (approval: unknown) => void) => { approvalPush.listener = listener; return () => { approvalPush.listener = null; }; } }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 const step = { step: 1, thumbnail: "aGVsbG8=", action: { kind: "click" }, reflection: "Found button" };
+const permissionRow = (title: string) => screen.getByText(title, { selector: ".settings-toggle-title" }).closest(".settings-row") as HTMLElement;
 describe("computer use", () => {
   it("shows live progress and controls pause, resume and stop", async () => {
     let run = { id: "run", instruction: "Calculate", running: true, paused: false, steps: [{ ...step, target: "Clear" }] };
@@ -154,9 +155,9 @@ describe("computer use", () => {
     vi.mocked(computerRequest).mockResolvedValue({ steps: [] });
     const save = vi.fn().mockResolvedValue(undefined);
     render(<SettingsComputerSection appSettings={{ computer: { ...defaultComputerSettings, confirmTyping: "sensitive" } } as AppSettings} onUpdateAppSettings={save} />);
-    expect(screen.queryByText(/Return can submit or send in some apps/)).toBeNull();
+    expect(screen.queryByText(/Return is allowed in ordinary text fields of full-access apps/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Typing confirmation"), { target: { value: "risky-only" } });
-    expect(screen.getByText(/Return can submit or send in some apps/)).toBeTruthy();
+    expect(screen.getByText(/Return is allowed in ordinary text fields of full-access apps/)).toBeTruthy();
     fireEvent.click(screen.getByText("Save Computer Use"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ confirmTyping: "risky-only" }) })));
   });
@@ -166,14 +167,14 @@ describe("computer use", () => {
     const computer = { ...defaultComputerSettings, appAccess: "listed" as const, allowedApps: ["com.apple.TextEdit", { bundleId: "com.apple.systempreferences", access: "full" }] };
     render(<SettingsComputerSection appSettings={{ computer } as AppSettings} onUpdateAppSettings={save} />);
     expect((screen.getByLabelText("Typing confirmation") as HTMLSelectElement).value).toBe("risky-only");
-    expect(screen.getByText(/Safe shortcuts: ⌘N, ⌘F, ⌘A, ⌘C, ⌘V, ⌘Z, ⌘⇧Z, arrows, Tab, Escape/)).toBeTruthy();
+    expect(screen.getByText(/Shortcuts outside the safe list \(⌘N, ⌘F, ⌘A, ⌘C, ⌘V, ⌘Z, ⌘⇧Z, arrows, Tab, Escape\)/)).toBeTruthy();
     const locked = screen.getByLabelText("Access for com.apple.systempreferences") as HTMLSelectElement;
     expect(locked.disabled).toBe(true);
     expect(locked.value).toBe("read-only");
-    expect(screen.getByText(/System Settings is locked to read-only.*Battery → Options/)).toBeTruthy();
+    expect(screen.getByText(/System Settings is read-only.*Battery → Options/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Typing confirmation"), { target: { value: "always" } });
     fireEvent.change(screen.getByLabelText("Access for com.apple.TextEdit"), { target: { value: "read-only" } });
-    fireEvent.change(screen.getByLabelText("Allowed app bundle IDs (one per line)"), { target: { value: "com.apple.TextEdit\ncom.apple.systempreferences\ncom.apple.Preview" } });
+    fireEvent.change(screen.getByLabelText("Allowed apps"), { target: { value: "com.apple.TextEdit\ncom.apple.systempreferences\ncom.apple.Preview" } });
     expect((screen.getByLabelText("Access for com.apple.Preview") as HTMLSelectElement).value).toBe("full");
     fireEvent.click(screen.getByText("Save Computer Use"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ confirmTyping: "always", allowedApps: [
@@ -223,7 +224,7 @@ describe("computer use", () => {
       const call = expect(computerRequest);
       if (permissions[pane]) call.not.toHaveBeenCalledWith({ action: "permissions", pane });
       else call.toHaveBeenCalledWith({ action: "permissions", pane });
-      expect(screen.getByText(`${pane === "screen" ? "Screen Recording" : "Accessibility"}: ${permissions[pane] ? "Granted" : "Not granted"}`)).toBeTruthy();
+      expect(permissionRow(pane === "screen" ? "Screen Recording" : "Accessibility").textContent).toContain(permissions[pane] ? "Granted" : "Not granted");
     }
   });
   it.each([false, true])("requests once on enable only when permissions are missing (granted: %s)", async granted => {
@@ -235,13 +236,13 @@ describe("computer use", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Request access" }) as HTMLButtonElement).disabled).toBe(false));
     expect(computerRequestPermissions).toHaveBeenCalledTimes(granted ? 0 : 1);
     fireEvent.click(screen.getByLabelText("Enable Computer Use"));
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh permissions" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
     expect(computerRequestPermissions).toHaveBeenCalledTimes(granted ? 0 : 1);
   });
   it("explains Screen Recording restart and wires Quit & Reopen", async () => {
     vi.mocked(computerRequest).mockResolvedValue({ steps: [] });
     render(<SettingsComputerSection appSettings={{ computer: defaultComputerSettings } as AppSettings} onUpdateAppSettings={vi.fn()} />);
-    expect(screen.getByText("Screen Recording takes effect only after quitting and reopening nucode.")).toBeTruthy();
+    expect(screen.getByText("Screen Recording takes effect only after you quit and reopen nucode.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Quit & Reopen" }));
     await waitFor(() => expect(computerRequest).toHaveBeenCalledWith({ action: "restart" }));
   });
@@ -361,7 +362,7 @@ describe("computer use", () => {
     expect(screen.getByText("com.apple.Maps")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("App access"), { target: { value: "listed" } });
     expect(screen.queryByText("com.apple.Maps")).toBeNull();
-    expect(screen.getByLabelText("Allowed app bundle IDs (one per line)")).toBeTruthy();
+    expect(screen.getByLabelText("Allowed apps")).toBeTruthy();
     fireEvent.click(screen.getByText("Save Computer Use"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ askApproval: true }) })));
   });
@@ -370,7 +371,7 @@ describe("computer use", () => {
     const settings = { computer: defaultComputerSettings, providers: [{ id: "local", name: "Local", enabled: true, kind: "ollama", models: [{ id: "vision", enabled: true }] }] } as AppSettings;
     const save = vi.fn().mockResolvedValue(undefined);
     render(<SettingsComputerSection appSettings={settings} onUpdateAppSettings={save} />);
-    await screen.findByText("Screen Recording: Granted"); expect(screen.getByText("Accessibility: Not granted")).toBeTruthy();
+    await waitFor(() => expect(permissionRow("Screen Recording").textContent).toContain("Granted")); expect(permissionRow("Accessibility").textContent).toContain("Not granted");
     expect(screen.getAllByText("vision")).toHaveLength(2);
     expect((screen.getByLabelText("Grounding mode") as HTMLSelectElement).value).toBe("elements");
     expect(screen.queryByLabelText("Grounding coordinates")).toBeNull();
@@ -378,7 +379,7 @@ describe("computer use", () => {
     fireEvent.change(screen.getByLabelText("Grounding coordinates"), { target: { value: "1000x1000" } });
     fireEvent.click(screen.getByText("Save Computer Use"));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ computer: expect.objectContaining({ groundingMode: "ui-tars", groundingWidth: 1000, groundingHeight: 1000 }) })));
-    fireEvent.click(screen.getByText("Open System Settings — Accessibility")); expect(computerRequest).toHaveBeenCalledWith({ action: "permissions", pane: "accessibility" });
+    fireEvent.click(screen.getByRole("button", { name: "Open System Settings — Accessibility" })); expect(computerRequest).toHaveBeenCalledWith({ action: "permissions", pane: "accessibility" });
   });
   it("backs off approval polling while idle or failing", async () => {
     vi.useFakeTimers();

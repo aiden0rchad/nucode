@@ -1,4 +1,7 @@
-import { SettingsRow, SettingsTextField, SettingsButton, SettingsPage, SettingsGroup } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsButton, SettingsEmpty, SettingsGroup, SettingsIconButton, SettingsKeycaps, SettingsPage, SettingsRow, SettingsRowText, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
+import Search from "lucide-react/dist/esm/icons/search";
+import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import X from "lucide-react/dist/esm/icons/x";
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { formatShortcut, getDefaultInterruptShortcut } from "@utils/shortcuts";
 import { isMacPlatform } from "@utils/platformPaths";
@@ -12,7 +15,10 @@ type ShortcutItem = {
   label: string;
   draftKey: ShortcutDraftKey;
   settingKey: ShortcutSettingKey;
-  help: string;
+  /** The raw default value, for example "cmd+n". */
+  defaultValue: string;
+  /** Extra words the search matches. */
+  searchHint?: string;
 };
 
 type ShortcutGroup = {
@@ -28,43 +34,60 @@ type SettingsShortcutsSectionProps = {
     key: ShortcutSettingKey,
   ) => void;
   onClearShortcut: (key: ShortcutSettingKey) => void;
+  /** Sets a shortcut to a raw value; used to restore a default. */
+  onSetShortcut?: (key: ShortcutSettingKey, value: string) => void;
 };
 
-function ShortcutField({
+const MODIFIER_GLYPHS = "⌃⌥⇧⌘";
+
+/** One keycap per key: macOS glyphs are one character each, other platforms join keys with "+". */
+export function shortcutKeys(label: string): string[] {
+  const cap = (key: string) => key.length > 1 && /^[a-z]/.test(key) ? key[0].toUpperCase() + key.slice(1) : key;
+  if (label.includes("+") && label.length > 1) return label.split("+").filter(Boolean).map(cap);
+  const modifiers = [...label].filter((char, index) => MODIFIER_GLYPHS.includes(char) && [...label].slice(0, index).every(c => MODIFIER_GLYPHS.includes(c)));
+  const rest = label.slice(modifiers.join("").length);
+  return [...modifiers, ...(rest ? [cap(rest)] : [])];
+}
+
+function ShortcutRow({
   item,
   shortcutDrafts,
   onShortcutKeyDown,
   onClearShortcut,
+  onSetShortcut,
 }: {
   item: ShortcutItem;
   shortcutDrafts: ShortcutDrafts;
-  onShortcutKeyDown: (
-    event: KeyboardEvent<HTMLInputElement>,
-    key: ShortcutSettingKey,
-  ) => void;
+  onShortcutKeyDown: SettingsShortcutsSectionProps["onShortcutKeyDown"];
   onClearShortcut: (key: ShortcutSettingKey) => void;
+  onSetShortcut?: SettingsShortcutsSectionProps["onSetShortcut"];
 }) {
+  const [recording, setRecording] = useState(false);
+  const value = shortcutDrafts[item.draftKey];
+  const label = formatShortcut(value);
+  const defaultLabel = formatShortcut(item.defaultValue);
+  const changed = label !== defaultLabel;
   return (
-    <SettingsRow className="settings-field">
-      <div className="settings-field-label">{item.label}</div>
-      <div className="settings-field-row">
-        <span className="settings-shortcut-editor"><SettingsTextField
-          className="settings-input settings-input--shortcut"
-          value={formatShortcut(shortcutDrafts[item.draftKey])}
-          onKeyDown={(event) => onShortcutKeyDown(event, item.settingKey)}
-          placeholder="Type shortcut"
-          aria-label={item.label}
-          readOnly
-        /><span className="settings-shortcut-keys" aria-hidden="true">{formatShortcut(shortcutDrafts[item.draftKey]).split("+").filter(Boolean).map((key, index) => <kbd key={index}>{key}</kbd>)}{!shortcutDrafts[item.draftKey] && "Type shortcut"}</span></span>
-        <SettingsButton
-          type="button"
-          className="ghost settings-button-compact"
-          onClick={() => onClearShortcut(item.settingKey)}
-        >
-          Clear
-        </SettingsButton>
+    <SettingsRow className="settings-shortcut-row">
+      <SettingsRowText title={item.label} />
+      <div className="settings-row-controls">
+        {onSetShortcut && changed && <SettingsIconButton aria-label={`Reset ${item.label}`} title={`Reset to ${defaultLabel}`} onClick={() => onSetShortcut(item.settingKey, item.defaultValue)}><RotateCcw aria-hidden /></SettingsIconButton>}
+        {value && <SettingsIconButton className="settings-reveal" aria-label={`Clear ${item.label}`} title="Clear shortcut" onClick={() => onClearShortcut(item.settingKey)}><X aria-hidden /></SettingsIconButton>}
+        <span className={`settings-shortcut-editor${recording ? " is-recording" : ""}`}>
+          <SettingsTextField
+            className="settings-input--shortcut"
+            value={label}
+            onKeyDown={(event) => onShortcutKeyDown(event, item.settingKey)}
+            onFocus={() => setRecording(true)}
+            onBlur={() => setRecording(false)}
+            placeholder="Type shortcut"
+            aria-label={item.label}
+            title="Click, then press the new keys"
+            readOnly
+          />
+          <span aria-hidden="true">{recording ? <span className="settings-shortcut-placeholder is-recording">Press keys…</span> : value ? <SettingsKeycaps keys={shortcutKeys(label)} /> : <span className="settings-shortcut-placeholder">Not set</span>}</span>
+        </span>
       </div>
-      <div className="settings-help">{item.help}</div>
     </SettingsRow>
   );
 }
@@ -73,6 +96,7 @@ export function SettingsShortcutsSection({
   shortcutDrafts,
   onShortcutKeyDown,
   onClearShortcut,
+  onSetShortcut,
 }: SettingsShortcutsSectionProps) {
   const isMac = isMacPlatform();
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,25 +111,25 @@ export function SettingsShortcutsSection({
             label: "New Agent",
             draftKey: "newAgent",
             settingKey: "newAgentShortcut",
-            help: `Default: ${formatShortcut("cmd+n")}`,
+            defaultValue: "cmd+n",
           },
           {
             label: "New Worktree Agent",
             draftKey: "newWorktreeAgent",
             settingKey: "newWorktreeAgentShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+n")}`,
+            defaultValue: "cmd+shift+n",
           },
           {
             label: "New Clone Agent",
             draftKey: "newCloneAgent",
             settingKey: "newCloneAgentShortcut",
-            help: `Default: ${formatShortcut("cmd+alt+n")}`,
+            defaultValue: "cmd+alt+n",
           },
           {
             label: "Archive active thread",
             draftKey: "archiveThread",
             settingKey: "archiveThreadShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+ctrl+a" : "ctrl+alt+a")}`,
+            defaultValue: isMac ? "cmd+ctrl+a" : "ctrl+alt+a",
           },
           {
             label: "Rename active thread",
@@ -135,31 +159,32 @@ export function SettingsShortcutsSection({
             label: "Cycle model",
             draftKey: "model",
             settingKey: "composerModelShortcut",
-            help: `Press a new shortcut while focused. Default: ${formatShortcut("cmd+shift+m")}`,
+            defaultValue: "cmd+shift+m",
+            searchHint: "press a new shortcut while focused",
           },
           {
             label: "Cycle access mode",
             draftKey: "access",
             settingKey: "composerAccessShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+a")}`,
+            defaultValue: "cmd+shift+a",
           },
           {
             label: "Cycle reasoning mode",
             draftKey: "reasoning",
             settingKey: "composerReasoningShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+r")}`,
+            defaultValue: "cmd+shift+r",
           },
           {
             label: "Cycle collaboration mode",
             draftKey: "collaboration",
             settingKey: "composerCollaborationShortcut",
-            help: `Default: ${formatShortcut("shift+tab")}`,
+            defaultValue: "shift+tab",
           },
           {
             label: "Stop active run",
             draftKey: "interrupt",
             settingKey: "interruptShortcut",
-            help: `Default: ${formatShortcut(getDefaultInterruptShortcut())}`,
+            defaultValue: getDefaultInterruptShortcut(),
           },
         ],
       },
@@ -171,31 +196,31 @@ export function SettingsShortcutsSection({
             label: "Toggle projects sidebar",
             draftKey: "projectsSidebar",
             settingKey: "toggleProjectsSidebarShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+p")}`,
+            defaultValue: "cmd+shift+p",
           },
           {
             label: "Toggle git sidebar",
             draftKey: "gitSidebar",
             settingKey: "toggleGitSidebarShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+g")}`,
+            defaultValue: "cmd+shift+g",
           },
           {
             label: "Branch switcher",
             draftKey: "branchSwitcher",
             settingKey: "branchSwitcherShortcut",
-            help: `Default: ${formatShortcut("cmd+b")}`,
+            defaultValue: "cmd+b",
           },
           {
             label: "Toggle debug panel",
             draftKey: "debugPanel",
             settingKey: "toggleDebugPanelShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+d")}`,
+            defaultValue: "cmd+shift+d",
           },
           {
             label: "Toggle terminal panel",
             draftKey: "terminal",
             settingKey: "toggleTerminalShortcut",
-            help: `Default: ${formatShortcut("cmd+shift+t")}`,
+            defaultValue: "cmd+shift+t",
           },
         ],
       },
@@ -207,25 +232,25 @@ export function SettingsShortcutsSection({
             label: "Next agent",
             draftKey: "cycleAgentNext",
             settingKey: "cycleAgentNextShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+ctrl+down" : "ctrl+alt+down")}`,
+            defaultValue: isMac ? "cmd+ctrl+down" : "ctrl+alt+down",
           },
           {
             label: "Previous agent",
             draftKey: "cycleAgentPrev",
             settingKey: "cycleAgentPrevShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+ctrl+up" : "ctrl+alt+up")}`,
+            defaultValue: isMac ? "cmd+ctrl+up" : "ctrl+alt+up",
           },
           {
             label: "Next workspace",
             draftKey: "cycleWorkspaceNext",
             settingKey: "cycleWorkspaceNextShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+shift+down" : "ctrl+alt+shift+down")}`,
+            defaultValue: isMac ? "cmd+shift+down" : "ctrl+alt+shift+down",
           },
           {
             label: "Previous workspace",
             draftKey: "cycleWorkspacePrev",
             settingKey: "cycleWorkspacePrevShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+shift+up" : "ctrl+alt+shift+up")}`,
+            defaultValue: isMac ? "cmd+shift+up" : "ctrl+alt+shift+up",
           },
         ],
       },
@@ -242,7 +267,7 @@ export function SettingsShortcutsSection({
       .map((group) => ({
         ...group,
         items: group.items.filter((item) => {
-          const searchValue = `${group.title} ${group.subtitle} ${item.label} ${item.help}`.toLowerCase();
+          const searchValue = `${group.title} ${group.subtitle} ${item.label} ${formatShortcut(item.defaultValue)} ${item.searchHint ?? ""}`.toLowerCase();
           return searchValue.includes(normalizedSearchQuery);
         }),
       }))
@@ -252,49 +277,36 @@ export function SettingsShortcutsSection({
   return (
     <SettingsPage
       title="Shortcuts"
-      subtitle="Customize keyboard shortcuts for file actions, composer, panels, and navigation."
+      subtitle="Click a shortcut, then press the keys you want. Backspace clears it."
     >
-      <div className="settings-field settings-shortcuts-search">
-        <label className="settings-field-label" htmlFor="settings-shortcuts-search">
-          Search shortcuts
-        </label>
-        <div className="settings-field-row">
-          <SettingsTextField
-            id="settings-shortcuts-search"
-            className="settings-input"
-            placeholder="Search shortcuts"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-          {searchQuery && (
-            <SettingsButton
-              type="button"
-              className="ghost settings-button-compact"
-              onClick={() => setSearchQuery("")}
-            >
-              Clear
-            </SettingsButton>
-          )}
-        </div>
-        <div className="settings-help">Filter by section name, action, or default shortcut.</div>
+      <div className="settings-shortcuts-search">
+        <Search aria-hidden />
+        <SettingsTextField
+          type="search"
+          aria-label="Search shortcuts"
+          placeholder="Search shortcuts"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
       </div>
       {filteredGroups.map((group) => (
         <SettingsGroup key={group.title} title={group.title} subtitle={group.subtitle}>
-          <div className="settings-shortcut-list">{group.items.map((item) => (
-            <ShortcutField
+          {group.items.map((item) => (
+            <ShortcutRow
               key={item.settingKey}
               item={item}
               shortcutDrafts={shortcutDrafts}
               onShortcutKeyDown={onShortcutKeyDown}
               onClearShortcut={onClearShortcut}
+              onSetShortcut={onSetShortcut}
             />
-          ))}</div>
+          ))}
         </SettingsGroup>
       ))}
       {filteredGroups.length === 0 && (
-        <div className="settings-empty">
+        <SettingsGroup><SettingsEmpty action={searchQuery ? <SettingsButton type="button" onClick={() => setSearchQuery("")}>Clear</SettingsButton> : undefined}>
           No shortcuts match {normalizedSearchQuery ? `"${searchQuery.trim()}"` : "your search"}.
-        </div>
+        </SettingsEmpty></SettingsGroup>
       )}
     </SettingsPage>
   );

@@ -1,4 +1,4 @@
-import { SettingsButton, SettingsGroup, SettingsRow, SettingsSection, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsButton, SettingsGroup, SettingsPage, SettingsRow, SettingsRowText, SettingsStatus, SettingsToggleRow, SettingsToggleSwitch } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { useEffect, useState } from "react";
 import type { AppSettings } from "@/types";
 import {
@@ -71,30 +71,41 @@ export function SettingsAboutSection({ appSettings, onToggleAutomaticAppUpdateCh
     ? buildDateValue || "unknown"
     : new Date(parsedBuildDate).toLocaleString();
 
+  const summary = checking ? "Checking GitHub…" : update ? updateCheckSummary(update) : "Not checked yet.";
   return (
-    <SettingsSection title="About" subtitle="App version and build metadata.">
-      <SettingsButton onClick={() => window.dispatchEvent(new Event("nucode:run-setup"))}>Run setup</SettingsButton>
-      <dl className="settings-build-info">
-        {Object.entries({ Version: __APP_VERSION__, "Build type": appBuildType, Branch: __APP_GIT_BRANCH__ || "unknown", Commit: __APP_COMMIT_HASH__ || "unknown", "Build date": buildDateLabel }).map(([label, value]) =>
-          <SettingsRow key={label}><dt>{label}:</dt><dd><code>{value}</code></dd></SettingsRow>)}
-      </dl>
-      <SettingsGroup title="App updates" subtitle="Download updates here, then open the installer to finish updating.">
+    <SettingsPage title="About" subtitle="Version, updates and help.">
+      <div className="settings-about-header">
+        <span className="settings-about-name">nucode</span>
+        <SettingsStatus tone={update?.status === "available" ? "warning" : "ready"}>Version {__APP_VERSION__}</SettingsStatus>
+      </div>
+      <SettingsGroup title="App updates" subtitle="Download an update here, then open the installer to finish.">
         <SettingsToggleRow title="Check for updates automatically" subtitle="At most once a day, when nucode starts.">
           <SettingsToggleSwitch pressed={appSettings.automaticAppUpdateChecksEnabled} onClick={onToggleAutomaticAppUpdateChecks} />
         </SettingsToggleRow>
         <SettingsRow className="settings-update-row">
-          <span role="status">{checking ? "Checking GitHub…" : update ? updateCheckSummary(update) : "Not checked yet."}</span>
-          <div>
+          <div role="status" className="settings-update-summary">{summary}</div>
+          <div className="settings-row-controls">
             {update?.status === "available" && <UpdateDownload key={update.latestVersion} version={update.latestVersion ?? ""} available={!!update.downloadUrl} />}
             <SettingsButton disabled={checking} onClick={() => void checkNow()}>Check for updates</SettingsButton>
           </div>
         </SettingsRow>
-        {update?.status === "available" && update.notes && <ReleaseNotes className="update-toast-notes" notes={update.notes} />}
+        {update?.status === "available" && update.notes && <div className="settings-card-block"><ReleaseNotes className="update-toast-notes" notes={update.notes} /></div>}
       </SettingsGroup>
-      <SettingsGroup title="Feedback" subtitle="Found a bug? Open a prefilled GitHub issue you can review and edit before posting.">
-        <SettingsButton onClick={() => setReporting(true)}>Report an issue…</SettingsButton>
+      <SettingsGroup title="Help">
+        <SettingsRow>
+          <SettingsRowText title="Run setup" subtitle="Walk through the first-run setup again." />
+          <SettingsButton onClick={() => window.dispatchEvent(new Event("nucode:run-setup"))}>Run setup</SettingsButton>
+        </SettingsRow>
+        <SettingsRow>
+          <SettingsRowText title="Report an issue" subtitle="Opens a prefilled GitHub issue that you can review and edit before posting." />
+          <SettingsButton onClick={() => setReporting(true)}>Report an issue…</SettingsButton>
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title="Build">
+        {Object.entries({ Version: __APP_VERSION__, "Build type": appBuildType, Branch: __APP_GIT_BRANCH__ || "unknown", Commit: __APP_COMMIT_HASH__ || "unknown", "Build date": buildDateLabel }).map(([label, value]) =>
+          <SettingsRow key={label}><div className="settings-toggle-title">{label}</div><code className="settings-build-value">{value}</code></SettingsRow>)}
       </SettingsGroup>
       {reporting && <IssueReportDialog onClose={() => setReporting(false)} />}
-    </SettingsSection>
+    </SettingsPage>
   );
 }

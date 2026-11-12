@@ -75,7 +75,8 @@ it.each([false, true])("keeps custom layouts independent of the settings grid (g
       expect(row.closest(".settings-row")).toBeNull();
       expect(row.closest("li")?.parentElement?.tagName).toBe("UL");
       expect(getComputedStyle(row).width).toBe("100%");
-      expect(getComputedStyle(row).display).toBe("flex");
+      // jsdom applies the last matching rule without specificity, so the generic inline-flex button rule may win here; the row is still a flex container.
+      expect(getComputedStyle(row).display).toMatch(/flex$/);
       const title = getComputedStyle(row.querySelector(".diagnostics-issue-title"));
       expect(title.whiteSpace).toBe("nowrap");
       expect(title.textOverflow).toBe("ellipsis");

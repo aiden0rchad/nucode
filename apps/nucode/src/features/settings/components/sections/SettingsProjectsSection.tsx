@@ -1,11 +1,14 @@
-import { SettingsIconButton } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { ProjectAvatar } from "@/features/app/components/ProjectAvatar";
-import { SettingsFieldRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsPage, SettingsGroup } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsEmpty, SettingsFieldRow, SettingsIconButton, SettingsRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsPage, SettingsGroup } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { CodegraphProjectSettings } from "./CodegraphProjectSettings";
 import type { WorkspaceSettings } from "@/types";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
+import X from "lucide-react/dist/esm/icons/x";
+import Plus from "lucide-react/dist/esm/icons/plus";
+import { useState, type ReactNode } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { WorkspaceGroup, WorkspaceInfo } from "@/types";
 
@@ -37,7 +40,54 @@ type SettingsProjectsSectionProps = {
   onAssignWorkspaceGroup: (workspaceId: string, groupId: string | null) => Promise<boolean | null>;
   onMoveWorkspace: (id: string, direction: "up" | "down") => void;
   onDeleteWorkspace: (id: string) => void;
+  /** Rendered at the end of the page, inside the page column. */
+  children?: ReactNode;
 };
+
+function SectionRow({ group, index, count, draft, onDraft, onRename, onMove, onDelete, onChooseFolder, onClearFolder }: {
+  group: WorkspaceGroup; index: number; count: number; draft: string | undefined; onDraft: (value: string) => void; onRename: () => void;
+  onMove: (direction: "up" | "down") => void; onDelete: () => void; onChooseFolder: () => void; onClearFolder: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const finish = () => { setEditing(false); onRename(); };
+  return (
+    <SettingsRow className="settings-list-row">
+      <div className="settings-list-copy">
+        <div className="settings-list-name">
+          {editing ? (
+            <SettingsTextField
+              autoFocus
+              aria-label={`Name of section ${group.name}`}
+              value={draft ?? group.name}
+              onChange={(event) => onDraft(event.target.value)}
+              onBlur={finish}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); finish(); }
+                if (event.key === "Escape") { event.stopPropagation(); onDraft(group.name); setEditing(false); }
+              }}
+            />
+          ) : (
+            <>
+              <span className="settings-list-title">{group.name}</span>
+              <SettingsIconButton size="sm" aria-label={`Rename section ${group.name}`} title="Rename" onClick={() => setEditing(true)}><Pencil aria-hidden /></SettingsIconButton>
+            </>
+          )}
+        </div>
+        <div className="settings-list-meta" title={group.copiesFolder ?? ""}>
+          <span>Folder for clones:</span>
+          <span className={`settings-path${group.copiesFolder ? "" : " empty"}`}>{group.copiesFolder ?? "Not set"}</span>
+        </div>
+      </div>
+      <div className="settings-list-actions">
+        <SettingsButton type="button" onClick={onChooseFolder}>Choose…</SettingsButton>
+        {group.copiesFolder && <SettingsIconButton className="settings-reveal" aria-label="Clear folder for clones" title="Clear folder" onClick={onClearFolder}><X aria-hidden /></SettingsIconButton>}
+        <SettingsIconButton className="settings-reveal" aria-label="Move section up" title="Move up" onClick={() => onMove("up")} disabled={index === 0}><ChevronUp aria-hidden /></SettingsIconButton>
+        <SettingsIconButton className="settings-reveal" aria-label="Move section down" title="Move down" onClick={() => onMove("down")} disabled={index === count - 1}><ChevronDown aria-hidden /></SettingsIconButton>
+        <SettingsIconButton className="is-danger" aria-label="Delete section" title="Delete section" onClick={onDelete}><Trash2 aria-hidden /></SettingsIconButton>
+      </div>
+    </SettingsRow>
+  );
+}
 
 export function SettingsProjectsSection({
   codegraphEnabled,
@@ -61,22 +111,23 @@ export function SettingsProjectsSection({
   onAssignWorkspaceGroup,
   onMoveWorkspace,
   onDeleteWorkspace,
+  children,
 }: SettingsProjectsSectionProps) {
   return (
     <SettingsPage
       title="Projects"
-      subtitle="Group related workspaces and reorder projects within each group."
+      subtitle="Organize projects into sections and set their order in the sidebar."
     >
       <SettingsGroup
-        title="Groups"
-        subtitle="Create group labels for related repositories."
+        title="Sections"
+        subtitle="Sections group related projects in the sidebar."
       >
-      <div className="settings-groups">
-        <div className="settings-group-create">
+        <SettingsRow>
           <SettingsTextField
-            className="settings-input settings-input--compact"
+            className="is-fill"
+            aria-label="New section name"
             value={newGroupName}
-            placeholder="New group name"
+            placeholder="New section name"
             onChange={(event) => onSetNewGroupName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && canCreateGroup) {
@@ -85,191 +136,79 @@ export function SettingsProjectsSection({
               }
             }}
           />
-          <SettingsButton
-            type="button"
-            className="ghost settings-button-compact settings-add-group"
-            onClick={() => {
-              void onCreateGroup();
-            }}
-            disabled={!canCreateGroup}
-          >
-            Add group
-          </SettingsButton>
-        </div>
-        {groupError && <div className="settings-group-error">{groupError}</div>}
-        {workspaceGroups.length > 0 ? (
-          <div className="settings-group-list">
-            {workspaceGroups.map((group, index) => (
-              <div key={group.id} className="settings-group-row">
-                <div className="settings-group-fields">
-                  <SettingsTextField
-                    className="settings-input settings-input--compact"
-                    value={groupDrafts[group.id] ?? group.name}
-                    onChange={(event) =>
-                      onSetGroupDrafts((prev) => ({
-                        ...prev,
-                        [group.id]: event.target.value,
-                      }))
-                    }
-                    onBlur={() => {
-                      void onRenameGroup(group);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void onRenameGroup(group);
-                      }
-                    }}
-                  />
-                  <div className="settings-group-copies">
-                    <div className="settings-group-copies-label">Copies folder</div>
-                    <div className="settings-group-copies-row">
-                      <div
-                        className={`settings-group-copies-path${group.copiesFolder ? "" : " empty"}`}
-                        title={group.copiesFolder ?? ""}
-                      >
-                        {group.copiesFolder ?? "Not set"}
-                      </div>
-                      <SettingsButton
-                        type="button"
-                        className="ghost settings-button-compact"
-                        onClick={() => {
-                          void onChooseGroupCopiesFolder(group);
-                        }}
-                      >
-                        Choose…
-                      </SettingsButton>
-                      <SettingsButton
-                        type="button"
-                        className="ghost settings-button-compact"
-                        onClick={() => {
-                          void onClearGroupCopiesFolder(group);
-                        }}
-                        disabled={!group.copiesFolder}
-                      >
-                        Clear
-                      </SettingsButton>
-                    </div>
-                  </div>
-                </div>
-                <div className="settings-group-actions">
-                  <SettingsIconButton
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      void onMoveWorkspaceGroup(group.id, "up");
-                    }}
-                    disabled={index === 0}
-                    aria-label="Move group up"
-                  >
-                    <ChevronUp aria-hidden />
-                  </SettingsIconButton>
-                  <SettingsIconButton
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      void onMoveWorkspaceGroup(group.id, "down");
-                    }}
-                    disabled={index === workspaceGroups.length - 1}
-                    aria-label="Move group down"
-                  >
-                    <ChevronDown aria-hidden />
-                  </SettingsIconButton>
-                  <SettingsIconButton
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      void onDeleteGroup(group);
-                    }}
-                    aria-label="Delete group"
-                  >
-                    <Trash2 aria-hidden />
-                  </SettingsIconButton>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="settings-empty">No groups yet.</div>
-        )}
-      </div>
-      </SettingsGroup><SettingsGroup
+          <SettingsButton type="button" onClick={() => { void onCreateGroup(); }} disabled={!canCreateGroup}><Plus aria-hidden />Add section</SettingsButton>
+        </SettingsRow>
+        {groupError && <div className="settings-card-block settings-help-error" role="alert">{groupError}</div>}
+        {workspaceGroups.map((group, index) => (
+          <SectionRow
+            key={group.id}
+            group={group}
+            index={index}
+            count={workspaceGroups.length}
+            draft={groupDrafts[group.id]}
+            onDraft={(value) => onSetGroupDrafts((prev) => ({ ...prev, [group.id]: value }))}
+            onRename={() => { void onRenameGroup(group); }}
+            onMove={(direction) => { void onMoveWorkspaceGroup(group.id, direction); }}
+            onDelete={() => { void onDeleteGroup(group); }}
+            onChooseFolder={() => { void onChooseGroupCopiesFolder(group); }}
+            onClearFolder={() => { void onClearGroupCopiesFolder(group); }}
+          />
+        ))}
+        {workspaceGroups.length === 0 && <SettingsEmpty>No sections yet. Name one above to get started.</SettingsEmpty>}
+      </SettingsGroup>
+      <SettingsGroup
         title="Order"
-        subtitle="Assign projects to groups and adjust their order."
+        subtitle="Choose each project's section and move projects up or down within it."
       >
-      <div className="settings-projects">
         {groupedWorkspaces.map((group) => (
           <div key={group.id ?? "ungrouped"} className="settings-project-group">
             <div className="settings-project-group-label">{group.name}</div>
             {group.workspaces.map((workspace, index) => {
-              const groupValue = workspaceGroups.some(
-                (entry) => entry.id === workspace.settings.groupId,
-              )
+              const groupValue = workspaceGroups.some((entry) => entry.id === workspace.settings.groupId)
                 ? workspace.settings.groupId ?? ""
                 : "";
               return (
                 <details key={workspace.id} className="settings-project-row">
-                  <summary><strong><ProjectAvatar name={workspace.name} />{workspace.name}</strong><span>{workspace.path}</span>
-<div className="settings-project-actions">
-                    <SettingsIconButton
-                      type="button"
-                      className="ghost"
-                      onClick={(event) => { event.preventDefault(); onMoveWorkspace(workspace.id, "up"); }}
-                      disabled={index === 0}
-                      aria-label="Move project up"
-                    >
-                      <ChevronUp aria-hidden />
-                    </SettingsIconButton>
-                    <SettingsIconButton
-                      type="button"
-                      className="ghost"
-                      onClick={(event) => { event.preventDefault(); onMoveWorkspace(workspace.id, "down"); }}
-                      disabled={index === group.workspaces.length - 1}
-                      aria-label="Move project down"
-                    >
-                      <ChevronDown aria-hidden />
-                    </SettingsIconButton>
-                    <SettingsIconButton
-                      type="button"
-                      className="ghost"
-                      onClick={(event) => { event.preventDefault(); onDeleteWorkspace(workspace.id); }}
-                      aria-label="Delete project"
-                    >
-                      <Trash2 aria-hidden />
-                    </SettingsIconButton>
-                  </div>
+                  <summary>
+                    <span className="settings-list-identity">
+                      <span className="settings-list-icon"><ProjectAvatar name={workspace.name} /></span>
+                      <span className="settings-list-copy">
+                        <span className="settings-list-name">{workspace.name}</span>
+                        <span className="settings-list-meta settings-project-path">{workspace.path}</span>
+                      </span>
+                    </span>
+                    <span className="settings-list-actions">
+                      <SettingsIconButton className="settings-reveal" aria-label="Move project up" title="Move up" onClick={(event) => { event.preventDefault(); onMoveWorkspace(workspace.id, "up"); }} disabled={index === 0}><ChevronUp aria-hidden /></SettingsIconButton>
+                      <SettingsIconButton className="settings-reveal" aria-label="Move project down" title="Move down" onClick={(event) => { event.preventDefault(); onMoveWorkspace(workspace.id, "down"); }} disabled={index === group.workspaces.length - 1}><ChevronDown aria-hidden /></SettingsIconButton>
+                      <SettingsIconButton className="is-danger" aria-label="Delete project" title="Remove project" onClick={(event) => { event.preventDefault(); onDeleteWorkspace(workspace.id); }}><Trash2 aria-hidden /></SettingsIconButton>
+                    </span>
                   </summary>
-                  <div className="settings-project-info">
-                    <div className="settings-project-name">{workspace.name}</div>
-                    <div className="settings-project-path">{workspace.path}</div>
+                  <div className="settings-project-body">
+                    <SettingsFieldRow title="Section">
+                      <SettingsSelect
+                        aria-label={"Section for " + workspace.name}
+                        value={groupValue}
+                        onChange={(event) => {
+                          const nextGroupId = event.target.value || null;
+                          void onAssignWorkspaceGroup(workspace.id, nextGroupId);
+                        }}
+                      >
+                        <option value="">{ungroupedLabel}</option>
+                        {workspaceGroups.map((entry) => (
+                          <option key={entry.id} value={entry.id}>{entry.name}</option>
+                        ))}
+                      </SettingsSelect>
+                    </SettingsFieldRow>
                     <CodegraphProjectSettings workspace={workspace} globalEnabled={codegraphEnabled} onUpdate={onUpdateWorkspaceSettings} />
                   </div>
-                  <SettingsFieldRow title="Group">
-                    <SettingsSelect
-                      className="settings-select settings-select--compact"
-                      aria-label={"Group for " + workspace.name}
-                      value={groupValue}
-                      onChange={(event) => {
-                        const nextGroupId = event.target.value || null;
-                        void onAssignWorkspaceGroup(workspace.id, nextGroupId);
-                      }}
-                    >
-                      <option value="">{ungroupedLabel}</option>
-                      {workspaceGroups.map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.name}
-                        </option>
-                      ))}
-                    </SettingsSelect>
-                  </SettingsFieldRow>
-
                 </details>
               );
             })}
           </div>
         ))}
-        {projects.length === 0 && <div className="settings-empty">No projects yet.</div>}
-      </div>
-    </SettingsGroup></SettingsPage>
+        {projects.length === 0 && <SettingsEmpty>No projects yet. Add a project from the sidebar.</SettingsEmpty>}
+      </SettingsGroup>
+      {children}
+    </SettingsPage>
   );
 }

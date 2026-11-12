@@ -91,8 +91,6 @@
 .evals-header h2 { font-size: 24px; line-height: 1.25; letter-spacing: -.6px; margin: 0 0 7px; }
 .evals-header p { margin: 0; color: var(--text-subtle); font-size: 13px; line-height: 1.5; }
 .evals-page .evals-actions .settings-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-.evals-page .settings-group { margin: 24px 0; }
-.evals-page .settings-group-title { font-size: 15px; margin-bottom: 12px; }
 .settings-page.evals-page .evals-new-run .settings-group-title .settings-group-disclosure { justify-content: flex-start; }
 .evals-new-run>.settings-group-card { padding: 24px; }
 .evals-new-run>.settings-group-card>:not(.settings-row) { margin: 0; }
