@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { SettingsShortcutsSection, orderedShortcutLabel } from "./SettingsShortcutsSection";
+import { SettingsShortcutsSection } from "./SettingsShortcutsSection";
 import type { ShortcutDrafts } from "@settings/components/settingsTypes";
 
 afterEach(cleanup);
@@ -27,12 +27,17 @@ it("shows Press keys while recording and Not set for an empty shortcut", () => {
   expect(screen.getByText("Press keys…")).toBeTruthy();
 });
 
-it("puts macOS modifiers in the ⌃ ⌥ ⇧ ⌘ order with the key last", () => {
+it("lists the thread shortcuts in their own group and resets one to its default", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-  expect(orderedShortcutLabel("cmd+shift+n")).toBe("⇧⌘N");
-  expect(orderedShortcutLabel("cmd+alt+n")).toBe("⌥⌘N");
-  expect(orderedShortcutLabel("cmd+ctrl+a")).toBe("⌃⌘A");
-  expect(orderedShortcutLabel("")).toBe("Not set");
+  const set = vi.fn();
+  render(<SettingsShortcutsSection shortcutDrafts={drafts({ renameThread: "cmd+j", pinThread: "cmd+alt+p", markThreadUnread: "cmd+shift+u" })} onShortcutKeyDown={vi.fn()} onClearShortcut={vi.fn()} onSetShortcut={set} />);
+  expect(screen.getByText("Threads")).toBeTruthy();
+  for (const name of ["Rename thread", "Pin or unpin thread", "Mark thread as unread", "Archive thread"]) {
+    expect(screen.getByRole("textbox", { name })).toBeTruthy();
+  }
+  expect(screen.queryByRole("button", { name: "Reset Pin or unpin thread" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Reset Rename thread" }));
+  expect(set).toHaveBeenCalledWith("renameThreadShortcut", "cmd+alt+r");
 });
 
 it("resets every changed shortcut after confirmation", () => {

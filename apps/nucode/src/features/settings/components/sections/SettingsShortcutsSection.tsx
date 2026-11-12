@@ -40,15 +40,6 @@ type SettingsShortcutsSectionProps = {
 
 const MODIFIER_GLYPHS = "⌃⌥⇧⌘";
 
-/** macOS order: ⌃ ⌥ ⇧ ⌘ with the key last (⇧⌘N). Other platforms keep their own order. */
-export function orderedShortcutLabel(value: string | null | undefined): string {
-  const label = formatShortcut(value);
-  if (!isMacPlatform() || !value) return label;
-  const glyphs = [...label].filter(char => MODIFIER_GLYPHS.includes(char));
-  const rest = [...label].filter(char => !MODIFIER_GLYPHS.includes(char)).join("");
-  return [...MODIFIER_GLYPHS].filter(glyph => glyphs.includes(glyph)).join("") + rest;
-}
-
 /** One keycap per key: macOS glyphs are one character each, other platforms join keys with "+". */
 export function shortcutKeys(label: string): string[] {
   const cap = (key: string) => key.length > 1 && /^[a-z]/.test(key) ? key[0].toUpperCase() + key.slice(1) : key;
@@ -73,8 +64,8 @@ function ShortcutRow({
 }) {
   const [recording, setRecording] = useState(false);
   const value = shortcutDrafts[item.draftKey];
-  const label = orderedShortcutLabel(value);
-  const defaultLabel = orderedShortcutLabel(item.defaultValue);
+  const label = formatShortcut(value);
+  const defaultLabel = formatShortcut(item.defaultValue);
   const changed = formatShortcut(value) !== formatShortcut(item.defaultValue);
   return (
     <SettingsRow className="settings-shortcut-row">
@@ -134,29 +125,36 @@ export function SettingsShortcutsSection({
             settingKey: "newCloneAgentShortcut",
             defaultValue: "cmd+alt+n",
           },
+        ],
+      },
+      {
+        title: "Threads",
+        subtitle: "Act on the thread that is open.",
+        items: [
           {
-            label: "Archive active thread",
+            label: "Rename thread",
+            draftKey: "renameThread",
+            settingKey: "renameThreadShortcut",
+            defaultValue: isMac ? "cmd+alt+r" : "ctrl+alt+r",
+          },
+          {
+            label: "Pin or unpin thread",
+            draftKey: "pinThread",
+            settingKey: "pinThreadShortcut",
+            defaultValue: isMac ? "cmd+alt+p" : "ctrl+alt+p",
+          },
+          {
+            label: "Mark thread as unread",
+            draftKey: "markThreadUnread",
+            settingKey: "markThreadUnreadShortcut",
+            defaultValue: isMac ? "cmd+shift+u" : "ctrl+shift+u",
+          },
+          {
+            label: "Archive thread",
             draftKey: "archiveThread",
             settingKey: "archiveThreadShortcut",
             defaultValue: isMac ? "cmd+ctrl+a" : "ctrl+alt+a",
-          },
-          {
-            label: "Rename active thread",
-            draftKey: "renameThread",
-            settingKey: "renameThreadShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+alt+r" : "ctrl+alt+r")}`,
-          },
-          {
-            label: "Pin or unpin active thread",
-            draftKey: "pinThread",
-            settingKey: "pinThreadShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+alt+p" : "ctrl+alt+p")}`,
-          },
-          {
-            label: "Mark active thread as unread",
-            draftKey: "markThreadUnread",
-            settingKey: "markThreadUnreadShortcut",
-            help: `Default: ${formatShortcut(isMac ? "cmd+shift+u" : "ctrl+shift+u")}`,
+            searchHint: "archive active thread",
           },
         ],
       },
