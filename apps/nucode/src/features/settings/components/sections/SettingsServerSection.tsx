@@ -134,7 +134,7 @@ export function SettingsServerSection({
     if (tcpDaemonStatus.state === "error") return tcpDaemonStatus.lastError ?? "Error";
     return "Stopped";
   })();
-  const tcpAddress = tcpDaemonStatus?.listenAddr ?? "the configured port";
+  const tcpAddress = tcpDaemonStatus?.listenAddr ?? "the port in Host";
   const copyCommand = (command: string) => { void navigator.clipboard?.writeText(command).catch(() => {}); };
   const lastConnected = (ms?: number | null) => typeof ms === "number" ? new Date(ms).toLocaleString() : "Never";
 
@@ -277,7 +277,7 @@ export function SettingsServerSection({
             <SettingsRow>
               <SettingsRowText
                 title="Mobile access"
-                subtitle={<><SettingsStatus tone={tcpStatusTone}>{tcpStatusLabel}</SettingsStatus>{" "}Lets devices on your network connect ({tcpAddress}). Start it before connecting from iOS.{tcpDaemonStatus?.startedAtMs ? ` Started ${new Date(tcpDaemonStatus.startedAtMs).toLocaleString()}.` : ""}</>}
+                subtitle={<><SettingsStatus tone={tcpStatusTone}>{tcpStatusLabel}</SettingsStatus>{" · "}Lets devices on your network connect. It listens on {tcpAddress}; start it before connecting from iOS.{tcpDaemonStatus?.startedAtMs ? ` Started ${new Date(tcpDaemonStatus.startedAtMs).toLocaleString()}.` : ""}</>}
               />
               <div className="settings-row-controls">
                 <SettingsIconButton aria-label="Refresh status" title="Refresh status" onClick={() => { void onTcpDaemonStatus(); }} disabled={tcpDaemonBusyAction !== null}><RefreshCw aria-hidden className={tcpDaemonBusyAction === "status" ? "settings-spin" : undefined} /></SettingsIconButton>
@@ -286,10 +286,10 @@ export function SettingsServerSection({
                   : <SettingsButton type="button" className="primary" onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
               </div>
             </SettingsRow>
-            <SettingsRow className={tailscaleStatusError ? "is-disabled" : undefined}>
+            <SettingsRow className={tailscaleStatusError || (tailscaleStatus && !tailscaleStatus.installed) ? "is-disabled" : undefined}>
               <SettingsRowText
                 title="Tailscale"
-                subtitle={tailscaleStatusError ?? (tailscaleStatus ? <>{tailscaleStatus.message} {tailscaleStatus.installed ? `Version ${tailscaleStatus.version ?? "unknown"}.` : "Install Tailscale on both desktop and iOS to continue."}{tailscaleStatus.tailnetName && <> Tailnet: <code>{tailscaleStatus.tailnetName}</code>.</>}{tailscaleStatus.suggestedRemoteHost && <> Suggested host: <code>{tailscaleStatus.suggestedRemoteHost}</code>.</>}</> : "Finds this computer's Tailscale address so your phone can reach it.")}
+                subtitle={tailscaleStatusError ?? (tailscaleStatus ? <>{tailscaleStatus.message.replace(/\.?\s*$/, ".")} {tailscaleStatus.installed ? `Version ${tailscaleStatus.version ?? "unknown"}.` : "Install Tailscale on both desktop and iOS to continue."}{tailscaleStatus.tailnetName && <> Tailnet: <code>{tailscaleStatus.tailnetName}</code>.</>}{tailscaleStatus.suggestedRemoteHost && <> Suggested host: <code>{tailscaleStatus.suggestedRemoteHost}</code>.</>}</> : "Finds this computer's Tailscale address so your phone can reach it.")}
               />
               <div className="settings-row-controls">
                 {tailscaleStatus?.suggestedRemoteHost && <SettingsButton type="button" onClick={() => { void onUseSuggestedTailscaleHost(); }}>Use host</SettingsButton>}

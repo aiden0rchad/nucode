@@ -78,7 +78,7 @@
 .evals-page summary { cursor: pointer; font-weight: 500; }
 .evals-details[open]>summary { margin-bottom: 16px; }
 .evals-history { list-style: none; padding: 0; margin: 0; }
-.evals-history .settings-button { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.evals-history .settings-button { justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .evals-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border-subtle); }
 .evals-history li:last-child { border-bottom: 0; }
 /* Full view has its own titlebar clearance and centered reading width. */
