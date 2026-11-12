@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/react";
 import App from "./App";
 import { isMobilePlatform } from "./utils/platformPaths";
 import { restoreTheme } from "@/features/themes/applyTheme";
+import { freezeSharedStorage, threadWindowTarget } from "@app/threadWindow";
 
 const sentryDsn =
   import.meta.env.VITE_SENTRY_DSN ??
@@ -91,6 +92,8 @@ disableMobileZoomGestures();
 syncMobileViewportHeight();
 
 async function mount() {
+  // Main owns the state kept in localStorage; a thread window only reads it.
+  if (threadWindowTarget) freezeSharedStorage();
   if (import.meta.env.MODE === "uipreview") {
     const { installUiPreview } = await import("./dev/uiPreview");
     installUiPreview();

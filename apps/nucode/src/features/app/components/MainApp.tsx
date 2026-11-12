@@ -90,7 +90,11 @@ import {
 } from "@app/orchestration/useWorkspaceOrchestration";
 import { useAppShellOrchestration } from "@app/orchestration/useLayoutOrchestration";
 import { normalizeCodexArgsInput } from "@/utils/codexArgsInput";
-import { subscribeTrayOpenThread } from "@services/events";
+import { subscribeThreadWindowRetarget, subscribeTrayOpenThread } from "@services/events";
+import { closeThreadWindow, openThreadWindow } from "@services/tauri";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useThreadWindow, useThreadWindowEffects } from "@app/threadWindow";
+import { ThreadWindowView } from "./ThreadWindowView";
 import { WorkspaceShell, PanelToolRequest } from "@/features/panels/SidePanel";
 import { buildGitNodes } from "@/features/layout/hooks/layoutNodes/buildGitNodes";
 import { formatShortcut } from "@utils/shortcuts";
@@ -110,6 +114,10 @@ const SettingsView = lazy(() =>
 
 export default function MainApp({ settingsOnly = false, onCloseModeSettings, initialSettingsSection }: { settingsOnly?: boolean; initialSettingsSection?: import("@settings/components/settingsTypes").CodexSection; onCloseModeSettings?: () => void } = {}) {
   const features = useFeatures();
+  // A thread window runs this same app for one conversation; `effects` says which main-window effects stay off.
+  const threadWindow = useThreadWindow();
+  const effects = useThreadWindowEffects();
+  const [threadTarget, setThreadTarget] = useState(threadWindow);
   const [selectedEngine, setSelectedEngine] = useState<import("@/types").EngineKind | undefined>();
   const [environmentDraft, setEnvironmentDraft] = useState<{ workspaceId: string; profile: import("@/types").CodeEnvironment; revision: number } | null>(null);
   const [requestedSessionFile, setRequestedSessionFile] = useState<{ workspaceId: string; path: string; requestId: number } | null>(null);
@@ -205,7 +213,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     queueSaveSettings,
     refreshWorkspaces,
   });
-  const updaterEnabled = !isMobileRuntime;
+  const updaterEnabled = !isMobileRuntime && effects.updater;
 
   const workspacesById = useMemo(
     () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
@@ -588,8 +596,8 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     enabled: updaterEnabled,
     autoCheckOnMount:
       !appSettingsLoading && appSettings.automaticAppUpdateChecksEnabled,
-    notificationSoundsEnabled: appSettings.notificationSoundsEnabled,
-    systemNotificationsEnabled: appSettings.systemNotificationsEnabled,
+    notificationSoundsEnabled: appSettings.notificationSoundsEnabled && effects.sounds,
+    systemNotificationsEnabled: appSettings.systemNotificationsEnabled && effects.systemNotifications,
     subagentSystemNotificationsEnabled:
       appSettings.subagentSystemNotificationsEnabled,
     isSubagentThread,
@@ -734,7 +742,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     });
 
   useResponseRequiredNotificationsController({
-    systemNotificationsEnabled: appSettings.systemNotificationsEnabled,
+    systemNotificationsEnabled: appSettings.systemNotificationsEnabled && effects.systemNotifications,
     subagentSystemNotificationsEnabled:
       appSettings.subagentSystemNotificationsEnabled,
     isSubagentThread,
@@ -908,6 +916,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     updateWorkspaceSettings,
     setCenterMode,
     setSelectedDiffPath,
+    persistSidebarState: effects.sharedStorageWrites,
   });
 
   // "Fork into a new worktree" opens the worktree prompt for the thread's project. Once
@@ -1077,7 +1086,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
 
   useBranchSwitcherShortcut({
     shortcut: appSettings.branchSwitcherShortcut,
-    isEnabled: isBranchSwitcherEnabled,
+    isEnabled: isBranchSwitcherEnabled && effects.menuAndShortcutListeners,
     onTrigger: modalActions.openBranchSwitcher,
   });
 
@@ -1086,6 +1095,13 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       modalActions.openRenamePrompt(workspaceId, threadId);
     },
     [modalActions],
+  );
+
+  // A thread window shows the approvals of its own thread only.
+  const shownApprovals = useMemo(
+    () => !threadTarget ? approvals : approvals.filter(request =>
+      request.workspace_id === threadTarget.workspaceId && (request.params.threadId ?? request.params.thread_id) === threadTarget.threadId),
+    [approvals, threadTarget],
   );
 
   const showHome = !activeWorkspace;
@@ -1268,6 +1284,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     threadStatusById,
     remoteThreadConnectionState,
     refreshThread,
+    onlyWorkspaceId: effects.workspaceRestore ? null : threadTarget?.workspaceId ?? null,
   });
 
   const {
@@ -1398,7 +1415,37 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     ({ workspaceId, threadId }: { workspaceId: string; threadId: string }) => {
       openThreadLinkOrQueue(workspaceId, threadId);
     },
+    { enabled: effects.menuAndShortcutListeners },
   );
+
+  // A thread window opens its conversation on mount, and again if the thread moves to another project.
+  const openThreadLinkOrQueueRef = useRef(openThreadLinkOrQueue);
+  openThreadLinkOrQueueRef.current = openThreadLinkOrQueue;
+  const targetThreadId = threadTarget?.threadId;
+  const targetWorkspaceId = threadTarget?.workspaceId;
+  const targetOpenAttempts = useRef(0);
+  useEffect(() => {
+    if (targetThreadId && targetWorkspaceId) {
+      targetOpenAttempts.current = 0;
+      openThreadLinkOrQueueRef.current(targetWorkspaceId, targetThreadId);
+    }
+  }, [targetThreadId, targetWorkspaceId]);
+  const threadWindowSeenRef = useRef(false);
+  useTauriEvent(
+    subscribeThreadWindowRetarget,
+    (workspaceId: string) => {
+      threadWindowSeenRef.current = false;
+      setThreadTarget((current) => (current ? { ...current, workspaceId } : current));
+    },
+    { enabled: Boolean(threadWindow) },
+  );
+  // The workspace listing can move the open thread aside while it loads; put it back, a few times at most.
+  useEffect(() => {
+    if (!targetThreadId || !targetWorkspaceId || activeThreadId === targetThreadId) return;
+    if (activeWorkspaceId !== targetWorkspaceId || targetOpenAttempts.current >= 3) return;
+    targetOpenAttempts.current += 1;
+    handleOpenThreadLinkFromExternal(targetWorkspaceId, targetThreadId);
+  }, [activeThreadId, activeWorkspaceId, handleOpenThreadLinkFromExternal, targetThreadId, targetWorkspaceId]);
 
   useEffect(() => {
     recordPendingThreadLinkRef.current = recordPendingThreadLink;
@@ -1493,6 +1540,12 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       onAddAgent: handleAddAgent,
       onAddWorktreeAgent: handleAddWorktreeAgent,
       onAddCloneAgent: handleAddCloneAgent,
+      onOpenThreadWindow: () => {
+        if (!activeWorkspaceId || !activeThreadId || appSettings.backendMode === "remote") return;
+        const name = threadsByWorkspace[activeWorkspaceId]?.find(thread => thread.id === activeThreadId)?.name;
+        void openThreadWindow(activeWorkspaceId, activeThreadId, name).catch(error =>
+          pushErrorToast({ title: "Couldn't open a new window", message: error instanceof Error ? error.message : String(error) }));
+      },
       onToggleDebug: handleDebugClick,
       onToggleTerminal: handleToggleTerminalWithFocus,
       sidebarCollapsed,
@@ -1506,7 +1559,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     onDebug: addDebugEntry,
   });
   useArchiveShortcut({
-    isEnabled: isThreadOpen,
+    isEnabled: isThreadOpen && effects.threadShortcuts,
     shortcut: appSettings.archiveThreadShortcut,
     onTrigger: handleArchiveActiveThread,
   });
@@ -1516,7 +1569,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     }
   }, [appModalsProps.worktreePrompt]);
   useThreadShortcuts({
-    isEnabled: isThreadOpen && Boolean(activeWorkspaceId && activeThreadId),
+    isEnabled: isThreadOpen && effects.threadShortcuts && Boolean(activeWorkspaceId && activeThreadId),
     shortcuts: [
       {
         shortcut: appSettings.renameThreadShortcut,
@@ -1641,7 +1694,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
 
       followUpMessageBehavior: appSettings.followUpMessageBehavior,
       composerFollowUpHintEnabled: appSettings.composerFollowUpHintEnabled,
-      dictationEnabled: features.dictation && appSettings.dictationEnabled,
+      dictationEnabled: features.dictation && appSettings.dictationEnabled && effects.dictation,
       splitChatDiffView: appSettings.splitChatDiffView,
       gitDiffIgnoreWhitespaceChanges:
         appSettings.gitDiffIgnoreWhitespaceChanges,
@@ -1670,7 +1723,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     activeThreadId,
     activeItems,
     userInputRequests,
-    approvals,
+    approvals: shownApprovals,
     onDecision: handleApprovalDecision,
     onRemember: handleApprovalRemember,
     onUserInputSubmit: handleUserInputSubmit,
@@ -1874,7 +1927,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       composerProps: layoutSurfaces.primary.composerProps ? {
         ...layoutSurfaces.primary.composerProps,
         modelPickerRequest,
-        onSideChat: features.sideChats && activeThreadId ? () => void sideChats.create() : undefined,
+        onSideChat: features.sideChats && activeThreadId && !threadWindow ? () => void sideChats.create() : undefined,
         sideChatDisabledReason: !features.sideChats ? "Enable side chats in Settings to use /sidechat." : sideChats.disabledReason ?? (sideChats.creating ? "Creating side chat…" : null),
       } : null,
       sidebarProps: {
@@ -1883,6 +1936,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         onMoveWorkspace: (id, direction) => handleMoveWorkspace(id, direction, true),
         newThreadShortcut: appSettings.newAgentShortcut,
         workspaceSections: workspaceGroups,
+        backendMode: appSettings.backendMode,
         onCreateSection: async name => (await createWorkspaceGroup(name))?.id ?? null,
         onAssignWorkspaceSection: (workspaceId, groupId) => { void updateWorkspaceSettings(workspaceId, { groupId }); },
         onEditProject: () => modalActions.openSettings("projects"),
@@ -1929,7 +1983,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
           const result = await sendUserMessageToThread(activeWorkspace, activeThreadId, text, images, { skipPromptExpansion: true, sendIntent: "default" });
           return result.status === "sent";
         },
-        onSideChat: features.sideChats ? itemId => void sideChats.create(itemId) : undefined,
+        onSideChat: features.sideChats && !threadWindow ? itemId => void sideChats.create(itemId) : undefined,
         sideChatDisabledReason: sideChats.messageDisabledReason ?? (sideChats.creating ? "Creating side chat…" : undefined),
         hasOlderHistory: Boolean(activeThreadId && historyCursorByThread[activeThreadId]),
         isLoadingHistory: Boolean(activeThreadId && historyLoadingByThread[activeThreadId]),
@@ -2056,8 +2110,8 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
   });
 
   const agentDetails = useMemo(() => agentThreadDetails(Object.values(threadsByWorkspace).flat(), threadStatusById, tokenUsageByThread), [threadsByWorkspace, threadStatusById, tokenUsageByThread]);
-  const sessionData = useCodeSessionData(settingsOnly ? null : activeWorkspaceId, JSON.stringify([appSettings.mcpServers, appSettings.codegraphEnabled, appSettings.computer?.enabled, appSettings.browser?.approval, appSettings.features, activeWorkspace?.settings.mcpServers, activeWorkspace?.settings.codegraphEnabled]), activeItems, activeWorkspace?.path);
-  const managedTaskState = useManagedTasks(settingsOnly ? null : activeWorkspaceId, activeThreadId);
+  const sessionData = useCodeSessionData(settingsOnly || threadWindow ? null : activeWorkspaceId, JSON.stringify([appSettings.mcpServers, appSettings.codegraphEnabled, appSettings.computer?.enabled, appSettings.browser?.approval, appSettings.features, activeWorkspace?.settings.mcpServers, activeWorkspace?.settings.codegraphEnabled]), activeItems, activeWorkspace?.path);
+  const managedTaskState = useManagedTasks(settingsOnly || threadWindow ? null : activeWorkspaceId, activeThreadId);
   const managedTasks = { ...managedTaskState, canStart: features.terminal && managedTaskState.canStart };
   const fileLinkOpener = useFileLinkOpener(activeWorkspace?.path ?? null, appSettings.openAppTargets, appSettings.selectedOpenAppId);
   const addBrowserContext = useBrowserContextDraft({
@@ -2097,6 +2151,20 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     git={{ enabled: features.git, files: gitState.gitStatus.files.length, additions: gitState.gitStatus.totalAdditions, deletions: gitState.gitStatus.totalDeletions, error: gitState.gitStatus.error }}
     tasks={managedTasks} tasksEnabled={features.terminal} onOpenSettings={modalActions.openSettings} onEditLaunchScripts={launchScriptsState.onOpenNew}
   /> : null;
+  // The window is named after its thread and follows renames.
+  const threadWindowThread = threadTarget ? threadsByWorkspace[threadTarget.workspaceId]?.find(thread => thread.id === threadTarget.threadId) : undefined;
+  const threadWindowName = threadWindowThread?.name?.trim() || null;
+  useEffect(() => {
+    if (!threadWindow || !threadWindowName) return;
+    void getCurrentWindow().setTitle(threadWindowName).catch(() => {});
+  }, [threadWindow, threadWindowName]);
+  // Once the thread has been in state and then leaves it (archived or deleted), there is nothing left to show.
+  const threadWindowHasThread = Boolean(threadWindowThread);
+  useEffect(() => {
+    if (!threadTarget) return;
+    if (threadWindowHasThread) { threadWindowSeenRef.current = true; return; }
+    if (threadWindowSeenRef.current) void closeThreadWindow(threadTarget.threadId).catch(() => {});
+  }, [threadTarget, threadWindowHasThread]);
   if (settingsOnly) return <div className="mode-settings-host" style={mainAppShellProps.appStyle}><AppModals {...mainAppShellProps.appModalsProps} settingsOpen settingsSection={initialSettingsSection ?? mainAppShellProps.appModalsProps.settingsSection} onCloseSettings={onCloseModeSettings ?? mainAppShellProps.appModalsProps.onCloseSettings} /></div>;
   return <ComposerPolicyProvider policy={team.policy} conversation={conversationTeam} loading={team.loading} loadError={team.error}
     scopeKey={`${activeWorkspaceId}:${activeThreadId}:${parentEngine}`} scope={conversationTeam ? `This conversation · ${team.overridden ? "Custom team" : "Project team"}` : activeWorkspace ? `Project defaults · ${activeWorkspace.name}` : "App defaults"}
@@ -2110,7 +2178,8 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     await refreshThread(workspace, thread);
     if (text !== undefined) composerWorkspaceState.restoreDraftForThread(thread, text);
     if (text !== undefined && workspace === activeWorkspaceId && thread === activeThreadId) setPrefillDraft({ id: `rewind-${Date.now()}`, text, createdAt: Date.now() });
-  }} />}<WorkspaceShell dock sessionRail={sessionRail} onBrowserContext={activeWorkspace ? addBrowserContext : undefined} reservedShortcuts={Object.entries(appSettings).filter(([key, value]) => key.endsWith("Shortcut") && typeof value === "string").map(([, value]) => String(value))} scope={`code:${encodeURIComponent(activeWorkspaceId ?? "")}:${encodeURIComponent(activeThreadId ?? "")}`} title={threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.name || activeWorkspace?.name || "nucode"}
+  }} />}{threadWindow ? <ThreadWindowView title={threadWindowName ?? "Conversation"} ready={Boolean(threadTarget && activeWorkspaceId === threadTarget.workspaceId && activeThreadId === threadTarget.threadId)}
+      messagesNode={messagesNode} composerNode={composerNode} approvalToastsNode={approvalToastsNode} errorToastsNode={errorToastsNode} appStyle={mainAppShellProps.appStyle} appRef={appRef} /> : <WorkspaceShell dock sessionRail={sessionRail} onBrowserContext={activeWorkspace ? addBrowserContext : undefined} reservedShortcuts={Object.entries(appSettings).filter(([key, value]) => key.endsWith("Shortcut") && typeof value === "string").map(([, value]) => String(value))} scope={`code:${encodeURIComponent(activeWorkspaceId ?? "")}:${encodeURIComponent(activeThreadId ?? "")}`} title={threadsByWorkspace[activeWorkspaceId ?? ""]?.find(t => t.id === activeThreadId)?.name || activeWorkspace?.name || "nucode"}
     onNavigate={scope => { const [, workspace, thread] = scope.split(":").map(decodeURIComponent); if (workspace && thread) layoutSurfaces.primary.sidebarProps.onSelectThread(workspace, thread); else if (workspace) layoutSurfaces.primary.sidebarProps.onSelectWorkspace(workspace); else layoutSurfaces.primary.sidebarProps.onSelectHome(); }}
     actions={activeWorkspaceId && activeThreadId ? [
       { label: "Rename", onClick: () => handleRenameThread(activeWorkspaceId, activeThreadId) },
@@ -2128,5 +2197,5 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       { id: "sidechat", label: "Side chat", shortcut: "⇧⌘K", target: sideChat?.id, content: sideChatInSplit ? null : sideChatNode, onClose: sideChats.close,
         onOpen: (tab: import("@/features/panels/panelState").PanelTab) => { setSplitSideChatId(null); if (tab.target && sideChat?.id !== tab.target && activeThreadId) sideChats.open({ id: tab.target, name: "Side chat", updatedAt: Date.now(), engine: parentEngine, sideOf: { threadId: activeThreadId, workspaceId: activeWorkspace.id, atItemId: null } }); },
       },
-    ].filter(tool => tool.id === "git" ? features.git : tool.id === "agents" ? features.subagents : tool.id === "terminal" ? features.terminal : tool.id === "sidechat" ? features.sideChats : true) : []} searchUrl={appSettings.browser?.searchUrl} onInterrupt={interruptTurn}><PanelToolRequest id="terminal" requestKey={layoutSurfaces.secondary.terminalDockProps.isOpen} /><PanelToolRequest id="sidechat" requestKey={sideChatInSplit ? null : sideChat?.id} /><MainAppShell {...mainAppShellProps} /></WorkspaceShell></AgentsContext.Provider></ComposerPolicyProvider>;
+    ].filter(tool => tool.id === "git" ? features.git : tool.id === "agents" ? features.subagents : tool.id === "terminal" ? features.terminal : tool.id === "sidechat" ? features.sideChats : true) : []} searchUrl={appSettings.browser?.searchUrl} onInterrupt={interruptTurn}><PanelToolRequest id="terminal" requestKey={layoutSurfaces.secondary.terminalDockProps.isOpen} /><PanelToolRequest id="sidechat" requestKey={sideChatInSplit ? null : sideChat?.id} /><MainAppShell {...mainAppShellProps} /></WorkspaceShell>}</AgentsContext.Provider></ComposerPolicyProvider>;
 }

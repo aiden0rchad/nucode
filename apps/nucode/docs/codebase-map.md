@@ -29,6 +29,7 @@ If a behavior must work in both app and daemon, implement it in `src-tauri/src/s
 | App-level UI composition/layout wiring | `src/App.tsx`, `src/features/app/components/AppLayout.tsx`, `src/features/app/bootstrap/*`, `src/features/app/orchestration/*`, `src/features/app/hooks/*` |
 | Add/change Tauri IPC methods used by frontend | `src/services/tauri.ts`, `src-tauri/src/lib.rs`, matching backend adapter module |
 | Add/change app-server event handling in UI | `src/services/events.ts`, `src/features/app/hooks/useAppServerEvents.ts`, `src/utils/appServerEvents.ts`, `src/features/threads/utils/threadNormalize.ts` |
+| Change thread windows (a thread in its own OS window) | `src-tauri/src/thread_window.rs` (commands, label), `src-tauri/src/menu.rs` (focused-window actions), `src-tauri/capabilities/default.json`, `src/features/app/threadWindow.ts` (target, effect guard list, storage freeze), `src/features/app/components/ThreadWindowView.tsx`, `src/features/app/components/MainApp.tsx` |
 | Change thread state transitions | `src/features/threads/hooks/useThreadsReducer.ts`, `src/features/threads/hooks/threadReducer/*`, `src/features/threads/hooks/useThreads.ts`, focused thread hooks under `src/features/threads/hooks/*` |
 | Change workspace lifecycle/worktree behavior | `src/features/workspaces/hooks/useWorkspaces.ts`, `src-tauri/src/workspaces/commands.rs`, `src-tauri/src/shared/workspaces_core.rs`, `src-tauri/src/shared/workspaces_core/*`, `src-tauri/src/shared/worktree_core.rs` |
 | Change settings model/load/update | `src/features/settings/components/SettingsView.tsx`, `src/features/settings/hooks/useAppSettings.ts`, `src/services/tauri.ts`, `src-tauri/src/settings/mod.rs`, `src-tauri/src/shared/settings_core.rs`, `src-tauri/src/types.rs`, `src/types.ts` |
@@ -135,6 +136,9 @@ All cross-runtime domain behavior belongs in `src-tauri/src/shared/*`:
 - Backend emits through sink: `src-tauri/src/event_sink.rs`
 - App-server event name: `app-server-event`
 - Terminal event names: `terminal-output`, `terminal-exit`
+- Delivered to the app webviews only (`main`, `about`, `thread-*`): `event_sink::is_app_webview`
+- Settings saved in one window: `app-settings-updated` (`{ origin, settings }`), applied by every other window in `useAppSettings`
+- Thread windows: `thread-window-retarget` (the thread moved projects); the menu entry File > Open Thread in New Window sends `menu-open-thread-window` to `main`
 - Frontend fanout hubs: `src/services/events.ts`
 - Frontend routing into thread state: `src/features/app/hooks/useAppServerEvents.ts` -> thread hooks/reducer under `src/features/threads/hooks/*`
 

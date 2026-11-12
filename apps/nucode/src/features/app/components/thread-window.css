@@ -1,0 +1,55 @@
+.thread-window {
+  --main-panel-padding: 24px;
+  --conversation-column-width: 900px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+  background: var(--surface-app);
+  font-family: var(--ui-font-family);
+}
+
+.thread-window-bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: max(44px, calc(44px / var(--ui-scale, 1)));
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sidebar);
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The overlay title bar leaves the traffic lights over the content. */
+.thread-window.is-mac .thread-window-bar {
+  padding-left: max(88px, calc(88px / var(--ui-scale, 1)));
+}
+
+.thread-window-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.thread-window-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.thread-window-empty {
+  margin: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+}

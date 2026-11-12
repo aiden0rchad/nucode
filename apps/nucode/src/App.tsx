@@ -46,6 +46,8 @@ import "./styles/compact-tablet.css";
 import "./styles/visual-refresh.css";
 import "./styles/toolbars.css";
 import "./styles/scrollbars.css";
+import { useThreadWindow } from "@app/threadWindow";
+import { ThreadWindowRoot } from "@app/components/ThreadWindowRoot";
 import { useWindowLabel } from "@/features/layout/hooks/useWindowLabel";
 import MainApp from "@app/components/MainApp";
 import { ModeShell } from "@/features/chat/ModeShell";
@@ -60,6 +62,12 @@ const AboutView = lazy(() =>
 export default function App() {
   useThemedScrollbars();
   const windowLabel = useWindowLabel();
+  // Known before the first render: a thread window never mounts the main window's shell, even for one frame.
+  const threadWindow = useThreadWindow();
+
+  if (threadWindow) {
+    return <DiagnosticBoundary panel="app"><ThreadWindowRoot><MainApp /></ThreadWindowRoot></DiagnosticBoundary>;
+  }
 
   if (windowLabel === "about") {
     return (
