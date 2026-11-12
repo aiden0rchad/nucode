@@ -6,6 +6,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AppSettings } from "../../../types";
 import { clampUiScale, UI_SCALE_STEP } from "../../../utils/uiScale";
 import { isMacPlatform } from "../../../utils/shortcuts";
+import { useThreadWindowEffects } from "@app/threadWindow";
 
 type UseUiScaleShortcutsOptions = {
   settings: AppSettings;
@@ -26,6 +27,8 @@ export function useUiScaleShortcuts({
   saveSettings,
 }: UseUiScaleShortcutsOptions): UseUiScaleShortcutsResult {
   const uiScale = clampUiScale(settings.uiScale);
+  // A thread window follows the saved scale but does not change it; zoom belongs to the main window.
+  const { menuAndShortcutListeners } = useThreadWindowEffects();
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -94,9 +97,10 @@ export function useUiScaleShortcuts({
     if (action === "zoom_reset") handleScaleReset();
     if (action === "zoom_in") handleScaleDelta(UI_SCALE_STEP);
     if (action === "zoom_out") handleScaleDelta(-UI_SCALE_STEP);
-  });
+  }, { enabled: menuAndShortcutListeners });
 
   useEffect(() => {
+    if (!menuAndShortcutListeners) return;
     const handleScaleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (!event.metaKey && !event.ctrlKey)) {
         return;
@@ -122,7 +126,7 @@ export function useUiScaleShortcuts({
     return () => {
       window.removeEventListener("keydown", handleScaleShortcut);
     };
-  }, [handleScaleDelta, handleScaleReset]);
+  }, [handleScaleDelta, handleScaleReset, menuAndShortcutListeners]);
 
   return {
     uiScale,

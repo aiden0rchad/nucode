@@ -5,6 +5,7 @@ import { useDictationModel } from "../../dictation/hooks/useDictationModel";
 import { useHoldToDictate } from "../../dictation/hooks/useHoldToDictate";
 import type { AppSettings } from "../../../types";
 import { requestDictationPermission } from "../../../services/tauri";
+import { useThreadWindowEffects } from "../threadWindow";
 
 type DictationController = {
   dictationModel: ReturnType<typeof useDictationModel>;
@@ -24,8 +25,9 @@ type DictationController = {
 };
 
 export function useDictationController(appSettings: AppSettings): DictationController {
-  appSettings = { ...appSettings, dictationEnabled: appSettings.dictationEnabled && features(appSettings).dictation };
-  const dictationModel = useDictationModel(features(appSettings).dictation ? appSettings.dictationModelId : null);
+  const { dictation } = useThreadWindowEffects();
+  appSettings = { ...appSettings, dictationEnabled: appSettings.dictationEnabled && features(appSettings).dictation && dictation };
+  const dictationModel = useDictationModel(features(appSettings).dictation && dictation ? appSettings.dictationModelId : null);
   const {
     state: dictationState,
     level: dictationLevel,
@@ -83,12 +85,13 @@ export function useDictationController(appSettings: AppSettings): DictationContr
   }, [cancelDictation, dictationState]);
 
   useEffect(() => {
+    if (!dictation) return;
     const handleEscape = (event: KeyboardEvent) => {
       escapeHandlerRef.current(event);
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, []);
+  }, [dictation]);
 
   useHoldToDictate({
     enabled: appSettings.dictationEnabled,
@@ -131,9 +134,10 @@ export function useDictationController(appSettings: AppSettings): DictationContr
     dictationModel,
     dictationState,
     dictationLevel,
-    dictationTranscript,
-    dictationError,
-    dictationHint,
+    // Dictation events reach every window; only a window that dictates may show or insert what they carry.
+    dictationTranscript: dictation ? dictationTranscript : null,
+    dictationError: dictation ? dictationError : null,
+    dictationHint: dictation ? dictationHint : null,
     dictationReady,
     handleToggleDictation,
     clearDictationTranscript,

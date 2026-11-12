@@ -9,6 +9,7 @@ import {
   useRemoteThreadRefreshOnFocus,
 } from "@app/hooks/useRemoteThreadRefreshOnFocus";
 import type { WorkspaceInfo } from "@/types";
+import { useCallback, useMemo } from "react";
 
 type UseMainAppWorkspaceLifecycleArgs = {
   activeTab: "home" | "projects" | "codex" | "git" | "log";
@@ -25,6 +26,8 @@ type UseMainAppWorkspaceLifecycleArgs = {
   threadStatusById: Record<string, { isProcessing: boolean }>;
   remoteThreadConnectionState: "live" | "polling" | "disconnected";
   refreshThread: (workspaceId: string, threadId: string) => Promise<unknown>;
+  /** When set, only this workspace is connected and listed at start and on focus (a thread window's own). */
+  onlyWorkspaceId?: string | null;
 };
 
 export function useMainAppWorkspaceLifecycle({
@@ -42,7 +45,22 @@ export function useMainAppWorkspaceLifecycle({
   threadStatusById,
   remoteThreadConnectionState,
   refreshThread,
+  onlyWorkspaceId = null,
 }: UseMainAppWorkspaceLifecycleArgs) {
+  const scopedWorkspaces = useMemo(
+    () => (onlyWorkspaceId ? workspaces.filter((workspace) => workspace.id === onlyWorkspaceId) : workspaces),
+    [onlyWorkspaceId, workspaces],
+  );
+  const scopedListThreads = useCallback(
+    (targets: WorkspaceInfo[], options?: { preserveState?: boolean; maxPages?: number }) =>
+      (listThreadsForWorkspaces as (targets: WorkspaceInfo[], options?: object) => Promise<void>)(
+        onlyWorkspaceId ? targets.filter((workspace) => workspace.id === onlyWorkspaceId) : targets,
+        options,
+      ),
+    [listThreadsForWorkspaces, onlyWorkspaceId],
+  );
+  const listThreads = onlyWorkspaceId ? scopedListThreads : listThreadsForWorkspaces;
+
   useTabActivationGuard({
     activeTab,
     isTablet,
@@ -52,16 +70,16 @@ export function useMainAppWorkspaceLifecycle({
   useWindowDrag("titlebar");
 
   useWorkspaceRestore({
-    workspaces,
+    workspaces: scopedWorkspaces,
     hasLoaded,
     connectWorkspace,
-    listThreadsForWorkspaces,
+    listThreadsForWorkspaces: listThreads,
   });
 
   useWorkspaceRefreshOnFocus({
-    workspaces,
+    workspaces: scopedWorkspaces,
     refreshWorkspaces,
-    listThreadsForWorkspaces,
+    listThreadsForWorkspaces: listThreads,
     backendMode,
     pollIntervalMs: REMOTE_WORKSPACE_REFRESH_INTERVAL_MS,
   });

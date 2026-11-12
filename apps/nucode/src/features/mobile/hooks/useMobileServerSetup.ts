@@ -3,6 +3,7 @@ import { listWorkspaces } from "../../../services/tauri";
 import type { AppSettings } from "../../../types";
 import { isMobilePlatform } from "../../../utils/platformPaths";
 import type { MobileServerSetupWizardProps } from "../components/MobileServerSetupWizard";
+import { useThreadWindowEffects } from "@app/threadWindow";
 
 type UseMobileServerSetupParams = {
   appSettings: AppSettings;
@@ -66,7 +67,10 @@ export function useMobileServerSetup({
   queueSaveSettings,
   refreshWorkspaces,
 }: UseMobileServerSetupParams): UseMobileServerSetupResult {
-  const isMobileRuntime = useMemo(() => isMobilePlatform(), []);
+  const platformIsMobile = useMemo(() => isMobilePlatform(), []);
+  // Setup (connectivity checks, the wizard, saving the remote backend) belongs to the main window.
+  const { mobileServerSetup } = useThreadWindowEffects();
+  const isMobileRuntime = platformIsMobile && mobileServerSetup;
 
   const [remoteHostDraft, setRemoteHostDraft] = useState(appSettings.remoteBackendHost);
   const [remoteTokenDraft, setRemoteTokenDraft] = useState(appSettings.remoteBackendToken ?? "");
@@ -227,7 +231,7 @@ export function useMobileServerSetup({
   }, [isMobileRuntime, refreshWorkspaces]);
 
   return {
-    isMobileRuntime,
+    isMobileRuntime: platformIsMobile,
     showMobileSetupWizard:
       isMobileRuntime && !appSettingsLoading && !mobileServerReady && !setupWizardDismissed,
     mobileSetupWizardProps: {

@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef } from "react";
 import { setTrayRecentThreads } from "@services/tauri";
+import { useThreadWindowEffects } from "../threadWindow";
 import type { ThreadSummary, TrayRecentThreadEntry, WorkspaceInfo } from "../../../types";
 
 const SYNC_DEBOUNCE_MS = 150;
@@ -86,9 +87,11 @@ export function useTrayRecentThreads({
   const serializedEntries = useMemo(() => JSON.stringify(entries), [entries]);
   const syncEntries = useMemo(() => entries, [serializedEntries]);
   const lastSyncedEntriesRef = useRef<string | null>(null);
+  // The tray lists the main window's threads; a thread window must not overwrite that list with its own.
+  const { trayRecentThreads } = useThreadWindowEffects();
 
   useEffect(() => {
-    if (!isTauri()) {
+    if (!isTauri() || !trayRecentThreads) {
       return;
     }
 
@@ -127,5 +130,5 @@ export function useTrayRecentThreads({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [serializedEntries, syncEntries]);
+  }, [serializedEntries, syncEntries, trayRecentThreads]);
 }

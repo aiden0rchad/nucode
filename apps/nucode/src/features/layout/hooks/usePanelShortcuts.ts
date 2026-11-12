@@ -1,6 +1,7 @@
 import { useFeatures } from "@settings/features";
 import { useEffect } from "react";
 import { matchesShortcut } from "../../../utils/shortcuts";
+import { useThreadWindowEffects } from "@app/threadWindow";
 
 type UsePanelShortcutsOptions = {
   toggleDebugPanelShortcut: string | null;
@@ -16,7 +17,9 @@ export function usePanelShortcuts({
   onToggleTerminal,
 }: UsePanelShortcutsOptions) {
   if (!useFeatures().terminal) toggleTerminalShortcut = null;
+  const { menuAndShortcutListeners } = useThreadWindowEffects();
   useEffect(() => {
+    if (!menuAndShortcutListeners) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.defaultPrevented) {
         return;
@@ -41,5 +44,5 @@ export function usePanelShortcuts({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onToggleDebug, onToggleTerminal, toggleDebugPanelShortcut, toggleTerminalShortcut]);
+  }, [menuAndShortcutListeners, onToggleDebug, onToggleTerminal, toggleDebugPanelShortcut, toggleTerminalShortcut]);
 }

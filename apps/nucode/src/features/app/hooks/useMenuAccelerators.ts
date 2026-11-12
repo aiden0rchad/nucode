@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { setMenuAccelerators } from "../../../services/tauri";
 import { toMenuAccelerator } from "../../../utils/shortcuts";
+import { useThreadWindowEffects } from "../threadWindow";
 
 type MenuAccelerator = {
   id: string;
@@ -16,7 +17,10 @@ export function useMenuAccelerators({
   accelerators,
   onError,
 }: UseMenuAcceleratorsOptions) {
+  // The native menu is shared; the main window is the one that keeps its accelerators current.
+  const { menuAndShortcutListeners } = useThreadWindowEffects();
   useEffect(() => {
+    if (!menuAndShortcutListeners) return;
     let active = true;
     const updateMenuAccelerators = async () => {
       try {
@@ -37,5 +41,5 @@ export function useMenuAccelerators({
     return () => {
       active = false;
     };
-  }, [accelerators, onError]);
+  }, [accelerators, menuAndShortcutListeners, onError]);
 }

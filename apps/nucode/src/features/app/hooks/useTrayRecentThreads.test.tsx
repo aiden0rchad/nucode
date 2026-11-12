@@ -2,6 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadSummary, WorkspaceInfo } from "../../../types";
+import { ThreadWindowContext } from "../threadWindow";
 import {
   buildTrayRecentThreadEntries,
   useTrayRecentThreads,
@@ -307,6 +308,29 @@ describe("useTrayRecentThreads", () => {
         },
         isSubagentThread: () => false,
       }),
+    );
+
+    await vi.runAllTimersAsync();
+    expect(setTrayRecentThreadsMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves the tray to the main window when it runs in a thread window", async () => {
+    renderHook(
+      () =>
+        useTrayRecentThreads({
+          workspaces: [makeWorkspace()],
+          threadsByWorkspace: {
+            "ws-1": [makeThread({ id: "thread-1", name: "Alpha", updatedAt: 10 })],
+          },
+          isSubagentThread: () => false,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <ThreadWindowContext.Provider value={{ workspaceId: "ws-1", threadId: "thread-1" }}>
+            {children}
+          </ThreadWindowContext.Provider>
+        ),
+      },
     );
 
     await vi.runAllTimersAsync();

@@ -14,6 +14,8 @@ type UseWorkspaceSelectionOptions = {
   ) => Promise<WorkspaceInfo>;
   setCenterMode: (mode: "chat" | "diff") => void;
   setSelectedDiffPath: (path: string | null) => void;
+  /** Selecting a collapsed project expands it in the sidebar, which is saved with the project. Off in a thread window. */
+  persistSidebarState?: boolean;
 };
 
 type UseWorkspaceSelectionResult = {
@@ -31,6 +33,7 @@ export function useWorkspaceSelection({
   updateWorkspaceSettings,
   setCenterMode,
   setSelectedDiffPath,
+  persistSidebarState = true,
 }: UseWorkspaceSelectionOptions): UseWorkspaceSelectionResult {
   const exitDiffView = useCallback(() => {
     setCenterMode("chat");
@@ -42,7 +45,7 @@ export function useWorkspaceSelection({
       setSelectedDiffPath(null);
       const target = workspaces.find((entry) => entry.id === workspaceId);
       const didSwitch = activeWorkspaceId !== workspaceId;
-      if (target?.settings.sidebarCollapsed) {
+      if (persistSidebarState && target?.settings.sidebarCollapsed) {
         void updateWorkspaceSettings(workspaceId, {
           sidebarCollapsed: false,
         });
@@ -64,6 +67,7 @@ export function useWorkspaceSelection({
     [
       activeWorkspaceId,
       isCompact,
+      persistSidebarState,
       setActiveTab,
       setActiveWorkspaceId,
       setSelectedDiffPath,

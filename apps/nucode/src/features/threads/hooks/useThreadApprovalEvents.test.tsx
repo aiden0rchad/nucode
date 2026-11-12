@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import type { ApprovalRequest } from "@/types";
 import { respondToServerRequest } from "@services/tauri";
 import {
   getApprovalCommandInfo,
   matchesCommandPrefix,
 } from "@utils/approvalRules";
+import { ThreadWindowContext } from "@app/threadWindow";
 import { useThreadApprovalEvents } from "./useThreadApprovalEvents";
 
 vi.mock("@services/tauri", () => ({
@@ -83,6 +85,32 @@ describe("useThreadApprovalEvents", () => {
 
     const { result } = renderHook(() =>
       useThreadApprovalEvents({ dispatch, approvalAllowlistRef }),
+    );
+
+    act(() => {
+      result.current(approval);
+    });
+
+    expect(respondToServerRequest).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "addApproval", approval });
+  });
+
+  it("shows an allowlisted approval in a thread window instead of answering it", () => {
+    const dispatch = vi.fn();
+    const approval: ApprovalRequest = {
+      workspace_id: "ws-1",
+      request_id: 42,
+      method: "approval/request",
+      params: { argv: ["git", "status"] },
+    };
+    vi.mocked(getApprovalCommandInfo).mockReturnValue({ tokens: ["git", "status"], preview: "git status" });
+    vi.mocked(matchesCommandPrefix).mockReturnValue(true);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ThreadWindowContext.Provider value={{ workspaceId: "ws-1", threadId: "t1" }}>{children}</ThreadWindowContext.Provider>
+    );
+    const { result } = renderHook(
+      () => useThreadApprovalEvents({ dispatch, approvalAllowlistRef: { current: { "ws-1": [["git", "status"]] } } }),
+      { wrapper },
     );
 
     act(() => {
