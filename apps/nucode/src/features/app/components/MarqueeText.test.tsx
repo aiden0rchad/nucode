@@ -51,11 +51,11 @@ describe("MarqueeText", () => {
     act(() => {
       vi.advanceTimersByTime(399);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(false);
+    expect(title.classList.contains("is-sliding")).toBe(false);
     act(() => {
       vi.advanceTimersByTime(2);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(true);
+    expect(title.classList.contains("is-sliding")).toBe(true);
     // 200px of overflow at 40px per second takes five seconds.
     act(() => {
       vi.advanceTimersByTime(5100);
@@ -65,7 +65,7 @@ describe("MarqueeText", () => {
     act(() => {
       vi.advanceTimersByTime(200);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(false);
+    expect(title.classList.contains("is-sliding")).toBe(false);
     expect(title.scrollLeft).toBe(0);
   });
 
@@ -76,7 +76,7 @@ describe("MarqueeText", () => {
     act(() => {
       vi.advanceTimersByTime(450);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(true);
+    expect(title.classList.contains("is-sliding")).toBe(true);
   });
 
   it("does not animate a title that fits", () => {
@@ -86,7 +86,7 @@ describe("MarqueeText", () => {
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(false);
+    expect(title.classList.contains("is-sliding")).toBe(false);
   });
 
   it("does not animate under reduced motion", () => {
@@ -97,7 +97,7 @@ describe("MarqueeText", () => {
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(title.classList.contains("is-scrolling")).toBe(false);
+    expect(title.classList.contains("is-sliding")).toBe(false);
     expect(title.scrollLeft).toBe(0);
   });
 

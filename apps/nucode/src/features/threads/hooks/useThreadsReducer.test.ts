@@ -300,6 +300,21 @@ describe("threadReducer", () => {
     expect(reviewing).toBe(base);
   });
 
+  it("marks a thread unread by hand and clears the mark when the thread is opened again", () => {
+    const read = {
+      ...initialState,
+      threadStatusById: {
+        "thread-1": { isProcessing: false, hasUnread: false, isReviewing: false, processingStartedAt: null, lastDurationMs: null },
+      },
+    };
+    const unread = threadReducer(read, { type: "markUnread", threadId: "thread-1", hasUnread: true });
+    expect(unread.threadStatusById["thread-1"]?.hasUnread).toBe(true);
+    const markedRead = threadReducer(unread, { type: "markUnread", threadId: "thread-1", hasUnread: false });
+    expect(markedRead.threadStatusById["thread-1"]?.hasUnread).toBe(false);
+    const reopened = threadReducer(unread, { type: "setActiveThreadId", workspaceId: "ws-1", threadId: "thread-1" });
+    expect(reopened.threadStatusById["thread-1"]?.hasUnread).toBe(false);
+  });
+
   it("tracks request user input queue", () => {
     const request = {
       workspace_id: "ws-1",

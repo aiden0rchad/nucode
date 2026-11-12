@@ -52,16 +52,19 @@ export function useMarquee<T extends HTMLElement>(hostSelector = "[data-marquee-
         if (distance <= 1) {
           return;
         }
-        element.classList.add("is-scrolling");
-        animate(distance, ((distance - element.scrollLeft) / SPEED_PX_PER_SECOND) * 1000);
+        element.classList.add("is-sliding");
+        animate(distance, ((distance - element.scrollLeft) / SPEED_PX_PER_SECOND) * 1000, () =>
+          element.classList.add("at-end"),
+        );
       }, START_DELAY_MS);
     };
     const reset = () => {
       cancel();
-      if (!element.classList.contains("is-scrolling")) {
+      if (!element.classList.contains("is-sliding")) {
         return;
       }
-      animate(0, RETURN_MS, () => element.classList.remove("is-scrolling"));
+      element.classList.remove("at-end");
+      animate(0, RETURN_MS, () => element.classList.remove("is-sliding"));
     };
     const onFocusOut = (event: Event) => {
       if (!host.contains((event as FocusEvent).relatedTarget as Node | null)) {

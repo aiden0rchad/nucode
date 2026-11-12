@@ -14,6 +14,13 @@
   -webkit-user-select: none;
 }
 
+/* Hover and keyboard focus share one background highlight, so no separate ring. */
+.ctx-menu:focus-visible,
+.ctx-menu .ctx-item:focus-visible,
+.ctx-menu .ctx-input:focus-visible {
+  outline: none;
+}
+
 .ctx-item {
   display: flex;
   align-items: center;

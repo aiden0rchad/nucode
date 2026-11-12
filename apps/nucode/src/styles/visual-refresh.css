@@ -64,7 +64,7 @@ button:disabled, select:disabled { opacity: .4; }
 .sidebar-section-title svg { width: 12px; height: 12px; margin-right: 4px; }
 .sidebar .thread-row { border: 0; box-shadow: none; border-radius: var(--radius-row); min-height: 32px; background: transparent; }
 .sidebar .thread-row.has-secondary-line { min-height: 44px; }
-.sidebar .thread-row:hover { background: var(--surface-hover); }
+.sidebar .thread-row:is(:hover, [data-context-open]) { background: var(--surface-hover); }
 .sidebar .thread-row.active { background: var(--thread-selected-background, var(--surface-card-strong)); color: var(--text-strong); }
 .sidebar .thread-name { font-size: 13px; font-weight: 400; }
 .sidebar .thread-details { font-size: 12px; color: var(--text-subtle); }
@@ -307,10 +307,10 @@ button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
 .thread-engine-dot.engine-pi { background: var(--status-warning); }
 .thread-engine-dot.engine-claude { background: var(--status-error); }
 .thread-menu-trigger { position: absolute; right: 0; top: 50%; translate: 0 -50%; opacity: 0; }
-.thread-row:hover .thread-menu-trigger, .thread-row:focus-within .thread-menu-trigger { opacity: 1; }
-.sidebar .thread-row:is(:hover, :focus-within, .is-pinned) .thread-meta:has(.thread-pin-trigger) { min-width: 52px; justify-content: flex-end; }
+.thread-row:is(:hover, [data-context-open]) .thread-menu-trigger, .thread-row:focus-within .thread-menu-trigger { opacity: 1; }
+.sidebar .thread-row:is(:hover, :focus-within, [data-context-open], .is-pinned) .thread-meta:has(.thread-pin-trigger) { min-width: 52px; justify-content: flex-end; }
 .thread-pin-trigger { position: absolute; right: 26px; top: 50%; translate: 0 -50%; opacity: 0; pointer-events: none; }
-.thread-row:hover .thread-pin-trigger, .thread-row:focus-within .thread-pin-trigger,
+.thread-row:is(:hover, [data-context-open]) .thread-pin-trigger, .thread-row:focus-within .thread-pin-trigger,
 .thread-pin-trigger.is-pinned { opacity: 1; pointer-events: auto; }
 .thread-pin-trigger.is-pinned svg { color: var(--border-accent); fill: currentColor; }
 .thread-row:has(.thread-pin-trigger.is-pinned) .thread-time { visibility: hidden; }
@@ -320,18 +320,18 @@ button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
 .sidebar :is(.thread-row, .workspace-row)[data-dragging="true"] { opacity: .5; }
 .sidebar :is(.thread-row, .workspace-row)[data-drop-edge="before"] { box-shadow: inset 0 2px 0 var(--border-accent); }
 .sidebar :is(.thread-row, .workspace-row)[data-drop-edge="after"] { box-shadow: inset 0 -2px 0 var(--border-accent); }
-.thread-row:hover .thread-time, .thread-row:focus-within .thread-time,
+.thread-row:is(:hover, [data-context-open]) .thread-time, .thread-row:focus-within .thread-time,
 .mode-row:hover .thread-time, .mode-row:focus-within .thread-time { visibility: hidden; }
 .thread-tree-toggle { position: absolute; inset: -5px; border: 0; background: var(--surface-sidebar); color: var(--text-muted); padding: 0; opacity: 0; z-index: var(--z-sticky); }
 .thread-tree-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
-.thread-row:hover .thread-tree-toggle, .thread-row:focus-within .thread-tree-toggle { opacity: 1; }
+.thread-row:is(:hover, [data-context-open]) .thread-tree-toggle, .thread-row:focus-within .thread-tree-toggle { opacity: 1; }
 .sidebar .thread-list, .sidebar .thread-bucket, .sidebar .pinned-section { gap: 1px; }
 .sidebar .thread-list-nested { margin-left: 0; }
 .sidebar .thread-more { height: 24px; padding: 0 8px 0 44px; color: var(--text-subtle); font-size: 12px; font-weight: 400; }
 
 .sidebar .workspace-row { height: 26px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: var(--radius-row); }
 .sidebar .workspace-row::before { border-radius: var(--radius-row); background: transparent; border: 0; box-shadow: none; }
-.sidebar .workspace-row:hover::before { background: var(--surface-hover); }
+.sidebar .workspace-row:is(:hover, [data-context-open])::before { background: var(--surface-hover); }
 /* One selection signal: the active thread row. The project header only gets stronger text. */
 .sidebar .workspace-row.active::before { background: transparent; }
 .sidebar .workspace-row.active .workspace-name { color: var(--text-strong); }
@@ -345,7 +345,7 @@ button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
 .sidebar .workspace-toggle { width: 20px; height: 24px; padding: 0; flex-shrink: 0; opacity: .6; }
 .sidebar .workspace-toggle-icon { width: 12px; height: 12px; }
 .sidebar .group-toggle { opacity: 0; }
-.sidebar .workspace-row:hover .workspace-toggle, .sidebar .workspace-row:focus-within .workspace-toggle,
+.sidebar .workspace-row:is(:hover, [data-context-open]) .workspace-toggle, .sidebar .workspace-row:focus-within .workspace-toggle,
 .sidebar .workspace-group-header:hover .group-toggle, .sidebar .workspace-group-header:focus-within .group-toggle { opacity: 1; }
 
 .sidebar-tree, .sidebar-tree-children { display: flex; flex-direction: column; gap: 1px; }
@@ -371,7 +371,7 @@ button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
 .sidebar .sidebar-tree-node .thread-row::before { inset: 0 0 0 var(--tree-row-highlight); z-index: var(--z-behind); }
 .sidebar .sidebar-tree-node .thread-row { isolation: isolate; }
 .sidebar .sidebar-tree-node .thread-row.active::before { background: var(--thread-selected-background, var(--surface-card-strong)); }
-.sidebar .sidebar-tree-node .thread-row:hover:not(.active)::before { background: var(--surface-hover); }
+.sidebar .sidebar-tree-node .thread-row:is(:hover, [data-context-open]):not(.active)::before { background: var(--surface-hover); }
 .sidebar .sidebar-tree-node > .thread-row, .sidebar .sidebar-tree-node > .mode-row .thread-row { padding-left: 8px; }
 .sidebar .mode-row { margin: 0 0 2px; }
 .sidebar .mode-row-menu-trigger { right: 8px; }
@@ -723,7 +723,7 @@ button:hover:not(:disabled), button:active:not(:disabled) { box-shadow: none; }
    "+" appears on hover or keyboard focus instead of forming a permanent column of plus signs. */
 :root .sidebar .workspace-name, :root[data-translucent="true"] .sidebar .workspace-name { color: var(--text-primary); font-weight: 500; }
 .sidebar .workspace-row .workspace-add { opacity: 0; }
-.sidebar .workspace-row:is(:hover, :focus-within) .workspace-add, .sidebar .workspace-add:focus-visible { opacity: 1; }
+.sidebar .workspace-row:is(:hover, :focus-within, [data-context-open]) .workspace-add, .sidebar .workspace-add:focus-visible { opacity: 1; }
 @media (hover: none) { .sidebar .workspace-row .workspace-add { opacity: .6; } }
 /* Settings › Projects › Order: one bordered list with dividers (not cards in a card), and each row shows its
    move up / move down / delete controls on hover or keyboard focus, without expanding it. */
@@ -782,7 +782,7 @@ label.code-session-field { column-gap: 0; } /* the select's own 6px inset is the
 .sidebar .workspace-row { position: relative; }
 .sidebar .workspace-row > .workspace-actions { position: absolute; right: 4px; top: 0; bottom: 0; }
 .sidebar .workspace-row > .workspace-count { margin-left: auto; }
-.sidebar .workspace-row:is(:hover, :focus-within) > .workspace-count:has(+ .workspace-actions > *) { visibility: hidden; }
+.sidebar .workspace-row:is(:hover, :focus-within, [data-context-open]) > .workspace-count:has(+ .workspace-actions > *) { visibility: hidden; }
 .sidebar .workspace-row > .workspace-count { margin-right: 4px; }
 .sidebar .work-space > .workspace-row > .sidebar-title-add { position: absolute; right: 4px; top: 50%; translate: 0 -50%; }
 .sidebar .work-space > .workspace-row:is(:hover, :focus-within) > .workspace-count { visibility: hidden; }

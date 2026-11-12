@@ -218,4 +218,57 @@ describe("ContextMenu", () => {
     expect(onSubmit).toHaveBeenCalledWith("Work");
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  describe("placement", () => {
+    const originalWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+
+    afterEach(() => {
+      if (originalWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", originalWidth);
+      if (originalHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalHeight);
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      vi.unstubAllGlobals();
+    });
+
+    function mockLayout(viewport: { width: number; height: number }, parent = { left: 10, right: 210 }) {
+      Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 200 });
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 100 });
+      vi.stubGlobal("innerWidth", viewport.width);
+      vi.stubGlobal("innerHeight", viewport.height);
+      HTMLElement.prototype.getBoundingClientRect = function () {
+        if (this.dataset?.ctxId === "d") {
+          return { ...parent, top: 50, bottom: 78, width: 200, height: 28, x: parent.left, y: 50, toJSON() {} } as DOMRect;
+        }
+        return originalRect.call(this);
+      };
+    }
+
+    it("keeps the menu inside the window with an 8px margin", () => {
+      mockLayout({ width: 300, height: 200 });
+      render(
+        <ContextMenu items={baseItems()} position={{ x: 290, y: 190 }} onClose={() => {}} />,
+      );
+      const menu = screen.getByRole("menu");
+      expect(menu.style.left).toBe("92px");
+      expect(menu.style.top).toBe("92px");
+    });
+
+    it("opens a submenu to the right of its parent when there is room", () => {
+      mockLayout({ width: 1000, height: 600 });
+      render(<ContextMenu items={baseItems()} position={{ x: 10, y: 10 }} onClose={() => {}} />);
+      fireEvent.keyDown(screen.getByRole("menuitem", { name: /Delta/ }), { key: "ArrowRight" });
+      const submenu = screen.getAllByRole("menu")[1];
+      expect(submenu.style.left).toBe("212px");
+      expect(submenu.style.top).toBe("43px");
+    });
+
+    it("opens a submenu to the left of its parent when the right side is too narrow", () => {
+      mockLayout({ width: 500, height: 600 }, { left: 250, right: 450 });
+      render(<ContextMenu items={baseItems()} position={{ x: 250, y: 10 }} onClose={() => {}} />);
+      fireEvent.keyDown(screen.getByRole("menuitem", { name: /Delta/ }), { key: "ArrowRight" });
+      const submenu = screen.getAllByRole("menu")[1];
+      expect(submenu.style.left).toBe("48px");
+    });
+  });
 });
