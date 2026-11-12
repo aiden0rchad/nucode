@@ -21,7 +21,8 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
   const snapshot = (d: typeof draft, a: string, b: string) => JSON.stringify({ d, a, b });
   const [saved, setSaved] = useState(() => ({ d: draft, a: allow, b: block }));
   const count = (v: string) => v.split("\n").map(x => x.trim()).filter(Boolean).length;
-  const siteSummary = count(allow) + count(block) === 0 ? "All sites allowed" : `${count(allow)} allowed · ${count(block)} blocked`;
+  const allowed = count(allow), blocked = count(block);
+  const siteSummary = allowed ? `Only ${allowed} ${allowed === 1 ? "site" : "sites"} can open${blocked ? ` · ${blocked} blocked` : ""}` : blocked ? `All sites except ${blocked} blocked` : "All sites can open";
   const dirty = snapshot(draft, allow, block) !== snapshot(saved.d, saved.a, saved.b);
   const discard = () => { setDraft(saved.d); setAllow(saved.a); setBlock(saved.b); setError(""); };
   const [confirm, setConfirm] = useState(false);
@@ -44,7 +45,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
       setMessage("Saved. Engine and private browsing changes apply immediately. Browser binary and website changes apply to new browser sessions.");
     }); }}>
       <SettingsGroup disabled={busy} title="Engine and search">
-        <SettingsFieldRow title="Engine" subtitle="Native shows pages inside nucode; headless Chromium also handles sites that need real input.">
+        <SettingsFieldRow title="Engine" subtitle="Use Headless Chromium for sites that need real input.">
           <SettingsSelect value={draft.engine ?? "native"} onChange={e => setDraft({ ...draft, engine: e.target.value as "native" | "cdp" })}><option value="native">Native</option><option value="cdp">Headless Chromium (advanced)</option></SettingsSelect>
         </SettingsFieldRow>
         {(draft.engine ?? "native") === "cdp" && <SettingsFieldRow stacked title="Browser binary" subtitle="Leave empty to find Chrome, Edge or Chromium automatically.">
@@ -59,7 +60,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
         </SettingsFieldRow>
       </SettingsGroup>
       <SettingsGroup disabled={busy} title="Access">
-        <SettingsFieldRow title="Agent actions" subtitle="Opening and reading pages never asks, even on sites you're signed in to. This covers clicks, typing and scripts.">
+        <SettingsFieldRow title="Agent actions" subtitle="Agents open and read pages without asking, signed-in sites included. Clicking, typing and scripts follow this setting.">
           <SettingsSelect value={draft.approval} onChange={e => setDraft({ ...draft, approval: e.target.value as "ask" | "auto" })}><option value="ask">Ask before changes</option><option value="auto">Automatic</option></SettingsSelect>
         </SettingsFieldRow>
         <SettingsDisclosureRow label="Site rules" summary={siteSummary}>
@@ -74,7 +75,7 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
         </SettingsDisclosureRow>
       </SettingsGroup>
       <SettingsGroup disabled={busy} title="Privacy and sign-ins">
-        <SettingsSwitchRow title="Private browsing" subtitle="Uses a temporary browser store that is deleted when you quit. Changing it restarts open native tabs." pressed={draft.privateBrowsing ?? false} onClick={() => setDraft({ ...draft, privateBrowsing: !(draft.privateBrowsing ?? false) })} />
+        <SettingsSwitchRow title="Private browsing" subtitle="Browsing data is deleted when you quit. Changing this restarts open tabs." pressed={draft.privateBrowsing ?? false} onClick={() => setDraft({ ...draft, privateBrowsing: !(draft.privateBrowsing ?? false) })} />
         <SettingsSwitchRow title="Stay signed in after restart" subtitle="Keeps sites' session cookies in your Keychain." pressed={draft.keepSessions ?? true} onClick={() => setDraft({ ...draft, keepSessions: !(draft.keepSessions ?? true) })} />
         <SettingsSwitchRow title="Offer to save passwords" subtitle="Asks to save a password after you sign in to a site." pressed={draft.offerToSavePasswords ?? true} onClick={() => setDraft({ ...draft, offerToSavePasswords: !(draft.offerToSavePasswords ?? true) })} />
         <SettingsSwitchRow title="Require authentication to fill" subtitle="Asks for your password or Touch ID before a saved password is filled in." pressed={draft.requireAuthToFill ?? true} onClick={() => setDraft({ ...draft, requireAuthToFill: !(draft.requireAuthToFill ?? true) })} />

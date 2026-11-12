@@ -1097,7 +1097,7 @@ describe("SettingsView Codex section", () => {
       expect(screen.getByRole("button", { name: "Start" })).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       expect(screen.getByRole("button", { name: "Refresh status" })).toBeTruthy();
-      expect(screen.getByLabelText("Remote backend host")).toBeTruthy();
+      expect(screen.getByLabelText("Listening port")).toBeTruthy();
       expect(screen.getByLabelText("Remote backend token")).toBeTruthy();
     });
   });

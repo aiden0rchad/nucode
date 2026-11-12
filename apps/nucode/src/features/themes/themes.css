@@ -8,6 +8,7 @@
 .theme-card-select { display: grid; gap: 7px; padding: 8px 8px 14px; width: 100%; text-align: left; background: none; color: inherit; border: 0; border-radius: inherit; cursor: pointer; font: inherit; }
 .theme-card-select:focus-visible { outline: 2px solid var(--border-accent); outline-offset: 5px; }
 .theme-card-name { display: flex; align-items: center; gap: 8px; padding: 3px 36px 0 6px; }
+.theme-card:not(:has(.theme-card-menu)) .theme-card-name { padding-right: 6px; }
 .theme-card-name strong { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .theme-custom-chip { margin-left: auto; flex-shrink: 0; font-size: 12px; line-height: 1.2; padding: 0 5px; border-radius: 5px; border: 1px solid var(--border-subtle); color: var(--text-muted); }
 .theme-mini, .theme-app-preview { --preview-ui: var(--ui-font-family); --preview-mono: var(--code-font-family); --preview-prose: var(--ui-font-family); font-family: var(--preview-ui); }

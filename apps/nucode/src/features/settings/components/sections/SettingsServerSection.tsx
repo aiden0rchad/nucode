@@ -224,6 +224,21 @@ export function SettingsServerSection({
       aria-label="Remote backend host"
     />
   );
+  const portAt = remoteHostDraft.lastIndexOf(":");
+  // In Local mode only the port of the stored host is used, so the field edits just that part.
+  const portInput = (
+    <SettingsTextField
+      identifier
+      className="is-mono is-short"
+      inputMode="numeric"
+      value={portAt >= 0 ? remoteHostDraft.slice(portAt + 1) : ""}
+      placeholder="4732"
+      onChange={(event) => onSetRemoteHostDraft(`${portAt >= 0 ? remoteHostDraft.slice(0, portAt) : remoteHostDraft || "127.0.0.1"}:${event.target.value.replace(/\D/g, "")}`)}
+      onBlur={() => { void onCommitRemoteHost(); }}
+      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onCommitRemoteHost(); } }}
+      aria-label="Listening port"
+    />
+  );
   const generateToken = () => { const bytes = new Uint8Array(24); crypto.getRandomValues(bytes); const token = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); setGenerated(token); onSetRemoteTokenDraft(token); };
   const tokenInput = (placeholder: string, generate = false) => {
     const input = <SettingsTextField
@@ -295,7 +310,7 @@ export function SettingsServerSection({
                 value={appSettings.backendMode}
                 onChange={(event) => void onUpdateAppSettings({ ...appSettings, backendMode: event.target.value as AppSettings["backendMode"] })}
               >
-                <option value="local">Local (default)</option>
+                <option value="local">Local</option>
                 <option value="remote">Remote (daemon)</option>
               </SettingsSelect>
             </SettingsFieldRow>
@@ -306,6 +321,12 @@ export function SettingsServerSection({
             </>}
           </SettingsGroup>
           <SettingsGroup title="Phone access" subtitle="Let the nucode mobile app connect to this computer.">
+            {remote
+              ? <SettingsRow><SettingsRowText title="Access token and port" subtitle="Phone access uses the server token and port set above." /></SettingsRow>
+              : <>
+                <SettingsFieldRow stacked title="Access token" subtitle="Your phone signs in with this token.">{tokenInput("Paste or generate a token", true)}</SettingsFieldRow>
+                <SettingsFieldRow title="Listening port" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "This computer listens on this port on every network interface."}>{portInput}</SettingsFieldRow>
+              </>}
             <SettingsRow>
               <div className="settings-row-text">
                 <div className="settings-toggle-title settings-title-with-status">Status <SettingsStatus tone={tcpStatusTone} className="settings-status-pill">{tcpStatusLabel}</SettingsStatus></div>
@@ -318,17 +339,9 @@ export function SettingsServerSection({
                   : <SettingsButton type="button" className="primary" title={!hasSavedToken ? "Set an access token to start" : undefined} onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null || !hasSavedToken}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
               </div>
             </SettingsRow>
-            {remote
-              ? <SettingsRow><SettingsRowText title="Access token and port" subtitle="Phone access uses the server token and port set above." /></SettingsRow>
-              : <>
-                <SettingsFieldRow stacked title="Access token" subtitle="Your phone signs in with this token.">{tokenInput("Paste or generate a token", true)}</SettingsFieldRow>
-                {tokenMissing && <SettingsCallout tone="warning">Set an access token before starting phone access.</SettingsCallout>}
-                <SettingsFieldRow title="Listening address" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "Only the port is used, on every network interface."}>{hostInput}</SettingsFieldRow>
-              </>}
-            <SettingsRow>
-              <SettingsRowText title="Phone connects to" subtitle={suggested ? "Enter this address and the access token in the mobile app." : "Install Tailscale and sign in, then check again to get an address your phone can reach."} />
-              {suggested && <div className="settings-row-controls"><code className="settings-inline-value">{suggested}</code><SettingsIconButton aria-label="Copy address" title="Copy address" onClick={() => copyCommand(suggested)}><Copy aria-hidden /></SettingsIconButton></div>}
-            </SettingsRow>
+            <SettingsFieldRow stacked title="Phone connects to" subtitle={suggested ? "Enter this address and the access token in the mobile app." : "Install Tailscale and sign in, then check again to get an address your phone can reach."}>
+              {suggested && <div className="settings-command-block"><pre className="settings-command-preview"><code>{suggested}</code></pre><SettingsIconButton aria-label="Copy address" title="Copy address" onClick={() => copyCommand(suggested)}><Copy aria-hidden /></SettingsIconButton></div>}
+            </SettingsFieldRow>
             <SettingsRow>
               <SettingsRowText
                 title="Tailscale"

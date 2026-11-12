@@ -71,9 +71,9 @@ function ShortcutRow({
     <SettingsRow className="settings-shortcut-row">
       <SettingsRowText title={item.label} />
       <div className="settings-row-controls">
-        {onSetShortcut && changed && <SettingsIconButton aria-label={`Reset ${item.label}`} title={`Reset to ${defaultLabel}`} onClick={() => onSetShortcut(item.settingKey, item.defaultValue)}><RotateCcw aria-hidden /></SettingsIconButton>}
         {value && <SettingsIconButton className="settings-reveal" aria-label={`Clear ${item.label}`} title="Clear shortcut" onClick={() => onClearShortcut(item.settingKey)}><X aria-hidden /></SettingsIconButton>}
-        <span className={`settings-shortcut-editor${recording ? " is-recording" : ""}`}>
+        {onSetShortcut && changed && <SettingsIconButton aria-label={`Reset ${item.label}`} title={`Reset to ${defaultLabel}`} onClick={() => onSetShortcut(item.settingKey, item.defaultValue)}><RotateCcw aria-hidden /></SettingsIconButton>}
+        <span className={`settings-shortcut-editor${recording ? " is-recording" : ""}${changed ? " is-changed" : ""}`}>
           <SettingsTextField
             className="settings-input--shortcut"
             value={formatShortcut(value)}

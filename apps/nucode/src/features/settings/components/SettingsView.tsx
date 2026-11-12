@@ -179,7 +179,7 @@ export function SettingsView({
           Settings
         </div>
         <div className="settings-titlebar-end">
-        {!STAGED_SETTINGS_SECTIONS.includes(activeSection) && <span className="settings-saving-line" aria-live="polite">{justSaved ? <><Check aria-hidden />Saved</> : "Changes save automatically"}</span>}
+        <span className="settings-saving-line" aria-live="polite">{justSaved ? <><Check aria-hidden />Saved</> : STAGED_SETTINGS_SECTIONS.includes(activeSection) ? "Edits here apply when you save" : "Changes save automatically"}</span>
         <IconButton
           type="button"
           className="ghost settings-close"

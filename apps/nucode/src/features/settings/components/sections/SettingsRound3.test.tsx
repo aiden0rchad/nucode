@@ -22,7 +22,7 @@ const server = (settings: Partial<AppSettings>, extra: Record<string, unknown> =
 it("shows the access token and listening address in Local mode and gates Start on a saved token", () => {
   server({});
   expect(screen.getByText("Access token")).toBeTruthy();
-  expect(screen.getByText("Listening address")).toBeTruthy();
+  expect(screen.getByText("Listening port")).toBeTruthy();
   expect(screen.queryByText("Server address")).toBeNull();
   expect((screen.getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("button", { name: "Start" }).title).toBe("Set an access token to start");
@@ -34,7 +34,7 @@ it("shows the server address and token in Remote mode instead of the phone rows"
   server({ backendMode: "remote", remoteBackendToken: "abc" });
   expect(screen.getByText("Server address")).toBeTruthy();
   expect(screen.getByText("Server token")).toBeTruthy();
-  expect(screen.queryByText("Listening address")).toBeNull();
+  expect(screen.queryByText("Listening port")).toBeNull();
   expect(screen.getByText("Phone access uses the server token and port set above.")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Start" }) as HTMLButtonElement).disabled).toBe(false);
 });
@@ -42,12 +42,12 @@ it("shows the server address and token in Remote mode instead of the phone rows"
 it("hides Browser binary under Native and summarises the site rules", () => {
   render(<SettingsBrowserSection appSettings={{ browser: { allowedOrigins: ["https://a.test", "https://b.test"], blockedOrigins: ["https://c.test"] } } as AppSettings} onUpdateAppSettings={vi.fn()} />);
   expect(screen.queryByLabelText("Browser binary")).toBeNull();
-  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("2 allowed · 1 blocked");
+  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("Only 2 sites can open · 1 blocked");
   fireEvent.change(screen.getByLabelText("Engine"), { target: { value: "cdp" } });
   expect(screen.getByLabelText("Browser binary")).toBeTruthy();
   cleanup();
   render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={vi.fn()} />);
-  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("All sites allowed");
+  expect(screen.getByRole("button", { name: /Site rules/ }).textContent).toContain("All sites can open");
 });
 
 it("disables Reset all with a reason only when every shortcut is at its default", () => {

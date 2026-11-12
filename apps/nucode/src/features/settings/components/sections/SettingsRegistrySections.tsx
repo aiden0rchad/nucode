@@ -237,7 +237,7 @@ export function ProjectAgentPolicy({ workspace, appSettings, onUpdate }: { works
   const [policy, setPolicy] = useState(effective);
   const [error, setError] = useState("");
   const validation = policyError(policy, appSettings.providers ?? []);
-  return <SettingsDisclosureRow className="settings-agent-policy" label={`${workspace.name}: agent policy`}>
+  return <SettingsDisclosureRow className="settings-agent-policy" label={workspace.name} summary={override ? "Project override" : "Uses app defaults"}>
     <AgentPolicyEditor scope="project" policy={policy} providers={appSettings.providers ?? []} onChange={setPolicy} />
     {(validation || error) && <SettingsCallout tone="error" style={{ marginTop: 16 }}>{validation || error}</SettingsCallout>}
     <div className="settings-form-actions settings-form-actions--page">

@@ -109,7 +109,7 @@ describe("provider registry settings", () => {
     const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false } };
     const update = vi.fn().mockResolvedValue(undefined);
     render(<ProjectAgentPolicy workspace={workspace} appSettings={{ providers: [{ ...provider, anthropicCompatible: true }], agentPolicy: defaultAgentPolicy } as AppSettings} onUpdate={update} />);
-    fireEvent.click(screen.getByRole("button", { name: "Project: agent policy" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Project/ }));
     expect((screen.getByRole("option", { name: "Claude Code (ACP)" }) as HTMLOptionElement).disabled).toBe(false);
     fireEvent.change(screen.getByLabelText("Engine for this project"), { target: { value: "claude" } });
     fireEvent.click(screen.getByText("Save project override"));

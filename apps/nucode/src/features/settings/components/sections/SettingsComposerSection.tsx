@@ -31,7 +31,7 @@ export function SettingsComposerSection({
       <SettingsGroup title="Conversation" subtitle="What happens when you send a message and how agents answer.">
         <SettingsFieldRow
           title="Follow-up behavior"
-          subtitle={steerUnavailable ? "Steer is unavailable in the current Codex config, so follow-ups queue." : <>Queue or Steer a follow-up; <SettingsKeycaps keys={shortcutKeys(formatShortcut(followUpShortcutLabel.toLowerCase()))} /> uses the other.</>}
+          subtitle={steerUnavailable ? "Steer is unavailable in the current Codex config, so follow-ups queue." : <>Queue sends after the current run; Steer redirects it. <SettingsKeycaps keys={shortcutKeys(formatShortcut(followUpShortcutLabel.toLowerCase()))} /> uses the other.</>}
         >
           <SettingsSegmented label="Follow-up behavior" value={appSettings.followUpMessageBehavior}
             options={[{ value: "queue", label: "Queue" }, { value: "steer", label: "Steer", disabled: steerUnavailable }]}
@@ -60,7 +60,7 @@ export function SettingsComposerSection({
         </SettingsFieldRow>
       </SettingsGroup>
       <SettingsGroup title="Editor helpers" subtitle="Code fences, pasting and lists in the message editor.">
-        <SettingsFieldRow title="Preset" subtitle="Sets the switches below to a starting point. You can still change any of them afterwards.">
+        <SettingsFieldRow title="Preset" subtitle="Sets the switches below; you can still change each one.">
           <SettingsSelect
             value={appSettings.composerEditorPreset}
             onChange={(event) => onComposerPresetChange(event.target.value as ComposerPreset)}
