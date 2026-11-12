@@ -1,4 +1,4 @@
-import { SettingsCallout, SettingsEmpty, SettingsPage, SettingsGroup, SettingsListRow, SettingsTextField, SettingsTextArea, SettingsSelect, SettingsButton, SettingsFieldRow, SettingsRow, SettingsRowText, SettingsToggleRow, SettingsSwitchRow, SettingsUnsaved } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsCallout, SettingsEmpty, SettingsPage, SettingsGroup, SettingsListRow, SettingsTextField, SettingsTextArea, SettingsSelect, SettingsButton, SettingsFieldRow, SettingsRow, SettingsRowText, SettingsDisclosureRow, SettingsToggleRow, SettingsSwitchRow, SettingsUnsaved } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { SettingsRuntimeSetup } from "./SettingsRuntimeSetup";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings, WebSearchProvider } from "@/types";
@@ -20,6 +20,8 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
   const [block, setBlock] = useState(draft.blockedOrigins.join("\n"));
   const snapshot = (d: typeof draft, a: string, b: string) => JSON.stringify({ d, a, b });
   const [saved, setSaved] = useState(() => ({ d: draft, a: allow, b: block }));
+  const count = (v: string) => v.split("\n").map(x => x.trim()).filter(Boolean).length;
+  const siteSummary = count(allow) + count(block) === 0 ? "All sites allowed" : `${count(allow)} allowed · ${count(block)} blocked`;
   const dirty = snapshot(draft, allow, block) !== snapshot(saved.d, saved.a, saved.b);
   const discard = () => { setDraft(saved.d); setAllow(saved.a); setBlock(saved.b); setError(""); };
   const [confirm, setConfirm] = useState(false);
@@ -42,24 +44,34 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
       setMessage("Saved. Engine and private browsing changes apply immediately. Browser binary and website changes apply to new browser sessions.");
     }); }}>
       <SettingsGroup disabled={busy} title="Engine and search">
-        <SettingsFieldRow title="Engine" subtitle="Native shows web pages inside nucode and shares them with agents. Headless Chromium also handles sites that need real input.">
+        <SettingsFieldRow title="Engine" subtitle="Native shows pages inside nucode; headless Chromium also handles sites that need real input.">
           <SettingsSelect value={draft.engine ?? "native"} onChange={e => setDraft({ ...draft, engine: e.target.value as "native" | "cdp" })}><option value="native">Native</option><option value="cdp">Headless Chromium (advanced)</option></SettingsSelect>
         </SettingsFieldRow>
-        <SettingsFieldRow stacked title="Browser binary" disabled={(draft.engine ?? "native") === "native"} subtitle="Only used by Headless Chromium. Leave empty to find Chrome, Edge or Chromium automatically.">
+        {(draft.engine ?? "native") === "cdp" && <SettingsFieldRow stacked title="Browser binary" subtitle="Leave empty to find Chrome, Edge or Chromium automatically.">
           <SettingsTextField className="is-mono" value={draft.binary ?? ""} placeholder="Auto-detect" onChange={e => setDraft({ ...draft, binary: e.target.value || null })} />
-        </SettingsFieldRow>
-        <SettingsFieldRow stacked title="Search URL" subtitle={<>Used when you type a search in the address bar. Use {"{query}"} for the search term.</>}>
-          <SettingsTextField className="is-mono" value={draft.searchUrl} onChange={e => setDraft({ ...draft, searchUrl: e.target.value })} />
-        </SettingsFieldRow>
-        <SettingsFieldRow title="Web search" subtitle="Lets agents search in the background without opening the browser.">
-          <SettingsSelect value={draft.webSearch.provider} onChange={e => setDraft({ ...draft, webSearch: { ...draft.webSearch, provider: e.target.value as WebSearchProvider } })}><option value="off">Off</option><option value="searxng">SearXNG</option></SettingsSelect>
+        </SettingsFieldRow>}
+        <SettingsFieldRow title="Web search provider" subtitle="Lets agents search in the background without opening the browser.">
+          <SettingsSelect value={draft.webSearch.provider} onChange={e => setDraft({ ...draft, webSearch: { ...draft.webSearch, provider: e.target.value as WebSearchProvider } })}><option value="off">None</option><option value="searxng">SearXNG</option></SettingsSelect>
         </SettingsFieldRow>
         {draft.webSearch.provider === "searxng" && <SettingsFieldRow title="Instance URL"><SettingsTextField className="is-mono" value={draft.webSearch.url} placeholder="https://searx.example.org" onChange={e => setDraft({ ...draft, webSearch: { ...draft.webSearch, url: e.target.value } })} /></SettingsFieldRow>}
+        <SettingsFieldRow stacked title="Search URL" subtitle={<>Used for searches typed in the address bar. Use {"{query}"} for the search term.</>}>
+          <SettingsTextField className="is-mono" value={draft.searchUrl} onChange={e => setDraft({ ...draft, searchUrl: e.target.value })} />
+        </SettingsFieldRow>
       </SettingsGroup>
-      <SettingsGroup disabled={busy} title="Agent access">
-        <SettingsFieldRow title="Agent browser permissions" subtitle="Agents can read pages, take screenshots and navigate without asking. This setting decides whether they ask before clicking, typing or running scripts.">
+      <SettingsGroup disabled={busy} title="Access">
+        <SettingsFieldRow title="Agent actions" subtitle="Agents read pages, including sites you're signed in to, without asking. This sets whether they ask before clicking, typing or running scripts.">
           <SettingsSelect value={draft.approval} onChange={e => setDraft({ ...draft, approval: e.target.value as "ask" | "auto" })}><option value="ask">Ask before changes</option><option value="auto">Automatic</option></SettingsSelect>
         </SettingsFieldRow>
+        <SettingsDisclosureRow label="Site rules" summary={siteSummary}>
+          <div className="settings-site-rules">
+            <SettingsFieldRow stacked title="Allowed origins" subtitle="One per line, such as https://example.com or *.example.com. Leave empty to allow every site; otherwise only these sites open.">
+              <SettingsTextArea className="is-mono" value={allow} placeholder="https://docs.example.com" onChange={e => setAllow(e.target.value)} />
+            </SettingsFieldRow>
+            <SettingsFieldRow stacked title="Blocked origins" subtitle="One per line, same format. These sites never open, even if they are also allowed.">
+              <SettingsTextArea className="is-mono" value={block} placeholder="https://accounts.example.com" onChange={e => setBlock(e.target.value)} />
+            </SettingsFieldRow>
+          </div>
+        </SettingsDisclosureRow>
       </SettingsGroup>
       <SettingsGroup disabled={busy} title="Privacy and sign-ins">
         <SettingsSwitchRow title="Private browsing" subtitle="Uses a temporary browser store that is deleted when you quit. Changing it restarts open native tabs." pressed={draft.privateBrowsing ?? false} onClick={() => setDraft({ ...draft, privateBrowsing: !(draft.privateBrowsing ?? false) })} />
@@ -69,14 +81,6 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
       <SettingsToggleRow title="Cookies, history and sign-ins" subtitle="Clearing stops the browser and deletes all of them."><SettingsButton className="danger" disabled={busy} onClick={() => setConfirm(true)}>Clear browsing data</SettingsButton></SettingsToggleRow>
       {confirm && <div className="settings-callout is-warning" role="alert"><div>Stop the browser and delete all browsing data, including website sign-ins?<div className="settings-callout-actions"><SettingsButton className="danger" disabled={busy} onClick={() => void run(async () => { await browserRequest({ action: "clear", confirmed: true }); setConfirm(false); setMessage("Browsing data cleared."); })}>Delete browsing data</SettingsButton><SettingsButton disabled={busy} onClick={() => setConfirm(false)}>Cancel</SettingsButton></div></div></div>}
         <SettingsRow><SettingsRowText title="Downloads" subtitle="Files you download are saved to your Downloads folder." /></SettingsRow>
-      </SettingsGroup>
-      <SettingsGroup disabled={busy} title="Website access" subtitle="Limits which sites the browser may open, for you and for agents. Blocked always wins over allowed.">
-        <SettingsFieldRow stacked title="Allowed origins" subtitle="One per line, such as https://example.com or *.example.com. Leave empty to allow every site; otherwise only these sites open.">
-          <SettingsTextArea className="is-mono" value={allow} placeholder="https://docs.example.com" onChange={e => setAllow(e.target.value)} />
-        </SettingsFieldRow>
-        <SettingsFieldRow stacked title="Blocked origins" subtitle="One per line, same format. These sites never open, even if they are also allowed.">
-          <SettingsTextArea className="is-mono" value={block} placeholder="https://accounts.example.com" onChange={e => setBlock(e.target.value)} />
-        </SettingsFieldRow>
       </SettingsGroup>
     </form>
     <SettingsGroup title="Saved passwords" subtitle="Stored in your Keychain. Only the site and username are shown here." disabled={busy}>

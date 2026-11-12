@@ -109,6 +109,7 @@ describe("provider registry settings", () => {
     const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false } };
     const update = vi.fn().mockResolvedValue(undefined);
     render(<ProjectAgentPolicy workspace={workspace} appSettings={{ providers: [{ ...provider, anthropicCompatible: true }], agentPolicy: defaultAgentPolicy } as AppSettings} onUpdate={update} />);
+    fireEvent.click(screen.getByRole("button", { name: "Project: agent policy" }));
     expect((screen.getByRole("option", { name: "Claude Code (ACP)" }) as HTMLOptionElement).disabled).toBe(false);
     fireEvent.change(screen.getByLabelText("Engine for this project"), { target: { value: "claude" } });
     fireEvent.click(screen.getByText("Save project override"));
@@ -174,8 +175,8 @@ describe("provider registry settings", () => {
     expect(screen.getAllByText("How many subagents one turn may start. pi only.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Leave empty to allow any enabled model. pi only.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("How many subagents run at once. pi and Codex.").length).toBeGreaterThan(0);
-    expect(screen.getByText("Effective policy for Project (app + workspace)")).toBeTruthy();
-    const disclosure = screen.getByRole("button", { name: "Effective policy for Project (app + workspace)" });
+    expect(screen.getByText("Settings in effect for Project")).toBeTruthy();
+    const disclosure = screen.getByRole("button", { name: /Settings in effect for Project/ });
     expect(disclosure.querySelector("svg")).toBeTruthy();
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(disclosure);

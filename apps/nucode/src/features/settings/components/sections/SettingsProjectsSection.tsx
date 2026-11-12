@@ -1,5 +1,5 @@
 import { ProjectAvatar } from "@/features/app/components/ProjectAvatar";
-import { SettingsEmpty, SettingsIconButton, SettingsRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsPage, SettingsGroup } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsEmpty, SettingsRow, SettingsTextField, SettingsButton, SettingsSelect, SettingsPage, SettingsGroup } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { CodegraphProjectSettings } from "./CodegraphProjectSettings";
 import type { WorkspaceSettings } from "@/types";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
@@ -7,7 +7,8 @@ import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Plus from "lucide-react/dist/esm/icons/plus";
-import { useState, type ReactNode } from "react";
+import Search from "lucide-react/dist/esm/icons/search";
+import { Fragment, useState, type ReactNode } from "react";
 import { RowMenu } from "@/features/chat/RowMenu";
 import FolderMinus from "lucide-react/dist/esm/icons/folder-minus";
 import type { Dispatch, SetStateAction } from "react";
@@ -70,10 +71,7 @@ function SectionRow({ group, index, count, draft, onDraft, onRename, onMove, onD
               }}
             />
           ) : (
-            <>
-              <span className="settings-list-title">{group.name}</span>
-              <SettingsIconButton size="sm" aria-label={`Rename section ${group.name}`} title="Rename" onClick={() => setEditing(true)}><Pencil aria-hidden /></SettingsIconButton>
-            </>
+            <span className="settings-list-title">{group.name}</span>
           )}
         </div>
         <div className="settings-list-meta settings-meta-plain" title={group.copiesFolder ?? ""}>
@@ -81,8 +79,9 @@ function SectionRow({ group, index, count, draft, onDraft, onRename, onMove, onD
         </div>
       </div>
       <div className="settings-list-actions">
-        <SettingsButton type="button" onClick={onChooseFolder}>Choose…</SettingsButton>
+        <SettingsButton type="button" onClick={onChooseFolder}>Choose folder…</SettingsButton>
         <RowMenu portal size="md" label={`section ${group.name}`} actions={[
+          { label: "Rename", icon: <Pencil size={14} />, onClick: () => setEditing(true) },
           ...(group.copiesFolder ? [{ label: "Use the default folder", icon: <FolderMinus size={14} />, onClick: onClearFolder }] : []),
           { label: "Move up", icon: <ChevronUp size={14} />, disabled: index === 0, onClick: () => onMove("up") },
           { label: "Move down", icon: <ChevronDown size={14} />, disabled: index === count - 1, onClick: () => onMove("down") },
@@ -90,6 +89,40 @@ function SectionRow({ group, index, count, draft, onDraft, onRename, onMove, onD
         ]}>{null}</RowMenu>
       </div>
     </SettingsRow>
+  );
+}
+
+function ProjectRow({ workspace, sections, groupValue, first, last, codegraphEnabled, onUpdateWorkspaceSettings, onAssign, onMove, onRemove }: {
+  workspace: WorkspaceInfo; sections: WorkspaceGroup[]; groupValue: string; first: boolean; last: boolean; codegraphEnabled: boolean;
+  onUpdateWorkspaceSettings: (id: string, settings: Partial<WorkspaceSettings>) => Promise<void>;
+  onAssign: (id: string | null) => void; onMove: (direction: "up" | "down") => void; onRemove: () => void;
+}) {
+  const [codegraph, setCodegraph] = useState(false);
+  return (
+    <>
+      <SettingsRow className="settings-list-row settings-project-row">
+        <div className="settings-list-identity">
+          <span className="settings-list-icon"><ProjectAvatar name={workspace.name} /></span>
+          <div className="settings-list-copy">
+            <div className="settings-list-name">{workspace.name}</div>
+            <div className="settings-list-meta settings-project-path">{workspace.path}</div>
+          </div>
+        </div>
+        <div className="settings-list-actions">
+          <SettingsSelect aria-label={"Section for " + workspace.name} value={groupValue} onChange={(event) => onAssign(event.target.value || null)}>
+            <option value="">{NO_SECTION}</option>
+            {sections.map((entry) => (<option key={entry.id} value={entry.id}>{entry.name}</option>))}
+          </SettingsSelect>
+          <RowMenu portal size="md" label={workspace.name} actions={[
+            { label: "Move up", icon: <ChevronUp size={14} />, disabled: first, onClick: () => onMove("up") },
+            { label: "Move down", icon: <ChevronDown size={14} />, disabled: last, onClick: () => onMove("down") },
+            { label: codegraph ? "Hide CodeGraph" : "CodeGraph…", icon: <Search size={14} />, onClick: () => setCodegraph(!codegraph) },
+            { label: "Remove from nucode…", icon: <Trash2 size={14} />, danger: true, onClick: onRemove },
+          ]}>{null}</RowMenu>
+        </div>
+      </SettingsRow>
+      {codegraph && <div className="settings-project-body"><CodegraphProjectSettings workspace={workspace} globalEnabled={codegraphEnabled} onUpdate={onUpdateWorkspaceSettings} /></div>}
+    </>
   );
 }
 
@@ -167,53 +200,21 @@ export function SettingsProjectsSection({
       </SettingsGroup>
       <SettingsGroup
         title="Project placement"
-        subtitle="Choose each project's section, move it within its section, or remove it from nucode."
+        subtitle="Each project's section in the sidebar. Use ⋯ to move a project up or down within its section, or to remove it from nucode."
       >
         {groupedWorkspaces.map((group) => (
-          <div key={group.id ?? "ungrouped"} className="settings-project-group">
-            <div className="settings-project-group-label">{group.id === null ? NO_SECTION : group.name}</div>
+          <Fragment key={group.id ?? "ungrouped"}>
             {group.workspaces.map((workspace, index) => {
               const groupValue = workspaceGroups.some((entry) => entry.id === workspace.settings.groupId)
                 ? workspace.settings.groupId ?? ""
                 : "";
               return (
-                <details key={workspace.id} className="settings-project-row">
-                  <summary>
-                    <span className="settings-list-identity">
-                      <span className="settings-list-icon"><ProjectAvatar name={workspace.name} /></span>
-                      <span className="settings-list-copy">
-                        <span className="settings-list-name">{workspace.name}</span>
-                        <span className="settings-list-meta settings-project-path">{workspace.path}</span>
-                      </span>
-                    </span>
-                    <span className="settings-list-actions" onClick={(event) => event.preventDefault()}>
-                      <SettingsSelect
-                        aria-label={"Section for " + workspace.name}
-                        value={groupValue}
-                        onChange={(event) => {
-                          const nextGroupId = event.target.value || null;
-                          void onAssignWorkspaceGroup(workspace.id, nextGroupId);
-                        }}
-                      >
-                        <option value="">{NO_SECTION}</option>
-                        {workspaceGroups.map((entry) => (
-                          <option key={entry.id} value={entry.id}>{entry.name}</option>
-                        ))}
-                      </SettingsSelect>
-                      <RowMenu portal size="md" label={workspace.name} actions={[
-                        { label: "Move up", icon: <ChevronUp size={14} />, disabled: index === 0, onClick: () => onMoveWorkspace(workspace.id, "up") },
-                        { label: "Move down", icon: <ChevronDown size={14} />, disabled: index === group.workspaces.length - 1, onClick: () => onMoveWorkspace(workspace.id, "down") },
-                        { label: "Remove from nucode…", icon: <Trash2 size={14} />, danger: true, onClick: () => onDeleteWorkspace(workspace.id) },
-                      ]}>{null}</RowMenu>
-                    </span>
-                  </summary>
-                  <div className="settings-project-body">
-                    <CodegraphProjectSettings workspace={workspace} globalEnabled={codegraphEnabled} onUpdate={onUpdateWorkspaceSettings} />
-                  </div>
-                </details>
+                <ProjectRow key={workspace.id} workspace={workspace} sections={workspaceGroups} groupValue={groupValue} first={index === 0} last={index === group.workspaces.length - 1}
+                  codegraphEnabled={codegraphEnabled} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} onAssign={(id) => { void onAssignWorkspaceGroup(workspace.id, id); }}
+                  onMove={(direction) => onMoveWorkspace(workspace.id, direction)} onRemove={() => onDeleteWorkspace(workspace.id)} />
               );
             })}
-          </div>
+          </Fragment>
         ))}
         {projects.length === 0 && <SettingsEmpty>No projects yet. Add a project from the sidebar.</SettingsEmpty>}
       </SettingsGroup>

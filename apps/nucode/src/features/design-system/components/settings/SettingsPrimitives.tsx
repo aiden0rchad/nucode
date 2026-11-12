@@ -311,3 +311,22 @@ export function SettingsUnsaved({ dirty, saving = false, disabled = false, onDis
     <SettingsButton className="primary lg" type={form ? "submit" : "button"} form={form} disabled={disabled || saving} onClick={form ? undefined : onSave}>{saving ? "Saving…" : "Save changes"}</SettingsButton>
   </>;
 }
+
+/** The one expandable row: chevron at the row inset, label, optional muted summary at the right, content inset under the label. */
+export function SettingsDisclosureRow({ label, summary, children, className, defaultOpen = false }: { label: ReactNode; summary?: ReactNode; children?: ReactNode; className?: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
+  return <div className={joinClassNames("settings-disclosure-row", open && "is-open", className)}>
+    <button type="button" className="settings-disclosure-head" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)}>
+      <ChevronRight size={16} aria-hidden />
+      <span className="settings-disclosure-label">{label}</span>
+      {summary ? <span className="settings-disclosure-summary">{summary}</span> : null}
+    </button>
+    <div id={contentId} className="settings-disclosure-body" hidden={!open}>{children}</div>
+  </div>;
+}
+
+/** Disables every Settings control inside it (a read-only view). */
+export function SettingsDisabled({ children }: { children: ReactNode }) {
+  return <Disabled.Provider value>{children}</Disabled.Provider>;
+}

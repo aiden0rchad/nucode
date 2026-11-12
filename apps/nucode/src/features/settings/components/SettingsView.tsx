@@ -5,7 +5,8 @@ import { DiagnosticBoundary } from "@/features/diagnostics/DiagnosticBoundary";
 import { FeatureSettings } from "@settings/features";
 import { SettingsNucodeFeaturesSection } from "./sections/SettingsNucodeFeaturesSection";
 import { SettingsEnginesSection } from "./sections/SettingsEnginesSection";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Check from "lucide-react/dist/esm/icons/check";
 import { SettingsGroup, SettingsSegmented } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { SettingsProvidersSection, SettingsAgentPolicySection, ProjectAgentPolicy } from "./sections/SettingsRegistrySections";
 import { SettingsConnectorsSection } from "./sections/SettingsConnectorsSection";
@@ -27,7 +28,7 @@ import { useSettingsViewOrchestration } from "@settings/hooks/useSettingsViewOrc
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
 import { SettingsNav } from "./SettingsNav";
 import type { CodexSection } from "./settingsTypes";
-import { SETTINGS_SECTION_LABELS } from "./settingsViewConstants";
+import { SETTINGS_SECTION_LABELS, STAGED_SETTINGS_SECTIONS } from "./settingsViewConstants";
 import { SettingsSectionContainers } from "./sections/SettingsSectionContainers";
 import { SettingsComputerSection } from "./sections/SettingsComputerSection";
 import { SettingsBrowserSection } from "./sections/SettingsBrowserSection";
@@ -151,6 +152,14 @@ export function SettingsView({
   useSettingsViewCloseShortcuts(onClose);
 
   const [agentTab, setAgentTab] = useState("defaults");
+  const [justSaved, setJustSaved] = useState(false);
+  const firstSettings = useRef(appSettings);
+  useEffect(() => {
+    if (appSettings === firstSettings.current) return;
+    setJustSaved(true);
+    const timer = setTimeout(() => setJustSaved(false), 1500);
+    return () => clearTimeout(timer);
+  }, [appSettings]);
   const manageEngines = () => { handleSelectSection("engines"); };
   const activeSectionLabel = SETTINGS_SECTION_LABELS[activeSection];
   const settingsBodyClassName = `settings-body${
@@ -169,6 +178,8 @@ export function SettingsView({
         <div className="settings-title" id="settings-modal-title">
           Settings
         </div>
+        <div className="settings-titlebar-end">
+        {!STAGED_SETTINGS_SECTIONS.includes(activeSection) && <span className="settings-saving-line" aria-live="polite">{justSaved ? <><Check aria-hidden />Saved</> : "Changes save automatically"}</span>}
         <IconButton
           type="button"
           className="ghost settings-close"
@@ -177,6 +188,7 @@ export function SettingsView({
         >
           <X aria-hidden />
         </IconButton>
+        </div>
       </div>
       <div className={settingsBodyClassName}>
         {(!useMobileMasterDetail || !showMobileDetail) && (
@@ -216,7 +228,7 @@ export function SettingsView({
                <SettingsSectionContainers
                 activeSection={activeSection}
                 orchestration={orchestration}
-                projectsExtra={groupedWorkspaces.some(g => g.workspaces.length) ? <SettingsGroup title="Project overrides" subtitle="Override the app defaults from Models & Agents for a single project."><div className="settings-card-block settings-policy-list">{groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}</div></SettingsGroup> : null}
+                projectsExtra={groupedWorkspaces.some(g => g.workspaces.length) ? <SettingsGroup title="Project overrides" subtitle="Override the app defaults from Models & Agents for a single project.">{groupedWorkspaces.flatMap(g => g.workspaces).map(w => <ProjectAgentPolicy key={w.id} workspace={w} appSettings={appSettings} onUpdate={onUpdateWorkspaceSettings} />)}</SettingsGroup> : null}
               />}
             </div>
           </div>

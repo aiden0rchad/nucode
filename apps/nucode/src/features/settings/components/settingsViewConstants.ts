@@ -125,3 +125,6 @@ export const SHORTCUT_DRAFT_KEY_BY_SETTING: Record<
   cycleWorkspaceNextShortcut: "cycleWorkspaceNext",
   cycleWorkspacePrevShortcut: "cycleWorkspacePrev",
 };
+
+/** Pages that stage edits and show their own "Unsaved changes" controls; the header's saving line is hidden on them. */
+export const STAGED_SETTINGS_SECTIONS: CodexSection[] = ["agents", "computer", "environments", "browser", "git"];

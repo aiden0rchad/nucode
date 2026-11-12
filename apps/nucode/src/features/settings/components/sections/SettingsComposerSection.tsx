@@ -1,5 +1,7 @@
-import { SettingsFieldRow, SettingsGroup, SettingsPage, SettingsSelect, SettingsSegmented, SettingsSwitchRow } from "@/features/design-system/components/settings/SettingsPrimitives";
+import { SettingsFieldRow, SettingsGroup, SettingsKeycaps, SettingsPage, SettingsSelect, SettingsSegmented, SettingsSwitchRow } from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { AppSettings } from "@/types";
+import { formatShortcut } from "@utils/shortcuts";
+import { shortcutKeys } from "./SettingsShortcutsSection";
 
 type ComposerPreset = AppSettings["composerEditorPreset"];
 
@@ -11,6 +13,8 @@ type SettingsComposerSectionProps = {
   onComposerPresetChange: (preset: ComposerPreset) => void;
   onUpdateAppSettings: (next: AppSettings) => Promise<void>;
 };
+
+const RESPONSE_NOTES = { concise: "Short replies, no extra explanation.", standard: "Finishes the task, checks its work, replies at the length needed.", detailed: "Investigates, verifies and explains results in full." } as const;
 
 export function SettingsComposerSection({
   appSettings,
@@ -27,7 +31,7 @@ export function SettingsComposerSection({
       <SettingsGroup title="Conversation" subtitle="What happens when you send a message and how agents answer.">
         <SettingsFieldRow
           title="Follow-up behavior"
-          subtitle={<>Queue: send after the current run. Steer: redirect the run in progress. Press {followUpShortcutLabel} to use the other one for a single message.{steerUnavailable && " Steer is unavailable in the current Codex config, so follow-ups will queue."}</>}
+          subtitle={steerUnavailable ? "Steer is unavailable in the current Codex config, so follow-ups queue." : <>Queue sends after the run; Steer redirects it. <SettingsKeycaps keys={shortcutKeys(formatShortcut(followUpShortcutLabel.toLowerCase()))} /> does the other once.</>}
         >
           <SettingsSegmented label="Follow-up behavior" value={appSettings.followUpMessageBehavior}
             options={[{ value: "queue", label: "Queue" }, { value: "steer", label: "Steer", disabled: steerUnavailable }]}
@@ -39,7 +43,7 @@ export function SettingsComposerSection({
           pressed={appSettings.composerFollowUpHintEnabled}
           onClick={flip("composerFollowUpHintEnabled")}
         />
-        <SettingsFieldRow title="Response style" subtitle="How much agents explain and how far they carry a task before stopping. Applies from the next turn.">
+        <SettingsFieldRow title="Response style" subtitle={RESPONSE_NOTES[appSettings.responseStyle ?? "standard"]}>
           <SettingsSelect
             value={appSettings.responseStyle ?? "standard"}
             onChange={(event) =>

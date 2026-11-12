@@ -299,7 +299,7 @@ export function SettingsShortcutsSection({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </div>
-        {onSetShortcut && <SettingsButton type="button" disabled={!changedItems.length} onClick={() => setConfirmReset(true)}>Reset all…</SettingsButton>}
+        {onSetShortcut && <SettingsButton type="button" disabled={!changedItems.length} title={changedItems.length ? undefined : "Every shortcut is at its default"} onClick={() => setConfirmReset(true)}>Reset all…</SettingsButton>}
       </div>
       {confirmReset && onSetShortcut && (
         <SettingsCallout tone="warning" role="alertdialog" aria-label="Reset all shortcuts?" className="settings-shortcuts-confirm">

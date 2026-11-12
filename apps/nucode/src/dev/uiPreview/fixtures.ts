@@ -53,6 +53,7 @@ export function createFixtures(now = Date.now()) {
         { id: "claude-sonnet-4", reasoning: reasoning(["low", "medium", "high"], "adaptive"), displayName: "Claude Sonnet 4", enabled: true, contextWindow: 200000, supportsTools: true, supportsImages: true },
       ] },
     ],
+    newAgentShortcut: "cmd+j",
     workspaceGroups: [{ id: "group-studio", name: "Studio", sortOrder: 0 }],
     mcpServers: [{ id: "docs", name: "Documentation", enabled: true, approval: "ask", transport: { type: "stdio", command: "node", args: ["/preview/tools/docs.mjs"], env: {} } }],
     browser: { ...defaultBrowserSettings, allowedOrigins: ["https://docs.example.com", "https://github.com"], blockedOrigins: ["https://accounts.example.com"] },

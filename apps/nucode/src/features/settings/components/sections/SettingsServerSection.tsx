@@ -103,7 +103,6 @@ export function SettingsServerSection({
   onDeleteRemoteBackend,
   onRefreshTailscaleStatus,
   onRefreshTailscaleCommandPreview,
-  onUseSuggestedTailscaleHost,
   onTcpDaemonStart,
   onTcpDaemonStop,
   onTcpDaemonStatus,
@@ -139,7 +138,6 @@ export function SettingsServerSection({
     if (tcpDaemonStatus.state === "error") return tcpDaemonStatus.lastError ?? "Error";
     return "Stopped";
   })();
-  const tcpAddress = tcpDaemonStatus?.listenAddr ?? "the port in Host";
   const copyCommand = (command: string) => { void navigator.clipboard?.writeText(command).catch(() => {}); };
   const lastConnected = (ms?: number | null) => typeof ms === "number" ? new Date(ms).toLocaleString() : "Never";
 
@@ -214,6 +212,35 @@ export function SettingsServerSection({
       </div>
     </SettingsFieldRow>
   );
+  const hostInput = (
+    <SettingsTextField
+      identifier
+      className="is-mono"
+      value={remoteHostDraft}
+      placeholder="127.0.0.1:4732"
+      onChange={(event) => onSetRemoteHostDraft(event.target.value)}
+      onBlur={() => { void onCommitRemoteHost(); }}
+      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onCommitRemoteHost(); } }}
+      aria-label="Remote backend host"
+    />
+  );
+  const generateToken = () => { const bytes = new Uint8Array(24); crypto.getRandomValues(bytes); const token = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); setGenerated(token); onSetRemoteTokenDraft(token); };
+  const tokenInput = (placeholder: string, generate = false) => {
+    const input = <SettingsTextField
+      type="password"
+      className={generate ? "is-fill is-mono" : undefined}
+      value={remoteTokenDraft}
+      placeholder={placeholder}
+      onChange={(event) => onSetRemoteTokenDraft(event.target.value)}
+      onBlur={() => { void onCommitRemoteToken(); }}
+      onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onCommitRemoteToken(); } }}
+      aria-label="Remote backend token"
+    />;
+    return generate ? <div className="settings-field-actions">{input}<SettingsButton type="button" onClick={generateToken}>Generate</SettingsButton></div> : input;
+  };
+  const remote = appSettings.backendMode === "remote";
+  const suggested = tailscaleStatus?.suggestedRemoteHost ?? null;
+  const listenPort = (tcpDaemonStatus?.listenAddr ?? remoteHostDraft).split(":").pop();
   const tokenMissing = !remoteTokenDraft.trim();
   const hasSavedToken = !!appSettings.remoteBackendToken?.trim();
   return (
@@ -262,13 +289,8 @@ export function SettingsServerSection({
         </>
       ) : (
         <>
-          <SettingsGroup title="Connection details" subtitle="Used when this app connects to a remote server and when your phone connects to this computer.">
-            {hostField}
-            {tokenField}
-            {tokenMissing && <SettingsCallout tone="warning">Set a token before connecting or letting devices connect to this computer.</SettingsCallout>}
-          </SettingsGroup>
-          <SettingsGroup title="This app">
-            <SettingsFieldRow title="Backend mode" subtitle={appSettings.backendMode === "remote" ? "Requests go to the remote server in Connection details, the same way mobile clients connect." : "Everything runs on this computer."}>
+          <SettingsGroup title="Where nucode runs">
+            <SettingsFieldRow title="Backend mode" subtitle={appSettings.backendMode === "remote" ? "Requests go to the server set below." : "Everything runs on this computer."}>
               <SettingsSelect
                 value={appSettings.backendMode}
                 onChange={(event) => void onUpdateAppSettings({ ...appSettings, backendMode: event.target.value as AppSettings["backendMode"] })}
@@ -277,39 +299,52 @@ export function SettingsServerSection({
                 <option value="remote">Remote (daemon)</option>
               </SettingsSelect>
             </SettingsFieldRow>
+            {remote && <>
+              <SettingsFieldRow title="Server address" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "The computer to connect to, as host:port."}>{hostInput}</SettingsFieldRow>
+              <SettingsFieldRow title="Server token">{tokenInput("Paste the server's token")}</SettingsFieldRow>
+              {tokenMissing && <SettingsCallout tone="warning">Paste the server's token to connect.</SettingsCallout>}
+            </>}
           </SettingsGroup>
-          <SettingsGroup title="Mobile access">
+          <SettingsGroup title="Phone access" subtitle="Let the nucode mobile app connect to this computer.">
             <SettingsRow>
               <div className="settings-row-text">
-                <div className="settings-toggle-title settings-title-with-status">Mobile access <SettingsStatus tone={tcpStatusTone} className="settings-status-pill">{tcpStatusLabel}</SettingsStatus></div>
-                <div className="settings-toggle-subtitle">{!hasSavedToken ? "Set a token to start" : tcpRunning ? `Devices on your network can connect on ${tcpAddress}.` : "Lets devices on your network connect to this computer."}</div>
+                <div className="settings-toggle-title settings-title-with-status">Status <SettingsStatus tone={tcpStatusTone} className="settings-status-pill">{tcpStatusLabel}</SettingsStatus></div>
+                <div className="settings-toggle-subtitle">{tcpDaemonStatus?.state === "error" ? (tcpDaemonStatus.lastError ?? "Error") : !hasSavedToken ? "Set an access token to start" : tcpRunning ? `Listening on port ${listenPort}` : "Not running"}</div>
               </div>
               <div className="settings-row-controls">
                 <SettingsIconButton aria-label="Refresh status" title="Refresh status" onClick={() => { void onTcpDaemonStatus(); }} disabled={tcpDaemonBusyAction !== null}><RefreshCw aria-hidden className={tcpDaemonBusyAction === "status" ? "settings-spin" : undefined} /></SettingsIconButton>
                 {tcpRunning
                   ? <SettingsButton type="button" onClick={() => { void onTcpDaemonStop(); }} disabled={tcpDaemonBusyAction !== null}>{tcpDaemonBusyAction === "stop" ? "Stopping…" : "Stop"}</SettingsButton>
-                  : <SettingsButton type="button" className="primary" onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null || !hasSavedToken}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
+                  : <SettingsButton type="button" className="primary" title={!hasSavedToken ? "Set an access token to start" : undefined} onClick={() => { void onTcpDaemonStart(); }} disabled={tcpDaemonBusyAction !== null || !hasSavedToken}>{tcpDaemonBusyAction === "start" ? "Starting…" : "Start"}</SettingsButton>}
               </div>
+            </SettingsRow>
+            {remote
+              ? <SettingsRow><SettingsRowText title="Access token and port" subtitle="Phone access uses the server token and port set above." /></SettingsRow>
+              : <>
+                <SettingsFieldRow stacked title="Access token" subtitle="Your phone signs in with this token.">{tokenInput("Paste or generate a token", true)}</SettingsFieldRow>
+                {tokenMissing && <SettingsCallout tone="warning">Set an access token before starting phone access.</SettingsCallout>}
+                <SettingsFieldRow title="Listening address" subtitle={remoteHostError ? <span className="settings-help-error">{remoteHostError}</span> : "Only the port is used: this computer listens on it on every network interface."}>{hostInput}</SettingsFieldRow>
+              </>}
+            <SettingsRow>
+              <SettingsRowText title="Phone connects to" subtitle={suggested ? "Enter this address and the access token in the mobile app." : "Install Tailscale and sign in, then check again to get an address your phone can reach."} />
+              {suggested && <div className="settings-row-controls"><code className="settings-inline-value">{suggested}</code><SettingsIconButton aria-label="Copy address" title="Copy address" onClick={() => copyCommand(suggested)}><Copy aria-hidden /></SettingsIconButton></div>}
+            </SettingsRow>
+            <SettingsRow>
+              <SettingsRowText
+                title="Tailscale"
+                subtitle={tailscaleStatusError ? <SettingsStatus tone="error">{tailscaleStatusError}</SettingsStatus> : tailscaleStatus ? <SettingsStatus tone={tailscaleStatus.installed ? "ready" : "idle"}>{tailscaleStatus.installed ? [tailscaleStatus.running ? "Running" : "Not running", tailscaleStatus.version ? `v${tailscaleStatus.version}` : null, tailscaleStatus.tailnetName].filter(Boolean).join(" · ") : "Not installed"}</SettingsStatus> : <SettingsStatus>Not checked yet</SettingsStatus>}
+              />
+              <SettingsButton type="button" onClick={onRefreshTailscaleStatus} disabled={tailscaleStatusBusy}>{tailscaleStatusBusy ? "Checking…" : "Check again"}</SettingsButton>
             </SettingsRow>
             <SettingsSwitchRow
               title="Keep running after the app closes"
-              subtitle="When off, nucode stops its mobile daemon when you quit."
+              subtitle="After you start phone access, keep it running when nucode quits."
               pressed={appSettings.keepDaemonRunningAfterAppClose}
               onClick={() => void onUpdateAppSettings({ ...appSettings, keepDaemonRunningAfterAppClose: !appSettings.keepDaemonRunningAfterAppClose })}
             />
-            {(() => { const unavailable = !!tailscaleStatusError || (!!tailscaleStatus && !tailscaleStatus.installed); return <SettingsRow className={unavailable ? "is-disabled" : undefined}>
-              <SettingsRowText
-                title="Tailscale"
-                subtitle={tailscaleStatusError ?? (tailscaleStatus ? <>{tailscaleStatus.message.replace(/\.?\s*$/, ".")} {tailscaleStatus.installed ? `Version ${tailscaleStatus.version ?? "unknown"}.` : "Install Tailscale on both desktop and iOS to use it."}{tailscaleStatus.tailnetName && <> Tailnet: <code>{tailscaleStatus.tailnetName}</code>.</>}{tailscaleStatus.suggestedRemoteHost && <> Suggested host: <code>{tailscaleStatus.suggestedRemoteHost}</code>.</>}</> : "Finds this computer's Tailscale address so your phone can reach it.")}
-              />
-              <div className="settings-row-controls">
-                {tailscaleStatus?.suggestedRemoteHost && <SettingsButton type="button" onClick={() => { void onUseSuggestedTailscaleHost(); }}>Use host</SettingsButton>}
-                <SettingsButton type="button" onClick={onRefreshTailscaleStatus} disabled={tailscaleStatusBusy || unavailable}>{tailscaleStatusBusy ? "Checking…" : "Detect"}</SettingsButton>
-              </div>
-            </SettingsRow>; })()}
             <SettingsFieldRow
               stacked
-              title="Command to start the daemon by hand"
+              title="Start by hand"
               subtitle={tailscaleCommandError ? <span className="settings-help-error">{tailscaleCommandError}</span> : "A fallback if Start does not work."}
             >
               {tailscaleCommandPreview
