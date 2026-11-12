@@ -4,6 +4,7 @@ mod process;
 mod preview;
 mod profile;
 mod recovery;
+mod threads;
 mod services;
 mod images;
 #[cfg(test)]
@@ -638,6 +639,9 @@ impl PiEngine {
             return Ok(
                 json!({"result":{"data":data,"nextCursor":next,"backwardsCursor":null,"readStates":null}}),
             );
+        }
+        if self.handles_files(method) {
+            return self.file_operation(workspace, method, &params).await;
         }
         let (registry, policy) = self
             .registry

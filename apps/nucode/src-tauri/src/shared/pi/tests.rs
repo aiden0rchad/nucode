@@ -2630,3 +2630,262 @@ fn auto_compact_defaults_for_old_settings_and_validates_range() {
     bad.auto_compact.percent = Some(80);
     assert!(crate::shared::engine_registry::validate_settings(&bad).is_ok());
 }
+
+type Recorded = Arc<StdMutex<Vec<(String, Value)>>>;
+
+fn file_engine(dir: &Path) -> (PiEngine, Recorded) {
+    let events: Recorded = Arc::new(StdMutex::new(vec![]));
+    let sink = events.clone();
+    let engine = PiEngine::new(
+        dir.to_path_buf(),
+        "workspace".into(),
+        dir.join("project-a").to_string_lossy().into(),
+        None,
+        Arc::new(move |workspace, event| sink.lock().unwrap().push((workspace.into(), event))),
+    );
+    (engine, events)
+}
+
+fn write_session_file(engine: &PiEngine, workspace: &str, id: &str, cwd: &str) -> PathBuf {
+    let sessions = engine.directory(workspace).unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let file = sessions.join(format!("{id}.jsonl"));
+    let header = json!({"type":"session","version":3,"id":id,"engine":"pi","cwd":cwd,"timestamp":"2025-01-01T00:00:00Z"});
+    let body = json!({"type":"message","id":"m1","parentId":null,"message":{"role":"user","content":"keep me exactly"}});
+    std::fs::write(&file, format!("{header}\n{body}\n")).unwrap();
+    std::fs::create_dir_all(sessions.join(format!("{id}.jsonl.streams"))).unwrap();
+    std::fs::write(sessions.join(format!("{id}.jsonl.streams/a.txt")), "stream").unwrap();
+    std::fs::create_dir_all(sessions.join(id)).unwrap();
+    std::fs::write(sessions.join(id).join("b.txt"), "extra").unwrap();
+    file
+}
+
+async fn listed(engine: &PiEngine, workspace: &str) -> Vec<String> {
+    let page = engine.request(workspace, "thread/list", json!({})).await.unwrap();
+    page["result"]["data"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap().to_owned()).collect()
+}
+
+#[tokio::test]
+async fn archive_moves_the_session_and_its_siblings_and_the_thread_leaves_the_list() {
+    let dir = temp();
+    let (engine, events) = file_engine(&dir);
+    let a = write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    write_session_file(&engine, "workspace", "thread-b", "/project-a");
+    assert_eq!(listed(&engine, "workspace").await.len(), 2);
+
+    engine.request("workspace", "thread/archive", json!({"threadId":"thread-a"})).await.unwrap();
+
+    let sessions = engine.directory("workspace").unwrap();
+    let archived = sessions.join("archived");
+    assert!(!a.exists());
+    assert!(archived.join("thread-a.jsonl").is_file());
+    assert_eq!(std::fs::read_to_string(archived.join("thread-a.jsonl.streams/a.txt")).unwrap(), "stream");
+    assert_eq!(std::fs::read_to_string(archived.join("thread-a/b.txt")).unwrap(), "extra");
+    assert!(!sessions.join("thread-a.jsonl.streams").exists() && !sessions.join("thread-a").exists());
+    assert_eq!(listed(&engine, "workspace").await, vec!["thread-b"]);
+    assert!(!engine.sessions.lock().await.contains_key("thread-a"));
+    let recorded = events.lock().unwrap();
+    assert!(recorded.iter().any(|(workspace, e)| workspace == "workspace" && e["method"] == "thread/archived" && e["params"]["threadId"] == "thread-a"));
+    drop(recorded);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+async fn running_engine(dir: &Path) -> (PiEngine, Recorded, String) {
+    std::fs::create_dir_all(dir.join("project-a")).unwrap();
+    let (mut engine, events) = file_engine(dir);
+    engine.fake = true;
+    engine.keys = Arc::new(Keys);
+    let providers = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+    engine.configure("workspace", providers, AgentPolicy::default()).await;
+    let started = engine.request("workspace", "thread/start", json!({"model":"first/fake"})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap().to_owned();
+    (engine, events, id)
+}
+
+#[tokio::test]
+async fn archive_shuts_down_an_idle_process_and_refuses_while_a_turn_runs() {
+    let dir = temp();
+    let (engine, _events, id) = running_engine(&dir).await;
+    let process = engine.sessions.lock().await.get(&id).unwrap().process.clone().unwrap();
+    for method in ["thread/archive", "thread/delete"] {
+        process.running.store(true, Ordering::SeqCst);
+        let error = engine.request("workspace", method, json!({"threadId":id})).await.unwrap_err();
+        assert!(error.contains("Finish or interrupt the turn first"), "{method}: {error}");
+    }
+    engine.paths.lock().await.insert("target".into(), dir.join("project-b").to_string_lossy().into());
+    let error = engine.request("workspace", "thread/move", json!({"threadId":id,"targetWorkspaceId":"target"})).await.unwrap_err();
+    assert!(error.contains("Finish or interrupt the turn first"));
+    let file = engine.directory("workspace").unwrap().join(format!("{id}.jsonl"));
+    assert!(file.is_file(), "a refused operation must leave the file in place");
+    assert!(engine.sessions.lock().await.get(&id).unwrap().process.is_some());
+
+    process.running.store(false, Ordering::SeqCst);
+    engine.request("workspace", "thread/archive", json!({"threadId":id})).await.unwrap();
+    assert!(!file.exists());
+    assert!(engine.directory("workspace").unwrap().join("archived").join(format!("{id}.jsonl")).is_file());
+    assert!(!process.alive.load(Ordering::SeqCst), "an idle process is shut down first");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn delete_removes_the_session_siblings_and_per_thread_extras() {
+    let dir = temp();
+    let (engine, events) = file_engine(&dir);
+    write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    write_session_file(&engine, "workspace", "thread-b", "/project-a");
+    let metadata = dir.join("thread-metadata/workspace");
+    std::fs::create_dir_all(&metadata).unwrap();
+    std::fs::write(metadata.join("thread-a.json"), "{}").unwrap();
+    std::fs::write(metadata.join("thread-b.json"), "{}").unwrap();
+    let home = dir.join("pi/agent/workspace");
+    config::write_team(&home, "thread-a", Some(&AgentPolicy::default().subagents)).unwrap();
+    config::write_team(&home, "thread-b", Some(&AgentPolicy::default().subagents)).unwrap();
+    let checkpoints = dir.join("checkpoints/workspace.git");
+    std::fs::create_dir_all(&checkpoints).unwrap();
+    std::fs::write(checkpoints.join("thread-a.json"), "[]").unwrap();
+    std::fs::write(checkpoints.join("thread-b.json"), "[]").unwrap();
+
+    engine.request("workspace", "thread/delete", json!({"threadId":"thread-a"})).await.unwrap();
+
+    let sessions = engine.directory("workspace").unwrap();
+    for path in [
+        sessions.join("thread-a.jsonl"), sessions.join("thread-a.jsonl.streams"), sessions.join("thread-a"),
+        metadata.join("thread-a.json"), home.join("nucode/teams/thread-a.json"), checkpoints.join("thread-a.json"),
+    ] {
+        assert!(!path.exists(), "{} should be gone", path.display());
+    }
+    for path in [sessions.join("thread-b.jsonl"), metadata.join("thread-b.json"), home.join("nucode/teams/thread-b.json"), checkpoints.join("thread-b.json")] {
+        assert!(path.exists(), "{} must be untouched", path.display());
+    }
+    assert!(events.lock().unwrap().iter().any(|(_, e)| e["method"] == "thread/archived" && e["params"]["threadId"] == "thread-a"));
+
+    // Missing extras are fine; a missing session file is an error.
+    engine.request("workspace", "thread/delete", json!({"threadId":"thread-b"})).await.unwrap();
+    assert!(engine.request("workspace", "thread/delete", json!({"threadId":"thread-b"})).await.is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn delete_also_removes_an_archived_thread() {
+    let dir = temp();
+    let (engine, _events) = file_engine(&dir);
+    write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    engine.request("workspace", "thread/archive", json!({"threadId":"thread-a"})).await.unwrap();
+    let archived = engine.directory("workspace").unwrap().join("archived");
+    assert!(archived.join("thread-a.jsonl").is_file());
+    engine.request("workspace", "thread/delete", json!({"threadId":"thread-a"})).await.unwrap();
+    assert!(!archived.join("thread-a.jsonl").exists());
+    assert!(!archived.join("thread-a.jsonl.streams").exists());
+    assert!(!archived.join("thread-a").exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn move_rewrites_only_the_header_cwd_and_carries_the_siblings_and_metadata() {
+    let dir = temp();
+    let (engine, events) = file_engine(&dir);
+    let original = write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    let before = std::fs::read_to_string(&original).unwrap();
+    let (_, rest_before) = before.split_once('\n').unwrap();
+    let metadata = dir.join("thread-metadata/workspace");
+    std::fs::create_dir_all(&metadata).unwrap();
+    std::fs::write(metadata.join("thread-a.json"), r#"{"pinned":true}"#).unwrap();
+    let checkpoints = dir.join("checkpoints/workspace.git");
+    std::fs::create_dir_all(&checkpoints).unwrap();
+    std::fs::write(checkpoints.join("thread-a.json"), "[]").unwrap();
+    engine.paths.lock().await.insert("target".into(), "/project-b".into());
+
+    let response = engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"target"})).await.unwrap();
+
+    assert_eq!(response["result"]["thread"]["id"], "thread-a");
+    assert_eq!(response["result"]["thread"]["cwd"], "/project-b");
+    let landed = engine.directory("target").unwrap().join("thread-a.jsonl");
+    let after = std::fs::read_to_string(&landed).unwrap();
+    let (header, rest_after) = after.split_once('\n').unwrap();
+    assert_eq!(rest_after, rest_before, "everything after the header is byte for byte the same");
+    let header: Value = serde_json::from_str(header).unwrap();
+    assert_eq!(header["cwd"], "/project-b");
+    assert_eq!(header["id"], "thread-a");
+    assert_eq!(header["timestamp"], "2025-01-01T00:00:00Z");
+    assert!(!original.exists());
+    let target = engine.directory("target").unwrap();
+    assert_eq!(std::fs::read_to_string(target.join("thread-a.jsonl.streams/a.txt")).unwrap(), "stream");
+    assert_eq!(std::fs::read_to_string(target.join("thread-a/b.txt")).unwrap(), "extra");
+    assert!(!engine.directory("workspace").unwrap().join("thread-a.jsonl.streams").exists());
+    assert_eq!(std::fs::read_to_string(dir.join("thread-metadata/target/thread-a.json")).unwrap(), r#"{"pinned":true}"#);
+    assert!(!metadata.join("thread-a.json").exists());
+    assert!(checkpoints.join("thread-a.json").exists(), "checkpoints stay with the old project");
+    assert!(std::fs::read_dir(&target).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".tmp")));
+    assert!(listed(&engine, "workspace").await.is_empty());
+    assert_eq!(listed(&engine, "target").await, vec!["thread-a"]);
+    assert_eq!(engine.sessions.lock().await.get("thread-a").unwrap().workspace, "target");
+    let recorded = events.lock().unwrap();
+    assert!(recorded.iter().any(|(w, e)| w == "workspace" && e["method"] == "thread/archived" && e["params"]["threadId"] == "thread-a"));
+    assert!(recorded.iter().any(|(w, e)| w == "target" && e["method"] == "thread/started" && e["params"]["thread"]["id"] == "thread-a"));
+    drop(recorded);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn move_leaves_the_original_in_place_when_the_target_is_invalid() {
+    let dir = temp();
+    let (engine, events) = file_engine(&dir);
+    let original = write_session_file(&engine, "workspace", "thread-a", "/project-a");
+    let before = std::fs::read(&original).unwrap();
+    engine.paths.lock().await.insert("known".into(), "/project-b".into());
+    for target in ["unknown", "../escape", "a/b", "", "workspace"] {
+        let result = engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":target})).await;
+        assert!(result.is_err(), "target {target:?} must be refused");
+    }
+    assert!(engine.request("workspace", "thread/move", json!({"threadId":"thread-a"})).await.is_err());
+    assert_eq!(std::fs::read(&original).unwrap(), before);
+    assert!(engine.directory("workspace").unwrap().join("thread-a.jsonl.streams/a.txt").is_file());
+    assert!(!engine.directory("known").unwrap().exists());
+    assert!(events.lock().unwrap().is_empty());
+
+    // A target that already holds the thread must not be overwritten.
+    write_session_file(&engine, "known", "thread-a", "/elsewhere");
+    let elsewhere = std::fs::read(engine.directory("known").unwrap().join("thread-a.jsonl")).unwrap();
+    assert!(engine.request("workspace", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"known"})).await.is_err());
+    assert_eq!(std::fs::read(engine.directory("known").unwrap().join("thread-a.jsonl")).unwrap(), elsewhere);
+    assert_eq!(std::fs::read(&original).unwrap(), before);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn move_rewrites_the_header_behind_an_omp_title_slot() {
+    let text = format!(
+        "{}\n{}\n{}\n",
+        json!({"type":"title","v":1,"title":"T","updatedAt":"x","pad":"  "}),
+        json!({"type":"session","id":"a","cwd":"/old"}),
+        json!({"type":"message","id":"m"}),
+    );
+    let rewritten = threads::rewrite_header_cwd(&text, "/new").unwrap();
+    let lines: Vec<_> = rewritten.lines().collect();
+    assert_eq!(lines[0], text.lines().next().unwrap());
+    assert_eq!(serde_json::from_str::<Value>(lines[1]).unwrap()["cwd"], "/new");
+    assert_eq!(lines[2], text.lines().nth(2).unwrap());
+    assert!(threads::rewrite_header_cwd("{\"type\":\"message\"}\n", "/new").is_err());
+}
+
+#[tokio::test]
+async fn file_operations_reject_ids_that_could_leave_the_sessions_folder() {
+    let dir = temp();
+    let (engine, _events) = file_engine(&dir);
+    let outside = dir.join("outside.jsonl");
+    std::fs::write(&outside, "keep").unwrap();
+    engine.paths.lock().await.insert("target".into(), "/project-b".into());
+    for id in ["../outside", "..", ".", "a/b", "a\\b", "a.b", "", "a b"] {
+        for method in ["thread/archive", "thread/delete", "thread/move"] {
+            let error = engine.request("workspace", method, json!({"threadId":id,"targetWorkspaceId":"target"})).await.unwrap_err();
+            assert!(error.contains("Invalid thread ID") || error.contains("Missing thread ID"), "{method} {id:?}: {error}");
+        }
+    }
+    for workspace in ["../workspace", "a/b", "", "a.b"] {
+        for method in ["thread/archive", "thread/delete", "thread/move"] {
+            assert!(engine.request(workspace, method, json!({"threadId":"thread-a","targetWorkspaceId":"target"})).await.is_err(), "{method} {workspace:?}");
+        }
+    }
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
+    std::fs::remove_dir_all(dir).unwrap();
+}
