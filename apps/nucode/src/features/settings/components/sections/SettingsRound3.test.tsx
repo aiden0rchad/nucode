@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AppSettings } from "@/types";
 import { SettingsServerSection } from "./SettingsServerSection";
@@ -10,13 +11,13 @@ import { SettingsDisclosureRow } from "@/features/design-system/components/setti
 vi.mock("@services/tauri", () => ({ browserPasswordsList: vi.fn().mockResolvedValue({ entries: [], never: [] }), browserPasswordSave: vi.fn(), browserPasswordDelete: vi.fn(), browserPasswordUnblock: vi.fn(), browserRequest: vi.fn() }));
 afterEach(cleanup);
 
-const server = (settings: Partial<AppSettings>, extra: Record<string, unknown> = {}) => render(<SettingsServerSection {...({ ...{
+const server = (settings: Partial<AppSettings>, extra: Record<string, unknown> = {}) => render(<SettingsServerSection {...(({ ...{
   appSettings: { backendMode: "local", remoteBackendToken: null, keepDaemonRunningAfterAppClose: false, ...settings }, onUpdateAppSettings: vi.fn(), isMobilePlatform: false, mobileConnectBusy: false, mobileConnectStatusText: null, mobileConnectStatusError: false,
   remoteBackends: [], activeRemoteBackendId: null, remoteStatusText: null, remoteStatusError: false, remoteNameError: null, remoteHostError: null, remoteNameDraft: "", remoteHostDraft: "127.0.0.1:4732", remoteTokenDraft: "", nextRemoteNameSuggestion: "",
   tailscaleStatus: { installed: true, running: true, version: "1.2.3", tailnetName: "net.ts.net", suggestedRemoteHost: "box.net.ts.net:4732", message: "ok" }, tailscaleStatusBusy: false, tailscaleStatusError: null, tailscaleCommandPreview: null, tailscaleCommandBusy: false, tailscaleCommandError: null,
   tcpDaemonStatus: { state: "stopped", pid: null, startedAtMs: null, lastError: null, listenAddr: null }, tcpDaemonBusyAction: null,
   onSetRemoteNameDraft: vi.fn(), onSetRemoteHostDraft: vi.fn(), onSetRemoteTokenDraft: vi.fn(), onCommitRemoteName: vi.fn(), onCommitRemoteHost: vi.fn(), onCommitRemoteToken: vi.fn(), onSelectRemoteBackend: vi.fn(), onAddRemoteBackend: vi.fn(), onMoveRemoteBackend: vi.fn(), onDeleteRemoteBackend: vi.fn(),
-  onRefreshTailscaleStatus: vi.fn(), onRefreshTailscaleCommandPreview: vi.fn(), onUseSuggestedTailscaleHost: vi.fn(), onTcpDaemonStart: vi.fn(), onTcpDaemonStop: vi.fn(), onTcpDaemonStatus: vi.fn(), onMobileConnectTest: vi.fn() }, ...extra }) as never} />);
+  onRefreshTailscaleStatus: vi.fn(), onRefreshTailscaleCommandPreview: vi.fn(), onUseSuggestedTailscaleHost: vi.fn(), onTcpDaemonStart: vi.fn(), onTcpDaemonStop: vi.fn(), onTcpDaemonStatus: vi.fn(), onMobileConnectTest: vi.fn() }, ...extra }) as unknown as ComponentProps<typeof SettingsServerSection>)} />);
 
 it("shows the access token and listening address in Local mode and gates Start on a saved token", () => {
   server({});
