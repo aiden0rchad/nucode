@@ -15,7 +15,8 @@
   --ds-text-subtle: var(--text-subtle);
   --ds-text-faint: var(--text-faint);
 
-  --ds-modal-backdrop: color-mix(in srgb, rgb(6, 8, 12) 55%, var(--surface-app));
+  /* A see-through scrim: the app stays visible, dimmed, behind every dialog. */
+  --ds-modal-backdrop: rgba(0, 0, 0, 0.62);
   --ds-modal-card-bg: var(--ds-surface-card);
   --ds-modal-card-border: var(--ds-border-strong);
   --ds-modal-focus-ring: color-mix(in srgb, var(--border-accent) 70%, transparent);
@@ -68,3 +69,6 @@
   --ds-active-scale: 0.97;
   --ds-active-scale-sm: 0.92;
 }
+
+:root[data-theme="light"] { --ds-modal-backdrop: rgba(15, 15, 20, 0.28); }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --ds-modal-backdrop: rgba(15, 15, 20, 0.28); } }
