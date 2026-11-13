@@ -49,6 +49,8 @@ type AppServerEventHandlers = {
   ) => void;
   onThreadClosed?: (workspaceId: string, threadId: string) => void;
   onThreadArchived?: (workspaceId: string, threadId: string) => void;
+  /** The thread left `workspaceId` for another project; it is not archived. */
+  onThreadMoved?: (workspaceId: string, threadId: string, targetWorkspaceId: string) => void;
   onThreadUnarchived?: (workspaceId: string, threadId: string) => void;
   onBackgroundThreadAction?: (
     workspaceId: string,
@@ -118,6 +120,7 @@ export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
   "item/tool/requestUserInput",
   "thread/archived",
   "thread/closed",
+  "thread/moved",
   "thread/name/updated",
   "thread/status/changed",
   "thread/started",
@@ -338,6 +341,15 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         const threadId = String(params.threadId ?? params.thread_id ?? "").trim();
         if (threadId) {
           currentHandlers.onThreadArchived?.(workspace_id, threadId);
+        }
+        return;
+      }
+
+      if (method === "thread/moved") {
+        const threadId = String(params.threadId ?? "").trim();
+        const target = String(params.targetWorkspaceId ?? "").trim();
+        if (threadId && target) {
+          currentHandlers.onThreadMoved?.(workspace_id, threadId, target);
         }
         return;
       }

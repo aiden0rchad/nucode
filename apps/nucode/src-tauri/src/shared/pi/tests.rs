@@ -2820,7 +2820,8 @@ async fn move_rewrites_only_the_header_cwd_and_carries_the_siblings_and_metadata
     assert_eq!(listed(&engine, "target").await, vec!["thread-a"]);
     assert_eq!(engine.sessions.lock().await.get("thread-a").unwrap().workspace, "target");
     let recorded = events.lock().unwrap();
-    assert!(recorded.iter().any(|(w, e)| w == "workspace" && e["method"] == "thread/archived" && e["params"]["threadId"] == "thread-a"));
+    assert!(recorded.iter().any(|(w, e)| w == "workspace" && e["method"] == "thread/moved" && e["params"]["threadId"] == "thread-a" && e["params"]["targetWorkspaceId"] == "target"));
+    assert!(recorded.iter().all(|(_, e)| e["method"] != "thread/archived"), "a move must not look like an archive");
     assert!(recorded.iter().any(|(w, e)| w == "target" && e["method"] == "thread/started" && e["params"]["thread"]["id"] == "thread-a"));
     drop(recorded);
     std::fs::remove_dir_all(dir).unwrap();

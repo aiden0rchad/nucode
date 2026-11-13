@@ -66,6 +66,7 @@ describe("useAppServerEvents", () => {
       onThreadStatusChanged: vi.fn(),
       onThreadClosed: vi.fn(),
       onThreadArchived: vi.fn(),
+      onThreadMoved: vi.fn(),
       onThreadUnarchived: vi.fn(),
       onBackgroundThreadAction: vi.fn(),
       onAgentMessageDelta: vi.fn(),
@@ -238,6 +239,18 @@ describe("useAppServerEvents", () => {
       });
     });
     expect(handlers.onThreadArchived).toHaveBeenCalledWith("ws-1", "thread-2");
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "thread/moved",
+          params: { threadId: "thread-2", targetWorkspaceId: "ws-9" },
+        },
+      });
+    });
+    expect(handlers.onThreadMoved).toHaveBeenCalledWith("ws-1", "thread-2", "ws-9");
+    expect(handlers.onThreadArchived).toHaveBeenCalledTimes(1);
 
     act(() => {
       listener?.({

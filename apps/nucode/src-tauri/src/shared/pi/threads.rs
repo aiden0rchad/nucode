@@ -251,7 +251,8 @@ impl PiEngine {
                 sessions.insert(id.into(), Session { workspace: target.into(), thread: thread.clone(), file: moved[0].clone(), process: None, configuration: String::new() });
             }
         }
-        self.announce_archived(workspace, id);
+        // Not an archive: clients keep the thread's pin, sub-agents and loaded messages.
+        self.emit(workspace, json!({"method":"thread/moved","params":{"threadId":id,"targetWorkspaceId":target}}));
         let mut notification = thread.clone();
         notification["turns"] = json!([]);
         self.emit(target, json!({"method":"thread/started","params":{"thread":notification}}));

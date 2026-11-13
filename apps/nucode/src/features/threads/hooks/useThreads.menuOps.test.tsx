@@ -161,6 +161,58 @@ describe("moving to another project", () => {
     expect(retargetThreadWindow).toHaveBeenCalledWith("t1", "ws-2");
   });
 
+  it("treats the engine's moved event as a move, not an archive", async () => {
+    const hook = setup();
+    act(() => {
+      hook.result.current.pinThread("ws-1", "t1");
+    });
+    act(() => {
+      handlers?.onThreadMoved?.("ws-1", "t1", "ws-2");
+    });
+    expect(ids(hook)).toEqual(["t2"]);
+    expect(ids(hook, "ws-2")).toEqual(["t1"]);
+    // An archive would drop the pin and archive the thread's sub-agents.
+    expect(hook.result.current.isThreadPinned("ws-1", "t1")).toBe(true);
+    expect(archiveThread).not.toHaveBeenCalled();
+  });
+
+  it("carries the pin when the engine's events arrive before its answer, as they do in the app", async () => {
+    const hook = setup();
+    act(() => {
+      hook.result.current.pinThread("ws-1", "t1");
+    });
+    vi.mocked(moveThread).mockImplementation(async () => {
+      act(() => {
+        handlers?.onThreadMoved?.("ws-1", "t1", "ws-2");
+        handlers?.onThreadStarted?.("ws-2", { id: "t1", preview: "First", updatedAt: 5 });
+      });
+      return { result: { thread: { id: "t1", preview: "First", updatedAt: 5 } } };
+    });
+    await act(async () => {
+      expect(await hook.result.current.moveThread("ws-1", "t1", "ws-2")).toBe(true);
+    });
+    expect(ids(hook)).toEqual(["t2"]);
+    expect(ids(hook, "ws-2")).toEqual(["t1"]);
+    expect(hook.result.current.isThreadPinned("ws-2", "t1")).toBe(true);
+  });
+
+  it("resumes a moved thread through its new project when it is next opened", async () => {
+    vi.mocked(resumeThread).mockResolvedValue({ result: { thread: { id: "t1", preview: "First", turns: [] } } });
+    const hook = setup();
+    await act(async () => {
+      hook.result.current.setActiveThreadId("t1", "ws-1");
+    });
+    expect(resumeThread).toHaveBeenCalledTimes(1);
+    act(() => {
+      handlers?.onThreadMoved?.("ws-1", "t1", "ws-2");
+    });
+    await act(async () => {
+      hook.result.current.setActiveThreadId("t1", "ws-2");
+    });
+    expect(resumeThread).toHaveBeenCalledTimes(2);
+    expect(resumeThread).toHaveBeenLastCalledWith("ws-2", "t1");
+  });
+
   it("leaves everything in place and reports the error when the move fails", async () => {
     vi.mocked(moveThread).mockRejectedValue(new Error("Finish or interrupt the turn first"));
     const hook = setup();

@@ -511,6 +511,19 @@ export function useThreads({
     [isSubagentThread, onDebug, threadHandlers, unpinThread],
   );
 
+  // The engine moved the thread to another project. Unlike an archive this keeps its pin, sub-agents and
+  // loaded messages; the next time it is opened it is resumed through its new project.
+  const handleThreadMoved = useCallback(
+    (workspaceId: string, threadId: string, targetWorkspaceId: string) => {
+      loadedThreadsRef.current[threadId] = false;
+      const summary = (threadsByWorkspaceRef.current[workspaceId] ?? []).find((thread) => thread.id === threadId);
+      if (summary) {
+        dispatch({ type: "moveThread", fromWorkspaceId: workspaceId, toWorkspaceId: targetWorkspaceId, thread: summary });
+      }
+    },
+    [],
+  );
+
   const handleThreadUnarchived = useCallback(
     (workspaceId: string, threadId: string) => {
       threadHandlers.onThreadUnarchived?.(workspaceId, threadId);
@@ -523,12 +536,14 @@ export function useThreads({
       ...threadHandlers,
       onThreadStarted: handleThreadStarted,
       onThreadArchived: handleThreadArchived,
+      onThreadMoved: handleThreadMoved,
       onThreadUnarchived: handleThreadUnarchived,
     }),
     [
       threadHandlers,
       handleThreadStarted,
       handleThreadArchived,
+      handleThreadMoved,
       handleThreadUnarchived,
     ],
   );
@@ -913,6 +928,8 @@ export function useThreads({
         return false;
       }
       moveThreadStorage(workspaceId, targetWorkspaceId, threadId);
+      // Another engine serves the thread now: resume it there when it is next opened.
+      loadedThreadsRef.current[threadId] = false;
       const rebuilt = buildThreadSummaryFromThread({
         workspaceId: targetWorkspaceId,
         thread: moved,
