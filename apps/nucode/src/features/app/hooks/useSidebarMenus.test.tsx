@@ -487,6 +487,12 @@ describe("thread menu", () => {
     openMenu(handlers, { kind: "thread" });
     chooseFromSubmenu("Copy", "Copy session ID");
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("t1"));
+    await waitFor(() =>
+      expect(pushInfoToast).toHaveBeenLastCalledWith(
+        expect.objectContaining({ title: "Copied session ID", message: "t1" }),
+      ),
+    );
+    expect(pushInfoToast).toHaveBeenCalledTimes(3);
   });
 
   it("reports an empty chat instead of exporting nothing", async () => {
@@ -701,9 +707,8 @@ describe("backend thread items", () => {
     const off = backend({ canForkIntoWorktree: false });
     openMenu(off, { kind: "thread" });
     fireEvent.keyDown(screen.getByRole("menuitem", { name: "Fork" }), { key: "ArrowRight" });
-    const row = screen.getByRole("menuitem", { name: "Fork into a new worktree" });
-    expect(row.getAttribute("aria-disabled")).toBe("true");
-    expect(row.getAttribute("title")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Fork in this project" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Fork into a new worktree" })).toBeNull();
     cleanup();
 
     const inWorktree = backend({ threadsByWorkspace: { w1: [thread("t1", { engine: "pi" })] } });

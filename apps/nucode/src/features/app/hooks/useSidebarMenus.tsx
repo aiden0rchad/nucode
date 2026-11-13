@@ -317,11 +317,9 @@ export function useSidebarMenus({
           pushInfoToast({ title: `Moved to ${target.name}`, message: thread?.name ?? "The chat was moved." });
         }
       };
-      const worktreeReason = !canForkIntoWorktree
-        ? "Worktrees are turned off in Settings"
-        : !workspace || !isTopLevelProject(workspace)
-          ? "Fork from the project's own chat to use a new worktree"
-          : undefined;
+      const worktreeReason = !workspace || !isTopLevelProject(workspace)
+        ? "Fork from the project's own chat to use a new worktree"
+        : undefined;
       const deleteReason = running
         ? RUNNING_REASON
         : engine === "codex"
@@ -355,9 +353,10 @@ export function useSidebarMenus({
           pushErrorToast({ title: `Couldn't ${what}`, message: describeError(error) });
         }
       };
-      const writeClipboard = async (text: string, what: string) => {
+      const writeClipboard = async (text: string, what: string, copied: string, detail: string) => {
         try {
           await navigator.clipboard.writeText(text);
+          pushInfoToast({ title: copied, message: detail, durationMs: 2000 });
         } catch (error) {
           pushErrorToast({ title: `Couldn't ${what}`, message: describeError(error) });
         }
@@ -425,7 +424,8 @@ export function useSidebarMenus({
                 });
               },
             },
-            onForkIntoWorktree && {
+            // Worktrees turned off in Settings: no row at all, like the app menu.
+            onForkIntoWorktree && canForkIntoWorktree && {
               id: "fork-worktree",
               label: "Fork into a new worktree",
               icon: <GitBranch size={16} />,
@@ -466,7 +466,13 @@ export function useSidebarMenus({
               label: "Copy as Markdown",
               onSelect: () =>
                 void withItems(
-                  (items) => writeClipboard(buildThreadTranscript(items), "copy the chat"),
+                  (items) =>
+                    writeClipboard(
+                      buildThreadTranscript(items),
+                      "copy the chat",
+                      "Copied as Markdown",
+                      thread?.name ?? "The chat is on the clipboard.",
+                    ),
                   "copy the chat",
                 ),
             },
@@ -475,12 +481,19 @@ export function useSidebarMenus({
               label: "Copy working directory",
               disabled: !workspace?.path,
               disabledReason: "No working directory for this chat",
-              onSelect: () => void writeClipboard(workspace?.path ?? "", "copy the working directory"),
+              onSelect: () =>
+                void writeClipboard(
+                  workspace?.path ?? "",
+                  "copy the working directory",
+                  "Copied working directory",
+                  workspace?.path ?? "",
+                ),
             },
             {
               id: "copy-id",
               label: "Copy session ID",
-              onSelect: () => void writeClipboard(threadId, "copy the session ID"),
+              onSelect: () =>
+                void writeClipboard(threadId, "copy the session ID", "Copied session ID", threadId),
             },
           ]),
         },
