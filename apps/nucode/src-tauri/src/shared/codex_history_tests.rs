@@ -15,7 +15,7 @@ fn history_pages_use_cursors_order_items_and_avoid_deprecated_hydration() {
     let mock_session = session.clone();
     let server = tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
-        let exchanges = vec![
+        let mut exchanges = vec![
             ("thread/resume", json!({"excludeTurns":true}), json!({"thread":{"id":"thread","turns":[]}})),
             ("thread/turns/list", json!({"cursor":null,"sortDirection":"desc","itemsView":"notLoaded"}), json!({"data":[{"id":"new","rootTurnId":"root","status":"completed"},{"id":"old","status":"completed"}],"nextCursor":"older","backwardsCursor":"back"})),
             ("thread/items/list", json!({"turnId":"old","cursor":null,"sortDirection":"asc"}), json!({"data":[{"item":{"id":"a","type":"sleep","durationMs":1}}],"nextCursor":"items-2"})),
@@ -26,8 +26,14 @@ fn history_pages_use_cursors_order_items_and_avoid_deprecated_hydration() {
             ("thread/turns/list", json!({"cursor":null}), json!({"data":[],"nextCursor":null})),
             ("thread/fork", json!({"excludeTurns":true}), json!({"thread":{"id":"fork","turns":[]}})),
         ];
-        for (method, fields, result) in exchanges {
+        while !exchanges.is_empty() {
             let request: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            // Item pages of different turns load concurrently, so those requests can arrive in either order.
+            let index = exchanges.iter().position(|(method, fields, _)| {
+                *method == "thread/items/list" && request["method"] == *method
+                    && fields.as_object().unwrap().iter().all(|(field, value)| &request["params"][field] == value)
+            }).unwrap_or(0);
+            let (method, fields, result) = exchanges.remove(index);
             assert_eq!(request["method"], method);
             assert_eq!(request["params"]["threadId"], "thread");
             assert!(request["params"].get("includeTurns").is_none());
