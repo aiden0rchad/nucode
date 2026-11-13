@@ -422,6 +422,31 @@ where
     })
 }
 
+/// Nothing in the app can reach a removed project's chats, checkpoints or engine state again,
+/// so they go with it. The project's own folder is not touched.
+fn remove_workspace_data(data: &Path, id: &str) {
+    // Ids are UUIDs the app made. Anything else must not be able to name a path outside these folders.
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return;
+    }
+    let folders = [
+        data.join("checkpoints").join(format!("{id}.git")),
+        data.join("thread-metadata").join(id),
+        data.join("workspaces").join(id),
+        data.join("pi").join("sessions").join(id),
+        data.join("pi").join("agent").join(id),
+        data.join("omp").join("sessions").join(id),
+        data.join("omp").join("agent").join(id),
+    ];
+    for folder in folders {
+        if let Err(error) = std::fs::remove_dir_all(&folder) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                eprintln!("remove_workspace: could not delete stored data for {id}: {error}");
+            }
+        }
+    }
+}
+
 pub(crate) async fn remove_workspace_core<FRunGit, FutRunGit, FIsMissing, FRemoveDirAll>(
     id: String,
     workspaces: &Mutex<HashMap<String, WorkspaceEntry>>,
@@ -511,11 +536,16 @@ where
 
     {
         let mut workspaces = workspaces.lock().await;
-        for workspace_id in ids_to_remove {
-            workspaces.remove(&workspace_id);
+        for workspace_id in &ids_to_remove {
+            workspaces.remove(workspace_id);
         }
         let list: Vec<_> = workspaces.values().cloned().collect();
         write_workspaces(storage_path, &list)?;
+    }
+    if let Some(data) = storage_path.parent() {
+        for workspace_id in &ids_to_remove {
+            remove_workspace_data(data, workspace_id);
+        }
     }
 
     if failures.is_empty() {

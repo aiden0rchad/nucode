@@ -125,7 +125,7 @@ describe("useWorkspaceController dialogs", () => {
 
     expect(ask).toHaveBeenCalledTimes(1);
     const [question, askOptions] = vi.mocked(ask).mock.calls[0];
-    expect(String(question)).toContain("Its folder and files stay on disk.");
+    expect(String(question)).toContain("Its chats and checkpoints in nucode are deleted. The folder and its files stay on disk.");
     expect(askOptions).toEqual(expect.objectContaining({ title: "Remove project", okLabel: "Remove" }));
     expect(removeWorkspace).toHaveBeenCalledWith(workspaceOne.id);
     expect(message).toHaveBeenCalledTimes(1);

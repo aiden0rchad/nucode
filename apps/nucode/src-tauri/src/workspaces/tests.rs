@@ -737,3 +737,68 @@ fn remove_worktree_succeeds_when_parent_repo_folder_is_missing() {
         assert!(!workspaces_guard.contains_key(&child.id));
     });
 }
+
+#[test]
+fn remove_workspace_deletes_its_stored_data_and_nothing_else() {
+    run_async(async {
+        let data = std::env::temp_dir().join(format!("codex-monitor-test-{}", Uuid::new_v4()));
+        let project = data.join("project-folder");
+        std::fs::create_dir_all(&project).expect("create project folder");
+        std::fs::write(project.join("README.md"), "kept").expect("write project file");
+        let stored = |id: &str| {
+            vec![
+                data.join("checkpoints").join(format!("{id}.git")),
+                data.join("thread-metadata").join(id),
+                data.join("workspaces").join(id).join("prompts"),
+                data.join("pi").join("sessions").join(id).join("archived"),
+                data.join("pi").join("agent").join(id),
+                data.join("omp").join("sessions").join(id).join("archived"),
+                data.join("omp").join("agent").join(id),
+            ]
+        };
+        for folder in stored("removed").into_iter().chain(stored("other")) {
+            std::fs::create_dir_all(&folder).expect("create stored data");
+            std::fs::write(folder.join("file"), "x").expect("write stored data");
+        }
+
+        let entry = |id: &str, path: &std::path::Path| WorkspaceEntry {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: path.to_string_lossy().to_string(),
+            kind: WorkspaceKind::Main,
+            parent_id: None,
+            worktree: None,
+            settings: WorkspaceSettings::default(),
+        };
+        let workspaces = Mutex::new(HashMap::from([
+            ("removed".to_string(), entry("removed", &project)),
+            ("other".to_string(), entry("other", &data.join("other-folder"))),
+        ]));
+        let sessions: Mutex<HashMap<String, Arc<WorkspaceSession>>> = Mutex::new(HashMap::new());
+        let storage_path = data.join("workspaces.json");
+
+        remove_workspace_core(
+            "removed".to_string(),
+            &workspaces,
+            &sessions,
+            &storage_path,
+            |_root, _args| async move { Ok(()) },
+            |_error| false,
+            |path| std::fs::remove_dir_all(path).map_err(|err| err.to_string()),
+            true,
+            true,
+        )
+        .await
+        .expect("remove workspace");
+
+        for folder in stored("removed") {
+            assert!(!folder.exists(), "{} should be deleted", folder.display());
+        }
+        for folder in stored("other") {
+            assert!(folder.join("file").exists(), "{} should be kept", folder.display());
+        }
+        assert_eq!(std::fs::read_to_string(project.join("README.md")).unwrap(), "kept");
+        assert!(workspaces.lock().await.contains_key("other"));
+        let _ = std::fs::remove_dir_all(&data);
+    });
+}

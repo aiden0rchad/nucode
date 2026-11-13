@@ -279,7 +279,7 @@ export function useWorkspaceDialogs() {
           : "";
 
       return ask(
-        `Remove "${workspaceName}" from nucode?\n\nIts folder and files stay on disk.${detail}`,
+        `Remove "${workspaceName}" from nucode?\n\nIts chats and checkpoints in nucode are deleted. The folder and its files stay on disk.${detail}`,
         {
           title: "Remove project",
           kind: "warning",
