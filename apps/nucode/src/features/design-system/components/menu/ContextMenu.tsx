@@ -48,6 +48,8 @@ export type ContextMenuInputItem = {
   placeholder: string;
   /** Text the field starts with, selected, for renaming. */
   initialValue?: string;
+  /** Right-aligned note saying what Return does, for a field that starts filled in. */
+  hint?: string;
   icon?: ReactNode;
   onSubmit: (value: string) => void;
 };
@@ -354,6 +356,7 @@ function MenuPanel({
                       }
                     }}
                   />
+                  {item.hint ? <span className="ctx-shortcut" aria-hidden>{item.hint}</span> : null}
                 </div>
               );
             }

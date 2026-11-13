@@ -81,7 +81,8 @@ export type SidebarMenuHandlers = {
   getThreadSection?: (workspaceId: string, threadId: string) => string | null;
   onSetThreadSection?: (workspaceId: string, threadId: string, sectionId: string | null) => void;
   onSetThreadUnread?: (workspaceId: string, threadId: string, unread: boolean) => void;
-  onForkThread?: (workspaceId: string, threadId: string) => void;
+  /** Resolves to the new thread's id, which the menu then opens. */
+  onForkThread?: (workspaceId: string, threadId: string) => void | Promise<string | null | void>;
   /** Loads a thread's items without switching the visible thread. */
   loadThreadItems?: (workspaceId: string, threadId: string) => Promise<ConversationItem[]>;
   onMoveThread?: (workspaceId: string, threadId: string, targetWorkspaceId: string) => Promise<boolean>;
@@ -416,7 +417,13 @@ export function useSidebarMenus({
               icon: <GitFork size={16} />,
               disabled: !forkSupported,
               disabledReason: "Fork is not supported for this engine",
-              onSelect: () => onForkThread(workspaceId, threadId),
+              onSelect: () => {
+                void Promise.resolve(onForkThread(workspaceId, threadId)).then((forked) => {
+                  if (forked) {
+                    onSelectThread?.(workspaceId, forked);
+                  }
+                });
+              },
             },
             onForkIntoWorktree && {
               id: "fork-worktree",
@@ -729,6 +736,7 @@ export function useSidebarMenus({
           label: "Rename section",
           placeholder: "Section name",
           initialValue: section.name,
+          hint: "Rename",
           icon: <Pencil size={16} />,
           onSubmit: (name: string) => void rename(name),
         },

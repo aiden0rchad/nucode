@@ -90,7 +90,7 @@ import {
 } from "@app/orchestration/useWorkspaceOrchestration";
 import { useAppShellOrchestration } from "@app/orchestration/useLayoutOrchestration";
 import { normalizeCodexArgsInput } from "@/utils/codexArgsInput";
-import { subscribeThreadWindowRetarget, subscribeTrayOpenThread } from "@services/events";
+import { subscribeAppServerEvents, subscribeThreadWindowRetarget, subscribeTrayOpenThread } from "@services/events";
 import { closeThreadWindow, openThreadWindow } from "@services/tauri";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useThreadWindow, useThreadWindowEffects } from "@app/threadWindow";
@@ -1440,6 +1440,20 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     },
     { enabled: Boolean(threadWindow) },
   );
+  // The engine's own notice of the move arrives with the event that takes the thread out of its old project,
+  // so following it here keeps the window from reading that as "archived" and closing.
+  useTauriEvent(
+    subscribeAppServerEvents,
+    (event: { message?: Record<string, unknown> }) => {
+      const params = (event.message?.params ?? {}) as Record<string, unknown>;
+      if (event.message?.method !== "thread/moved" || params.threadId !== targetThreadId) return;
+      const workspaceId = String(params.targetWorkspaceId ?? "");
+      if (!workspaceId) return;
+      threadWindowSeenRef.current = false;
+      setThreadTarget((current) => (current ? { ...current, workspaceId } : current));
+    },
+    { enabled: Boolean(threadWindow) },
+  );
   // The workspace listing can move the open thread aside while it loads; put it back, a few times at most.
   useEffect(() => {
     if (!targetThreadId || !targetWorkspaceId || activeThreadId === targetThreadId) return;
@@ -1944,7 +1958,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         onAssignWorkspaceSection: (workspaceId, groupId) => { void updateWorkspaceSettings(workspaceId, { groupId }); },
         onEditProject: () => modalActions.openSettings("projects"),
         onSetThreadUnread: (_workspaceId, threadId, unread) => markThreadUnread(threadId, unread),
-        onForkThread: (workspaceId, threadId) => { void forkThreadForWorkspace(workspaceId, threadId, { onError: message => pushErrorToast({ title: "Couldn't fork chat", message }) }); },
+        onForkThread: (workspaceId, threadId) => forkThreadForWorkspace(workspaceId, threadId, { onError: message => pushErrorToast({ title: "Couldn't fork chat", message }) }),
         onMoveThread: moveThread,
         onDeleteThreadPermanently: deleteThreadPermanently,
         onForkIntoWorktree: (workspaceId, threadId) => {

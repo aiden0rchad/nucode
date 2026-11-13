@@ -434,11 +434,21 @@ describe("thread menu", () => {
     expect(screen.queryByRole("menuitem", { name: "Section" })).toBeNull();
   });
 
-  it("forks in this project", () => {
-    const handlers = makeHandlers();
+  it("forks in this project and opens the fork", async () => {
+    const handlers = makeHandlers({ onForkThread: vi.fn(async () => "t-fork"), onSelectThread: vi.fn() });
     openMenu(handlers, { kind: "thread" });
     chooseFromSubmenu("Fork", "Fork in this project");
     expect(handlers.onForkThread).toHaveBeenCalledWith("p1", "t1");
+    await waitFor(() => expect(handlers.onSelectThread).toHaveBeenCalledWith("p1", "t-fork"));
+  });
+
+  it("opens nothing when the fork failed", async () => {
+    const handlers = makeHandlers({ onForkThread: vi.fn(async () => null), onSelectThread: vi.fn() });
+    openMenu(handlers, { kind: "thread" });
+    chooseFromSubmenu("Fork", "Fork in this project");
+    await waitFor(() => expect(handlers.onForkThread).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(handlers.onSelectThread).not.toHaveBeenCalled();
   });
 
   it("disables the fork row for an engine that cannot fork", () => {
@@ -538,6 +548,7 @@ describe("section menu", () => {
     const handlers = sectionHandlers();
     openMenu(handlers, { kind: "section" });
     expect(labels(screen.getByRole("menu"))).toEqual(["---", "Delete section"]);
+    expect(screen.getByRole("menu").textContent).toContain("Rename");
     const input = screen.getByRole("textbox", { name: "Rename section" }) as HTMLInputElement;
     expect(input.value).toBe("Work");
     fireEvent.change(input, { target: { value: "Clients" } });
