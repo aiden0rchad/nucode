@@ -812,6 +812,53 @@ impl PiEngine {
             sessions.insert(new_id, Session { workspace: workspace.into(), thread: cloned.clone(), file, process: None, configuration: String::new() });
             return Ok(json!({"result":thread_response(cloned, false, "read-only")}));
         }
+        if method == "thread/fork" && self.profile.omp() && !self.chat && !self.work {
+            // omp has no clone RPC: copy the session file, as the chat fork does.
+            let (provider, model) = Self::model(&registry, &policy, params.get("model"), Some(&s.thread))?;
+            let process = s.process.clone();
+            // Holding the operation lock keeps anything from being written through an idle process meanwhile.
+            let _operation = match &process { Some(p) => Some(p.operation.lock().await), None => None };
+            if let Some(p) = &process {
+                if p.running.load(Ordering::SeqCst) || p.translator.lock().await.active {
+                    return Err("Finish or interrupt the turn before forking".into());
+                }
+            }
+            let new_id = uuid::Uuid::new_v4().to_string();
+            let file = self.directory(workspace)?.join(format!("{new_id}.jsonl"));
+            fork_session(&s.file, &file, &new_id, &Value::Null, None)?;
+            let result = (|| -> Result<Value, String> {
+                let bytes = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+                let (first, rest) = bytes.split_once('\n').ok_or("Invalid session")?;
+                let mut header: Value = serde_json::from_str(first).map_err(|e| e.to_string())?;
+                if let Some(h) = header.as_object_mut() { h.remove("sideOf"); }
+                header["forkedFromId"] = json!(id);
+                header["modelProvider"] = json!(provider.id);
+                header["model"] = json!(model);
+                let mut output = format!("{header}\n{rest}");
+                if s.thread["modelProvider"] != provider.id || s.thread["model"] != model {
+                    let leaf = rest.lines().last().map(serde_json::from_str::<Value>).transpose().map_err(|e| e.to_string())?
+                        .map(|entry| entry["id"].clone()).unwrap_or(Value::Null);
+                    let change = json!({"type":"model_change","id":uuid::Uuid::new_v4().to_string(),"parentId":leaf,"timestamp":chrono::Utc::now().to_rfc3339(),"provider":config::provider_id(provider,&registry),"modelId":model});
+                    output.push_str(&format!("{change}\n"));
+                }
+                std::fs::write(&file, output).map_err(|e| e.to_string())?;
+                let (mut cloned, _) = read_session(&file, &registry)?;
+                cloned["forkedFromId"] = json!(id);
+                cloned["modelProvider"] = json!(provider.id);
+                cloned["model"] = json!(model);
+                config::write_team(&team_home, &new_id, config::read_team(&team_home, id)?.as_ref())?;
+                Ok(cloned)
+            })();
+            let cloned = match result {
+                Ok(cloned) => cloned,
+                Err(e) => { let _ = std::fs::remove_file(&file); let _ = config::write_team(&team_home, &new_id, None); return Err(e); }
+            };
+            sessions.insert(new_id, Session { workspace: workspace.into(), thread: cloned.clone(), file, process: None, configuration: String::new() });
+            let mut notification = cloned.clone();
+            notification["turns"] = json!([]);
+            self.emit(workspace, json!({"method":"thread/started","params":{"thread":notification}}));
+            return Ok(json!({"result":thread_response(cloned, false, "ask")}));
+        }
         if method == "thread/accessMode/set" || method == "turn/start" {
             let mode = params["accessMode"].as_str().or_else(|| {
                 match params["sandboxPolicy"]["type"].as_str() {

@@ -2952,3 +2952,110 @@ async fn move_rejects_an_unreadable_copy_before_touching_the_original() {
     assert!(events.lock().unwrap().is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+fn engine_for(dir: &Path, workspace: &str, name: &str) -> PiEngine {
+    let cwd = dir.join(name);
+    std::fs::create_dir_all(&cwd).unwrap();
+    PiEngine::new(dir.to_path_buf(), workspace.into(), cwd.to_string_lossy().into(), None, Arc::new(|_, _| {}))
+}
+
+#[tokio::test]
+async fn move_works_when_each_project_has_its_own_engine() {
+    for profile in ["pi", "omp"] {
+        let dir = temp();
+        let mut a = engine_for(&dir, "a", "project-a");
+        let mut b = engine_for(&dir, "b", "project-b");
+        for engine in [&mut a, &mut b] {
+            engine.profile.definition = crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), profile).unwrap().0;
+        }
+        let file = write_session_file(&a, "a", "thread-a", "/project-a");
+        let target_a = dir.join("project-a").to_string_lossy().into_owned();
+        let target_b = dir.join("project-b").to_string_lossy().into_owned();
+        assert_eq!(listed(&a, "a").await, vec!["thread-a"]);
+        assert!(!a.paths.lock().await.contains_key("b"));
+
+        let moved = a.request("a", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"b","targetPath":target_b})).await.unwrap();
+        assert_eq!(moved["result"]["thread"]["cwd"], target_b.as_str());
+        assert!(!file.exists());
+        assert!(a.request("a", "thread/resume", json!({"threadId":"thread-a"})).await.is_err(), "the old engine no longer serves it");
+        assert_eq!(listed(&b, "b").await, vec!["thread-a"]);
+        let resumed = b.request("b", "thread/resume", json!({"threadId":"thread-a"})).await.unwrap();
+        assert_eq!(resumed["result"]["thread"]["cwd"], target_b.as_str());
+        let text = std::fs::read_to_string(b.directory("b").unwrap().join("thread-a.jsonl")).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(text.lines().next().unwrap()).unwrap()["cwd"], target_b.as_str());
+
+        b.request("b", "thread/move", json!({"threadId":"thread-a","targetWorkspaceId":"a","targetPath":target_a})).await.unwrap();
+        assert!(b.request("b", "thread/resume", json!({"threadId":"thread-a"})).await.is_err());
+        assert_eq!(listed(&a, "a").await, vec!["thread-a"]);
+        let back = a.request("a", "thread/resume", json!({"threadId":"thread-a"})).await.unwrap();
+        assert_eq!(back["result"]["thread"]["cwd"], target_a.as_str());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+async fn omp_running_engine(dir: &Path) -> (PiEngine, String) {
+    std::fs::create_dir_all(dir.join("project-a")).unwrap();
+    let (mut engine, _events) = file_engine(dir);
+    engine.fake = true;
+    engine.keys = Arc::new(Keys);
+    let providers: Vec<ProviderEntry> = ["first", "second"].iter().map(|id| serde_json::from_value(json!({"id":id,"name":id,"kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]})).unwrap()).collect();
+    engine.configure("workspace", providers, AgentPolicy::default()).await;
+    let started = engine.request("workspace", "thread/start", json!({"model":"first/fake"})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap().to_owned();
+    // The fake peer cannot run as omp, so the live process starts as pi and the engine then acts as omp.
+    engine.profile.definition = crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0;
+    std::fs::create_dir_all(engine.directory("workspace").unwrap()).unwrap();
+    (engine, id)
+}
+
+#[tokio::test]
+async fn omp_fork_copies_the_session_file_without_the_clone_rpc() {
+    let dir = temp();
+    let (engine, id) = omp_running_engine(&dir).await;
+    let source = engine.sessions.lock().await.get(&id).unwrap().file.clone();
+    let body = json!({"type":"message","id":"m1","parentId":null,"message":{"role":"user","timestamp":1,"content":"hello"}});
+    let mut text = std::fs::read_to_string(&source).unwrap();
+    text.push_str(&format!("{body}\n"));
+    std::fs::write(&source, &text).unwrap();
+    let home = dir.join("omp/agent/workspace");
+    let mut team = AgentPolicy::default().subagents;
+    team.max_run_minutes = 9;
+    config::write_team(&home, &id, Some(&team)).unwrap();
+    let process = engine.sessions.lock().await.get(&id).unwrap().process.clone().unwrap();
+
+    let forked = engine.request("workspace", "thread/fork", json!({"threadId":id,"model":"second/fake"})).await.unwrap();
+    let thread = &forked["result"]["thread"];
+    let new_id = thread["id"].as_str().unwrap();
+    assert_ne!(new_id, id);
+    assert_eq!(thread["forkedFromId"], id.as_str());
+    assert_eq!(thread["modelProvider"], "second");
+    let copy = std::fs::read_to_string(engine.directory("workspace").unwrap().join(format!("{new_id}.jsonl"))).unwrap();
+    let rows: Vec<Value> = copy.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(rows[0]["id"], new_id);
+    assert_eq!(rows[0]["forkedFromId"], id.as_str());
+    assert!(rows[0].get("sideOf").is_none());
+    assert_eq!(rows[0]["cwd"], thread["cwd"]);
+    assert!(rows.iter().any(|r| r["id"] == "m1"));
+    assert_eq!(rows.last().unwrap()["type"], "model_change", "a different model appends a model change");
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), text, "the source is untouched");
+    assert_eq!(config::read_team(&home, new_id).unwrap().unwrap().max_run_minutes, 9);
+    assert!(engine.sessions.lock().await.get(new_id).unwrap().process.is_none());
+    let requests = std::fs::read_to_string(source.with_extension("requests")).unwrap_or_default();
+    assert!(!requests.contains("\"clone\""), "omp has no clone RPC");
+    assert!(process.alive.load(Ordering::SeqCst), "an idle process is left alone");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn omp_fork_is_refused_while_the_source_turn_runs() {
+    let dir = temp();
+    let (engine, id) = omp_running_engine(&dir).await;
+    let process = engine.sessions.lock().await.get(&id).unwrap().process.clone().unwrap();
+    process.running.store(true, Ordering::SeqCst);
+    let before = std::fs::read_dir(engine.directory("workspace").unwrap()).unwrap().count();
+    let error = engine.request("workspace", "thread/fork", json!({"threadId":id})).await.unwrap_err();
+    assert!(error.contains("Finish or interrupt the turn before forking"), "{error}");
+    assert_eq!(std::fs::read_dir(engine.directory("workspace").unwrap()).unwrap().count(), before, "nothing is written");
+    process.running.store(false, Ordering::SeqCst);
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -78,7 +78,9 @@ for line in sys.stdin:
             assert request["level"] in levels
     if kind == "get_messages":
         response["data"] = {"messages": []}
-    if kind == "clone":
+    if kind == "clone" and os.environ.get("NUCODE_OMP"):
+        response.update(success=False, error="Unknown command: clone")
+    elif kind == "clone":
         header = dict(header, id=str(uuid.uuid4()))
         session = session.with_name(header["id"] + ".jsonl")
         session.write_text(json.dumps(header) + "\n")
