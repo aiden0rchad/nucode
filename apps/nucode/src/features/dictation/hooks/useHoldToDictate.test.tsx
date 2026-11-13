@@ -52,6 +52,7 @@ describe("useHoldToDictate", () => {
     key("keyup", { key: "Alt" });
     expect(startDictation).toHaveBeenCalledTimes(1);
     expect(cancelDictation).toHaveBeenCalledTimes(1);
+    expect(cancelDictation).toHaveBeenCalledWith({ silent: true });
     expect(stopDictation).not.toHaveBeenCalled();
   });
 
@@ -63,6 +64,7 @@ describe("useHoldToDictate", () => {
     expect(cancelDictation).not.toHaveBeenCalled();
     setState("listening");
     expect(cancelDictation).toHaveBeenCalledTimes(1);
+    expect(cancelDictation).toHaveBeenCalledWith({ silent: true });
     expect(stopDictation).not.toHaveBeenCalled();
   });
 

@@ -10,7 +10,7 @@ type UseHoldToDictateArgs = {
   holdKey: string;
   startDictation: (preferredLanguage: string | null) => void | Promise<void>;
   stopDictation: () => void | Promise<void>;
-  cancelDictation: () => void | Promise<void>;
+  cancelDictation: (options?: { silent?: boolean }) => void | Promise<void>;
 };
 
 const HOLD_STOP_GRACE_MS = 1500;
@@ -68,7 +68,7 @@ export function useHoldToDictate({
         holdDictationStopTimeout.current = null;
       }
       try {
-        void Promise.resolve(cancelDictationRef.current()).catch(() => {
+        void Promise.resolve(cancelDictationRef.current({ silent: true })).catch(() => {
           // Errors are surfaced through dictation events.
         });
       } catch {
@@ -113,7 +113,8 @@ export function useHoldToDictate({
         holdDictationStopTimeout.current = null;
       }
       if (stateRef.current === "listening") {
-        safeInvoke(cancelDictationRef.current);
+        // The user was pressing a shortcut, not dictating: no "Canceled" notice.
+        safeInvoke(() => cancelDictationRef.current({ silent: true }));
         return;
       }
       holdDictationCancelPending.current = true;
@@ -194,7 +195,7 @@ export function useHoldToDictate({
         holdDictationStopTimeout.current = null;
       }
       if (stateRef.current === "listening") {
-        safeInvoke(cancelDictationRef.current);
+        safeInvoke(() => cancelDictationRef.current());
       }
     };
 

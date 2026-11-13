@@ -15,7 +15,8 @@ type UseDictationResult = {
   hint: string | null;
   start: (preferredLanguage: string | null) => Promise<void>;
   stop: () => Promise<void>;
-  cancel: () => Promise<void>;
+  /** `silent` drops the recording without the "Canceled" notice. */
+  cancel: (options?: { silent?: boolean }) => Promise<void>;
   clearTranscript: (id: string) => void;
   clearError: () => void;
   clearHint: () => void;
@@ -28,6 +29,7 @@ export function useDictation(): UseDictationResult {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const hintTimeoutRef = useRef<number | null>(null);
+  const silentCancelRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +60,10 @@ export function useDictation(): UseDictationResult {
         return;
       }
       if (event.type === "canceled") {
+        if (silentCancelRef.current) {
+          silentCancelRef.current = false;
+          return;
+        }
         setHint(event.message);
         if (hintTimeoutRef.current) {
           window.clearTimeout(hintTimeoutRef.current);
@@ -90,8 +96,14 @@ export function useDictation(): UseDictationResult {
     await stopDictation();
   }, []);
 
-  const cancel = useCallback(async () => {
-    await cancelDictation();
+  const cancel = useCallback(async (options?: { silent?: boolean }) => {
+    silentCancelRef.current = options?.silent === true;
+    try {
+      await cancelDictation();
+    } catch (error) {
+      silentCancelRef.current = false;
+      throw error;
+    }
   }, []);
 
   const clearTranscript = useCallback(
