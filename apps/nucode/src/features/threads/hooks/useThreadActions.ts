@@ -401,7 +401,8 @@ export function useThreadActions({
     async (
       workspaceId: string,
       threadId: string,
-      options?: { activate?: boolean; model?: string },
+      // `onError` receives the reason when nothing was forked, for callers that tell the user.
+      options?: { activate?: boolean; model?: string; onError?: (message: string) => void },
     ) => {
       if (!threadId) {
         return null;
@@ -409,6 +410,7 @@ export function useThreadActions({
       const parent = threadsByWorkspace[workspaceId]?.find(t => t.id === threadId);
       if (!engineCapabilities(parent?.engine ?? "codex", parent?.capabilities).forkLatest) {
         onDebug?.({ id: `${Date.now()}-client-thread-fork-error`, timestamp: Date.now(), source: "error", label: "thread/fork error", payload: "Fork is unsupported for this engine" });
+        options?.onError?.("Fork is not supported for this engine.");
         return null;
       }
       const shouldActivate = options?.activate !== false;
@@ -430,6 +432,7 @@ export function useThreadActions({
         });
         const forkedThreadId = extractThreadId(response);
         if (!forkedThreadId) {
+          options?.onError?.("The engine did not return the new chat.");
           return null;
         }
         dispatch({ type: "ensureThread", workspaceId, threadId: forkedThreadId });
@@ -451,6 +454,7 @@ export function useThreadActions({
           label: "thread/fork error",
           payload: error instanceof Error ? error.message : String(error),
         });
+        options?.onError?.(error instanceof Error ? error.message : String(error));
         return null;
       }
     },

@@ -195,6 +195,22 @@ describe("useThreadActions", () => {
     );
   });
 
+  it("hands the reason to onError when the fork fails", async () => {
+    vi.mocked(forkThread).mockRejectedValue(new Error("The engine could not copy the chat"));
+
+    const { result, dispatch } = renderActions();
+    const onError = vi.fn();
+
+    let threadId: string | null = "unset";
+    await act(async () => {
+      threadId = await result.current.forkThreadForWorkspace("ws-1", "thread-1", { onError });
+    });
+
+    expect(threadId).toBeNull();
+    expect(onError).toHaveBeenCalledWith("The engine could not copy the chat");
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ensureThread" }));
+  });
+
   it("starts a thread without activating when requested", async () => {
     vi.mocked(startThread).mockResolvedValue({
       result: { thread: { id: "thread-2" } },

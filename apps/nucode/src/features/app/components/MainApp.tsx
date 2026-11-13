@@ -931,9 +931,10 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       if (!pending || pending.workspaceId !== parentWorkspace?.id) {
         return;
       }
-      const forkId = await forkThreadForWorkspace(pending.workspaceId, pending.threadId, { activate: false });
+      let reason = "";
+      const forkId = await forkThreadForWorkspace(pending.workspaceId, pending.threadId, { activate: false, onError: message => { reason = message; } });
       if (!forkId) {
-        pushErrorToast({ title: "Couldn't fork chat", message: "The chat was not forked, so nothing was moved into the new worktree." });
+        pushErrorToast({ title: "Couldn't fork chat", message: `The chat was not forked, so nothing was moved into the new worktree.${reason ? ` ${reason}` : ""}` });
         return;
       }
       const moved = await moveThread(pending.workspaceId, forkId, worktree.id, (message) =>
@@ -1941,7 +1942,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         onAssignWorkspaceSection: (workspaceId, groupId) => { void updateWorkspaceSettings(workspaceId, { groupId }); },
         onEditProject: () => modalActions.openSettings("projects"),
         onSetThreadUnread: (_workspaceId, threadId, unread) => markThreadUnread(threadId, unread),
-        onForkThread: (workspaceId, threadId) => { void forkThreadForWorkspace(workspaceId, threadId); },
+        onForkThread: (workspaceId, threadId) => { void forkThreadForWorkspace(workspaceId, threadId, { onError: message => pushErrorToast({ title: "Couldn't fork chat", message }) }); },
         onMoveThread: moveThread,
         onDeleteThreadPermanently: deleteThreadPermanently,
         onForkIntoWorktree: (workspaceId, threadId) => {
