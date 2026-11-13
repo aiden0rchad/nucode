@@ -73,9 +73,7 @@ pub(crate) async fn open_thread_window(
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
         .traffic_light_position(tauri::LogicalPosition::new(19.0, 24.0));
-    let window = builder.build().map_err(|error| error.to_string())?;
-    crate::window_layout::free_when_closed(&window);
-    Ok(())
+    builder.build().map(|_| ()).map_err(|error| error.to_string())
 }
 
 #[cfg(desktop)]
