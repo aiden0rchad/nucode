@@ -403,12 +403,15 @@ pub(crate) fn handle_menu_event<R: tauri::Runtime>(
                 let _ = window.set_focus();
                 return;
             }
-            let _ = WebviewWindowBuilder::new(app, "about", WebviewUrl::App("index.html".into()))
+            if let Ok(window) = WebviewWindowBuilder::new(app, "about", WebviewUrl::App("index.html".into()))
                 .title("About nucode")
                 .resizable(false)
                 .inner_size(360.0, 240.0)
                 .center()
-                .build();
+                .build()
+            {
+                crate::window_layout::free_when_closed(&window);
+            }
         }
         "file_new_agent" => emit_menu_event(app, "menu-new-agent"),
         "file_new_worktree_agent" => emit_menu_event(app, "menu-new-worktree-agent"),

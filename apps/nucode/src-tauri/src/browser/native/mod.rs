@@ -261,6 +261,7 @@ impl NativeBackend {
                                         }
                                         NewWindowResponse::Deny
                                     }).build()?;
+                                crate::window_layout::free_when_closed(&window);
                                 #[cfg(target_os = "macos")]
                                 if let Err(error) = popup::install(&window) {
                                     let _ = window.destroy();

@@ -153,3 +153,40 @@ mod tests {
         assert!(text.contains("top -60, bottom 0, left 0, right 0"), "{text}");
     }
 }
+
+/// tao 0.34 and 0.35 take two references to each native window they create and give back one, so
+/// a closed window is never freed: it stays in the window list, off screen, with its views.
+/// AppKit drops one reference when a window that asks for it closes, which is the spare one.
+/// `tao_still_keeps_a_spare_window_reference` fails once tao is upgraded past the leak.
+#[cfg(target_os = "macos")]
+pub(crate) fn free_when_closed<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        if let Ok(native) = target.ns_window() {
+            unsafe { (*native.cast::<objc2_app_kit::NSWindow>()).setReleasedWhenClosed(true) };
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn free_when_closed<R: tauri::Runtime>(_window: &tauri::WebviewWindow<R>) {}
+
+#[cfg(test)]
+mod free_when_closed_tests {
+    #[test]
+    fn tao_still_keeps_a_spare_window_reference() {
+        let lock = include_str!("../Cargo.lock");
+        let version = lock
+            .split("name = \"tao\"\nversion = \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("tao is in Cargo.lock");
+        let mut parts = version.split('.').map(|part| part.parse::<u32>().expect("numeric tao version"));
+        let (major, minor) = (parts.next().unwrap(), parts.next().unwrap());
+        // Read for the leak: 0.34.5 to 0.35.3. tao 0.37.2 frees closed windows itself.
+        assert!(
+            (major, minor) < (0, 36),
+            "tao {version}: check whether it still over-retains new windows; if not, remove window_layout::free_when_closed and its callers, or closing a window releases it twice",
+        );
+    }
+}
