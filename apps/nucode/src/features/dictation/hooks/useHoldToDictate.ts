@@ -28,6 +28,8 @@ export function useHoldToDictate({
   const holdDictationActive = useRef(false);
   const holdDictationStopPending = useRef(false);
   const holdDictationStopTimeout = useRef<number | null>(null);
+  // Set when another key joined the hold key before listening began: the recording is dropped as soon as it starts.
+  const holdDictationCancelPending = useRef(false);
   const enabledRef = useRef(enabled);
   const readyRef = useRef(ready);
   const stateRef = useRef(state);
@@ -58,6 +60,22 @@ export function useHoldToDictate({
   ]);
 
   useEffect(() => {
+    if (holdDictationCancelPending.current && state === "listening") {
+      holdDictationCancelPending.current = false;
+      holdDictationStopPending.current = false;
+      if (holdDictationStopTimeout.current !== null) {
+        window.clearTimeout(holdDictationStopTimeout.current);
+        holdDictationStopTimeout.current = null;
+      }
+      try {
+        void Promise.resolve(cancelDictationRef.current()).catch(() => {
+          // Errors are surfaced through dictation events.
+        });
+      } catch {
+        // Errors are surfaced through dictation events.
+      }
+      return;
+    }
     if (holdDictationStopPending.current && state === "listening") {
       holdDictationStopPending.current = false;
       if (holdDictationStopTimeout.current !== null) {
@@ -85,9 +103,41 @@ export function useHoldToDictate({
       }
     };
 
+    // The hold key is a plain modifier, so it is also the first key of shortcuts such as Option+Command+R.
+    // A second key means a shortcut, not speech: drop the recording without transcribing it.
+    const abandonForShortcut = () => {
+      holdDictationActive.current = false;
+      holdDictationStopPending.current = false;
+      if (holdDictationStopTimeout.current !== null) {
+        window.clearTimeout(holdDictationStopTimeout.current);
+        holdDictationStopTimeout.current = null;
+      }
+      if (stateRef.current === "listening") {
+        safeInvoke(cancelDictationRef.current);
+        return;
+      }
+      holdDictationCancelPending.current = true;
+      holdDictationStopTimeout.current = window.setTimeout(() => {
+        holdDictationCancelPending.current = false;
+        holdDictationStopTimeout.current = null;
+      }, HOLD_STOP_GRACE_MS);
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const normalizedHoldKey = holdKeyRef.current;
-      if (!normalizedHoldKey || !matchesHoldKey(event, normalizedHoldKey) || event.repeat) {
+      if (!normalizedHoldKey) {
+        return;
+      }
+      if (!matchesHoldKey(event, normalizedHoldKey)) {
+        if (holdDictationActive.current) {
+          abandonForShortcut();
+        }
+        return;
+      }
+      if (event.repeat) {
+        return;
+      }
+      if (otherModifierHeld(event, normalizedHoldKey)) {
         return;
       }
       if (!enabledRef.current || !readyRef.current) {
@@ -98,6 +148,7 @@ export function useHoldToDictate({
       }
       holdDictationActive.current = true;
       holdDictationStopPending.current = false;
+      holdDictationCancelPending.current = false;
       if (holdDictationStopTimeout.current !== null) {
         window.clearTimeout(holdDictationStopTimeout.current);
         holdDictationStopTimeout.current = null;
@@ -160,4 +211,14 @@ export function useHoldToDictate({
       }
     };
   }, []);
+}
+
+/** True when a modifier other than the hold key is already down, as in Command then Option. */
+function otherModifierHeld(event: KeyboardEvent, holdKey: string) {
+  return (
+    (holdKey !== "alt" && event.altKey) ||
+    (holdKey !== "shift" && event.shiftKey) ||
+    (holdKey !== "control" && event.ctrlKey) ||
+    (holdKey !== "meta" && event.metaKey)
+  );
 }
