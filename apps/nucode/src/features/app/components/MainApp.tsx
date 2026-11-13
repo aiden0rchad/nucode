@@ -1939,6 +1939,8 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
         workspaceSections: workspaceGroups,
         backendMode: appSettings.backendMode,
         onCreateSection: async name => (await createWorkspaceGroup(name))?.id ?? null,
+        onRenameSection: renameWorkspaceGroup,
+        onDeleteSection: deleteWorkspaceGroup,
         onAssignWorkspaceSection: (workspaceId, groupId) => { void updateWorkspaceSettings(workspaceId, { groupId }); },
         onEditProject: () => modalActions.openSettings("projects"),
         onSetThreadUnread: (_workspaceId, threadId, unread) => markThreadUnread(threadId, unread),

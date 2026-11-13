@@ -107,10 +107,11 @@ type Target =
   | { kind: "project"; id?: string }
   | { kind: "thread"; workspaceId?: string; threadId?: string; canPin?: boolean }
   | { kind: "worktree"; entry: WorkspaceInfo }
-  | { kind: "clone"; entry: WorkspaceInfo };
+  | { kind: "clone"; entry: WorkspaceInfo }
+  | { kind: "section"; id?: string; name?: string };
 
 function Harness({ handlers, targets }: { handlers: SidebarMenuHandlers; targets: Record<string, Target> }) {
-  const { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu, menu } =
+  const { showThreadMenu, showWorkspaceMenu, showSectionMenu, showWorktreeMenu, showCloneMenu, menu } =
     useSidebarMenus(handlers);
   return (
     <div>
@@ -125,6 +126,8 @@ function Harness({ handlers, targets }: { handlers: SidebarMenuHandlers; targets
             else if (target.kind === "thread")
               showThreadMenu(event, target.workspaceId ?? "p1", target.threadId ?? "t1", target.canPin ?? true);
             else if (target.kind === "worktree") showWorktreeMenu(event, target.entry);
+            else if (target.kind === "section")
+              showSectionMenu(event, { id: target.id ?? "s1", name: target.name ?? "Work" });
             else showCloneMenu(event, target.entry);
           }}
         >
@@ -524,6 +527,66 @@ describe("worktree and clone menus", () => {
     openMenu(handlers, { kind: "clone", entry });
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete clone" }));
     expect(handlers.onDeleteWorkspace).toHaveBeenCalledWith("clone-1");
+  });
+});
+
+describe("section menu", () => {
+  const sectionHandlers = (patch: Partial<SidebarMenuHandlers> = {}) =>
+    makeHandlers({ onRenameSection: vi.fn(async () => true), onDeleteSection: vi.fn(async () => true), ...patch });
+
+  it("renames from a field that starts with the current name", async () => {
+    const handlers = sectionHandlers();
+    openMenu(handlers, { kind: "section" });
+    expect(labels(screen.getByRole("menu"))).toEqual(["---", "Delete section"]);
+    const input = screen.getByRole("textbox", { name: "Rename section" }) as HTMLInputElement;
+    expect(input.value).toBe("Work");
+    fireEvent.change(input, { target: { value: "Clients" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(handlers.onRenameSection).toHaveBeenCalledWith("s1", "Clients"));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("leaves an unchanged name alone", async () => {
+    const handlers = sectionHandlers();
+    openMenu(handlers, { kind: "section" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Rename section" }), { key: "Enter" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(handlers.onRenameSection).not.toHaveBeenCalled();
+  });
+
+  it("says why a rename failed", async () => {
+    const handlers = sectionHandlers({
+      onRenameSection: vi.fn(async () => {
+        throw new Error("A section with that name already exists.");
+      }),
+    });
+    openMenu(handlers, { kind: "section" });
+    const input = screen.getByRole("textbox", { name: "Rename section" });
+    fireEvent.change(input, { target: { value: "Home" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(pushErrorToast).toHaveBeenCalledWith({
+        title: "Couldn't rename section",
+        message: "A section with that name already exists.",
+      }),
+    );
+  });
+
+  it("deletes only after the confirmation, which names the section", async () => {
+    ask.mockResolvedValue(false);
+    const declined = sectionHandlers();
+    openMenu(declined, { kind: "section" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete section" }));
+    await waitFor(() => expect(ask).toHaveBeenCalled());
+    expect(ask.mock.calls[0][0]).toContain('"Work"');
+    expect(declined.onDeleteSection).not.toHaveBeenCalled();
+    cleanup();
+
+    ask.mockResolvedValue(true);
+    const confirmed = sectionHandlers();
+    openMenu(confirmed, { kind: "section" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete section" }));
+    await waitFor(() => expect(confirmed.onDeleteSection).toHaveBeenCalledWith("s1"));
   });
 });
 

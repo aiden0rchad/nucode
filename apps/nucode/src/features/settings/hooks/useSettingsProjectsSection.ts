@@ -151,10 +151,10 @@ export const useSettingsProjectsSection = ({
       groupedWorkspaces.find((entry) => entry.id === group.id)?.workspaces ?? [];
     const detail =
       groupProjects.length > 0
-        ? `\n\nProjects in this group will move to "${ungroupedLabel}".`
+        ? `\n\nProjects in this section will move to "${ungroupedLabel}".`
         : "";
     const confirmed = await ask(`Delete "${group.name}"?${detail}`, {
-      title: "Delete Group",
+      title: "Delete section",
       kind: "warning",
       okLabel: "Delete",
       cancelLabel: "Cancel",

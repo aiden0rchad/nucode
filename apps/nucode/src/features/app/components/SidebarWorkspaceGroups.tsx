@@ -91,6 +91,7 @@ type SidebarWorkspaceGroupsProps = {
     canPin: boolean,
   ) => void;
   onShowWorkspaceMenu: (event: MouseEvent, workspaceId: string) => void;
+  onShowSectionMenu?: (event: MouseEvent, section: { id: string; name: string }) => void;
   onShowWorktreeMenu: (event: MouseEvent, worktree: WorkspaceInfo) => void;
   onShowCloneMenu: (event: MouseEvent, worktree: WorkspaceInfo) => void;
   onToggleExpanded: (workspaceId: string) => void;
@@ -439,6 +440,11 @@ export function SidebarWorkspaceGroups({
         ungrouped={group.id === null}
         isSelected={group.workspaces.some(workspace => workspace.id === entryProps.activeWorkspaceId)}
         onToggleCollapse={toggleGroupCollapse}
+        onContextMenu={
+          group.id && entryProps.onShowSectionMenu
+            ? event => entryProps.onShowSectionMenu?.(event, { id: group.id as string, name: group.name })
+            : undefined
+        }
       >
         {group.id && sectionChatRows?.get(group.id) && (
           <PinnedThreadList

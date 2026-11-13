@@ -5,6 +5,7 @@ import App from "./App";
 import { isMobilePlatform } from "./utils/platformPaths";
 import { restoreTheme } from "@/features/themes/applyTheme";
 import { freezeSharedStorage, threadWindowTarget } from "@app/threadWindow";
+import { hideWebViewContextMenu } from "./utils/webViewContextMenu";
 
 const sentryDsn =
   import.meta.env.VITE_SENTRY_DSN ??
@@ -90,6 +91,7 @@ function syncMobileViewportHeight() {
 
 disableMobileZoomGestures();
 syncMobileViewportHeight();
+if (!import.meta.env.DEV) hideWebViewContextMenu();
 
 async function mount() {
   // Main owns the state kept in localStorage; a thread window only reads it.

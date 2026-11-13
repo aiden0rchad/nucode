@@ -9,6 +9,7 @@ type WorkspaceGroupProps = {
   ungrouped?: boolean;
   isSelected?: boolean;
   onToggleCollapse: (groupId: string) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
   children: React.ReactNode;
 };
 
@@ -18,6 +19,7 @@ export function WorkspaceGroup({
   showHeader,
   isCollapsed,
   onToggleCollapse,
+  onContextMenu,
   children,
 }: WorkspaceGroupProps) {
   const isToggleable = Boolean(toggleId);
@@ -26,6 +28,7 @@ export function WorkspaceGroup({
       {showHeader && (
         <div
           className={`workspace-group-header${isToggleable ? " is-toggleable" : ""}`}
+          onContextMenu={onContextMenu}
           onClick={
             toggleId
               ? () => {

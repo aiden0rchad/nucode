@@ -71,6 +71,8 @@ export type SidebarMenuHandlers = {
   /** Sections a project or chat can be filed under, in display order. */
   sections?: SidebarSection[];
   onCreateSection?: (name: string) => Promise<string | null>;
+  onRenameSection?: (sectionId: string, name: string) => Promise<unknown>;
+  onDeleteSection?: (sectionId: string) => Promise<unknown>;
   isProjectPinned?: (workspaceId: string) => boolean;
   onPinProject?: (workspaceId: string) => void;
   onUnpinProject?: (workspaceId: string) => void;
@@ -169,6 +171,8 @@ export function useSidebarMenus({
   threadStatusById = {},
   sections = [],
   onCreateSection,
+  onRenameSection,
+  onDeleteSection,
   isProjectPinned,
   onPinProject,
   onUnpinProject,
@@ -691,5 +695,55 @@ export function useSidebarMenus({
     [close, open],
   );
 
-  return { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu, menu };
+  const showSectionMenu = useCallback(
+    (event: MouseEvent, section: SidebarSection) => {
+      const rename = async (name: string) => {
+        if (name === section.name) {
+          return;
+        }
+        try {
+          await onRenameSection?.(section.id, name);
+        } catch (error) {
+          pushErrorToast({ title: "Couldn't rename section", message: describeError(error) });
+        }
+      };
+      const remove = async () => {
+        try {
+          const confirmed = await ask(`Delete the section "${section.name}"? Its projects and chats stay in the sidebar.`, {
+            title: "Delete section",
+            kind: "warning",
+            okLabel: "Delete",
+            cancelLabel: "Cancel",
+          });
+          if (confirmed) {
+            await onDeleteSection?.(section.id);
+          }
+        } catch (error) {
+          pushErrorToast({ title: "Couldn't delete section", message: describeError(error) });
+        }
+      };
+      show(event, section.name, [
+        onRenameSection && {
+          kind: "input",
+          id: "section-rename",
+          label: "Rename section",
+          placeholder: "Section name",
+          initialValue: section.name,
+          icon: <Pencil size={16} />,
+          onSubmit: (name: string) => void rename(name),
+        },
+        onRenameSection && onDeleteSection && separator("sep-section"),
+        onDeleteSection && {
+          id: "section-delete",
+          label: "Delete section",
+          icon: <Trash2 size={16} />,
+          danger: true,
+          onSelect: () => void remove(),
+        },
+      ]);
+    },
+    [onDeleteSection, onRenameSection, show],
+  );
+
+  return { showThreadMenu, showWorkspaceMenu, showSectionMenu, showWorktreeMenu, showCloneMenu, menu };
 }

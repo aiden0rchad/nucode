@@ -46,6 +46,8 @@ export type ContextMenuInputItem = {
   id: string;
   label: string;
   placeholder: string;
+  /** Text the field starts with, selected, for renaming. */
+  initialValue?: string;
   icon?: ReactNode;
   onSubmit: (value: string) => void;
 };
@@ -312,6 +314,20 @@ function MenuPanel({
                     className="ctx-input"
                     type="text"
                     placeholder={item.placeholder}
+                    defaultValue={item.initialValue}
+                    onFocus={(event) => {
+                      if (item.initialValue) {
+                        event.currentTarget.select();
+                        event.currentTarget.dataset.selectedOnFocus = "";
+                      }
+                    }}
+                    onMouseUp={(event) => {
+                      // The click that focused the field would otherwise drop the selection again.
+                      if ("selectedOnFocus" in event.currentTarget.dataset) {
+                        delete event.currentTarget.dataset.selectedOnFocus;
+                        event.preventDefault();
+                      }
+                    }}
                     aria-label={item.label}
                     data-ctx-focusable=""
                     data-ctx-id={item.id}

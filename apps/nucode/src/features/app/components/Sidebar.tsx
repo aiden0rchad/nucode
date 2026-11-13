@@ -155,6 +155,8 @@ type SidebarProps = {
   /** Sections (workspace groups) a project or chat can be filed under, in display order. */
   workspaceSections?: Array<{ id: string; name: string }>;
   onCreateSection?: (name: string) => Promise<string | null>;
+  onRenameSection?: (sectionId: string, name: string) => Promise<unknown>;
+  onDeleteSection?: (sectionId: string) => Promise<unknown>;
   onAssignWorkspaceSection?: (workspaceId: string, sectionId: string | null) => void;
   onEditProject?: (workspaceId: string) => void;
   onSetThreadUnread?: (workspaceId: string, threadId: string, unread: boolean) => void;
@@ -225,6 +227,8 @@ export const Sidebar = memo(function Sidebar({
   onReloadWorkspaceThreads,
   workspaceSections = NO_SECTIONS,
   onCreateSection,
+  onRenameSection,
+  onDeleteSection,
   onAssignWorkspaceSection,
   onEditProject,
   onSetThreadUnread,
@@ -335,7 +339,7 @@ export const Sidebar = memo(function Sidebar({
       }),
     [moveThreadSection, onMoveThread],
   );
-  const { showThreadMenu, showWorkspaceMenu, showWorktreeMenu, showCloneMenu, menu } =
+  const { showThreadMenu, showWorkspaceMenu, showSectionMenu, showWorktreeMenu, showCloneMenu, menu } =
     useSidebarMenus({
       onDeleteThread: archiveThread,
       onSyncThread,
@@ -352,6 +356,8 @@ export const Sidebar = memo(function Sidebar({
       threadStatusById,
       sections: workspaceSections,
       onCreateSection,
+      onRenameSection,
+      onDeleteSection,
       isProjectPinned: projectPins.isProjectPinned,
       onPinProject: projectPins.pinProject,
       onUnpinProject: projectPins.unpinProject,
@@ -1272,6 +1278,7 @@ export const Sidebar = memo(function Sidebar({
                   onSelectThread={onSelectThread}
                   onShowThreadMenu={showThreadMenu}
                   onShowWorkspaceMenu={showWorkspaceMenu}
+                  onShowSectionMenu={showSectionMenu}
                   onShowWorktreeMenu={showWorktreeMenu}
                   onShowCloneMenu={showCloneMenu}
                   onToggleExpanded={handleToggleExpanded}
