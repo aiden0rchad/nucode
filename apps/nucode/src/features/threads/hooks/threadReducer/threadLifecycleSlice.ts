@@ -12,7 +12,8 @@ function statusEquals(previous: ThreadStatus, nextStatus: ThreadStatus) {
     previous.isReviewing === nextStatus.isReviewing &&
     previous.processingStartedAt === nextStatus.processingStartedAt &&
     previous.lastDurationMs === nextStatus.lastDurationMs &&
-    (previous.retryNotice ?? null) === (nextStatus.retryNotice ?? null)
+    (previous.retryNotice ?? null) === (nextStatus.retryNotice ?? null) &&
+    (previous.waitingOn ?? null) === (nextStatus.waitingOn ?? null)
   );
 }
 
@@ -271,6 +272,7 @@ export function reduceThreadLifecycle(
         processingStartedAt: null,
         lastDurationMs: nextDuration,
         retryNotice: null,
+        waitingOn: null,
       };
       if (previous && statusEquals(previous, nextStatus)) {
         return state;
@@ -301,6 +303,19 @@ export function reduceThreadLifecycle(
         threadStatusById: {
           ...state.threadStatusById,
           [action.threadId]: { ...previous, retryNotice: action.notice },
+        },
+      };
+    }
+    case "setThreadWaiting": {
+      const previous = state.threadStatusById[action.threadId];
+      if (!previous?.isProcessing || (previous.waitingOn ?? null) === action.waitingOn) {
+        return state;
+      }
+      return {
+        ...state,
+        threadStatusById: {
+          ...state.threadStatusById,
+          [action.threadId]: { ...previous, waitingOn: action.waitingOn },
         },
       };
     }

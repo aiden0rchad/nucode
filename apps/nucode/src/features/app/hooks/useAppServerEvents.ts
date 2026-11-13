@@ -99,6 +99,8 @@ type AppServerEventHandlers = {
     tokenUsage: Record<string, unknown> | null,
   ) => void;
   onThreadContextUpdated?: (workspaceId: string, threadId: string, context: Record<string, unknown>) => void;
+  /** What the thread's engine start is blocked on, or null once it moves again. */
+  onThreadWaitingChanged?: (workspaceId: string, threadId: string, waitingOn: string | null) => void;
 };
 
 export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
@@ -127,6 +129,7 @@ export const METHODS_ROUTED_IN_USE_APP_SERVER_EVENTS = [
   "thread/context/updated",
   "thread/tokenUsage/updated",
   "thread/unarchived",
+  "thread/waiting/changed",
   "turn/completed",
   "turn/diff/updated",
   "turn/plan/updated",
@@ -428,6 +431,14 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         const context = params.context;
         if (threadId && context && typeof context === "object") {
           currentHandlers.onThreadContextUpdated?.(workspace_id, threadId, context as Record<string, unknown>);
+        }
+        return;
+      }
+
+      if (method === "thread/waiting/changed") {
+        const threadId = String(params.threadId ?? "").trim();
+        if (threadId) {
+          currentHandlers.onThreadWaitingChanged?.(workspace_id, threadId, typeof params.waitingOn === "string" ? params.waitingOn : null);
         }
         return;
       }

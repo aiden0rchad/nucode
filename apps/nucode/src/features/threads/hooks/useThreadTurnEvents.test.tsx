@@ -892,6 +892,19 @@ describe("useThreadTurnEvents", () => {
     expect(pushThreadErrorMessage).toHaveBeenCalledWith("thread-1", "Turn failed: boom", undefined, "turn-resumed-error");
   });
 
+  it("records what a thread's engine start is waiting on", () => {
+    const { result, dispatch, markProcessing } = makeOptions();
+
+    act(() => {
+      result.current.onThreadWaitingChanged("ws-1", "thread-1", "macosKeychain");
+      result.current.onThreadWaitingChanged("ws-1", "thread-1", null);
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: "macosKeychain" });
+    expect(dispatch).toHaveBeenNthCalledWith(2, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: null });
+    expect(markProcessing).not.toHaveBeenCalled();
+  });
+
   it("shows retrying turn errors without ending the turn", () => {
     const { result, dispatch, markProcessing, pushThreadErrorMessage } = makeOptions();
 

@@ -64,6 +64,7 @@ describe("useAppServerEvents", () => {
       onThreadStarted: vi.fn(),
       onThreadNameUpdated: vi.fn(),
       onThreadStatusChanged: vi.fn(),
+      onThreadWaitingChanged: vi.fn(),
       onThreadClosed: vi.fn(),
       onThreadArchived: vi.fn(),
       onThreadMoved: vi.fn(),
@@ -217,6 +218,19 @@ describe("useAppServerEvents", () => {
       "thread-2",
       { type: "active" },
     );
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: { method: "thread/waiting/changed", params: { threadId: "thread-2", waitingOn: "macosKeychain" } },
+      });
+      listener?.({
+        workspace_id: "ws-1",
+        message: { method: "thread/waiting/changed", params: { threadId: "thread-2", waitingOn: null } },
+      });
+    });
+    expect(handlers.onThreadWaitingChanged).toHaveBeenNthCalledWith(1, "ws-1", "thread-2", "macosKeychain");
+    expect(handlers.onThreadWaitingChanged).toHaveBeenNthCalledWith(2, "ws-1", "thread-2", null);
 
     act(() => {
       listener?.({

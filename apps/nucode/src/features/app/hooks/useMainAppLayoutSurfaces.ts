@@ -445,6 +445,9 @@ function buildPrimarySurface({
       retryNotice: activeThreadId
         ? threadStatusById[activeThreadId]?.retryNotice ?? null
         : null,
+      waitingOn: activeThreadId
+        ? threadStatusById[activeThreadId]?.waitingOn ?? null
+        : null,
       lastDurationMs: activeThreadId
         ? threadStatusById[activeThreadId]?.lastDurationMs ?? null
         : null,

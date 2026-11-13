@@ -48,6 +48,18 @@ describe("Messages", () => {
     expect(screen.queryByText(/Nothing restarts automatically/)).toBeNull();
     expect(screen.getByText("Working…")).toBeTruthy();
   });
+  it.each([
+    ["macosKeychain", "Waiting for macOS keychain access…"],
+    ["systemKeychain", "Waiting for the system keychain…"],
+  ])("says a turn held up by %s is waiting on the keychain", (waitingOn, label) => {
+    const props = { items: [], threadId: "thread", openTargets: [], selectedOpenAppId: "", isThinking: true };
+    const { container, rerender } = render(<Messages {...props} waitingOn={waitingOn} />);
+    expect(container.querySelector(".working-text")?.textContent).toBe(label);
+    rerender(<Messages {...props} waitingOn={null} />);
+    expect(container.querySelector(".working-text")?.textContent).toBe("Working…");
+    rerender(<Messages {...props} waitingOn="a-reason-this-build-does-not-know" />);
+    expect(container.querySelector(".working-text")?.textContent).toBe("Working…");
+  });
   it("shows waiting for approval instead of a working spinner", () => {
     render(<Messages items={[]} threadId="thread" isThinking waitingForApproval openTargets={[]} selectedOpenAppId="" />);
     expect(screen.getByRole("status").textContent).toContain("Waiting for you");

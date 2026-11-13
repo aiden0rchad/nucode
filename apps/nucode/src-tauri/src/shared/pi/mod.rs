@@ -41,6 +41,32 @@ struct Session {
     process: Option<Arc<Process>>,
     configuration: String,
 }
+/// How long a credential read may take before the thread is told it is waiting on the keychain.
+const KEYCHAIN_NOTICE: Duration = Duration::from_millis(1500);
+/// An engine start decided with the session in hand; `secrets` reads the keychain for it
+/// and `launch` starts the process.
+struct Start {
+    web: bool,
+    connectors: Vec<crate::types::McpServerEntry>,
+    settings: crate::types::AppSettings,
+    fingerprint: String,
+    required: String,
+}
+enum Prepared {
+    Running(Arc<Process>),
+    Start(Start),
+}
+// Clears the keychain notice however the wait ends, including a dropped request.
+struct KeychainWait<'a> {
+    engine: &'a PiEngine,
+    workspace: &'a str,
+    thread: &'a str,
+}
+impl Drop for KeychainWait<'_> {
+    fn drop(&mut self) {
+        self.engine.waiting(self.workspace, self.thread, Value::Null);
+    }
+}
 // A cancelled startup must not leave a child alive before it joins the session.
 struct StartingProcess(Option<Arc<Process>>);
 impl Drop for StartingProcess {
@@ -59,6 +85,8 @@ pub(crate) struct PiEngine {
     pub read_only_folders: Mutex<HashMap<String, Vec<String>>>,
     pub paths: Mutex<HashMap<String, String>>,
     sessions: Mutex<HashMap<String, Session>>,
+    /// One gate per thread: an engine start holds it while `sessions` is released.
+    starting: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     services: services::Services,
     registry: Mutex<HashMap<String, (Vec<ProviderEntry>, AgentPolicy)>>,
     events: broadcast::Sender<Value>,
@@ -82,6 +110,7 @@ impl Default for PiEngine {
             read_only_folders: Mutex::new(HashMap::new()),
             paths: Mutex::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
+            starting: Mutex::new(HashMap::new()),
             services: services::Services::default(),
             registry: Mutex::new(HashMap::new()),
             events: broadcast::channel(1024).0,
@@ -341,12 +370,82 @@ impl PiEngine {
             .ok_or("Enable this registry provider and model in Settings")?;
         Ok((provider, selected.model_id))
     }
+    fn waiting(&self, workspace: &str, thread: &str, on: Value) {
+        self.emit(workspace, json!({"method":"thread/waiting/changed","params":{"threadId":thread,"waitingOn":on}}));
+    }
+    /// Starts or reuses the engine of a session the caller holds exclusively, such as a
+    /// thread not yet in `sessions`. Stored threads go through `engine`.
     async fn spawn(
         &self,
         s: &mut Session,
         registry: &[ProviderEntry],
         policy: &AgentPolicy,
     ) -> Result<Arc<Process>, String> {
+        let start = match self.prepare(s, registry, policy).await? {
+            Prepared::Running(process) => return Ok(process),
+            Prepared::Start(start) => start,
+        };
+        let id = s.thread["id"].as_str().ok_or("Pi session missing ID")?.to_owned();
+        let secrets = self.secrets(&s.workspace, &id, registry, &start).await?;
+        self.launch(s, registry, policy, start, secrets).await
+    }
+    /// The live engine of a stored thread and the thread as it then stands, starting the
+    /// engine if needed. The keychain read can sit behind a system dialog for minutes, so it
+    /// runs with `sessions` released; the thread's gate keeps a second request for the same
+    /// thread from starting a second engine meanwhile.
+    async fn engine(
+        &self,
+        workspace: &str,
+        id: &str,
+        registry: &[ProviderEntry],
+        policy: &AgentPolicy,
+    ) -> Result<(Arc<Process>, Value), String> {
+        let gate = self.starting.lock().await.entry(id.into()).or_default().clone();
+        let _starting = gate.lock().await;
+        let start = {
+            let sessions = self.sessions.lock().await;
+            let s = sessions.get(id).filter(|s| s.workspace == workspace).ok_or("Unknown pi thread")?;
+            match self.prepare(s, registry, policy).await? {
+                Prepared::Running(process) => return Ok((process, s.thread.clone())),
+                Prepared::Start(start) => start,
+            }
+        };
+        let secrets = self.secrets(workspace, id, registry, &start).await?;
+        let mut sessions = self.sessions.lock().await;
+        let s = sessions.get_mut(id).filter(|s| s.workspace == workspace).ok_or("Unknown pi thread")?;
+        let process = self.launch(s, registry, policy, start, secrets).await?;
+        Ok((process, s.thread.clone()))
+    }
+    /// Reads the keys an engine start needs. A newly installed build makes macOS ask before
+    /// the first read and the call blocks until the user answers, so a read still pending
+    /// after `KEYCHAIN_NOTICE` tells the thread what it is waiting for.
+    async fn secrets(
+        &self,
+        workspace: &str,
+        thread: &str,
+        registry: &[ProviderEntry],
+        start: &Start,
+    ) -> Result<(HashMap<String, String>, super::connectors::Delivery), String> {
+        let (registry, connectors, keys, required) = (registry.to_vec(), start.connectors.clone(), self.keys.clone(), start.required.clone());
+        let mut lookup = tokio::task::spawn_blocking(move || -> Result<_, String> {
+            Ok((config::credentials(&registry, keys.as_ref(), &required)?, super::connectors::delivery(&connectors, keys.as_ref())?))
+        });
+        let done = match tokio::time::timeout(KEYCHAIN_NOTICE, &mut lookup).await {
+            Ok(done) => done,
+            Err(_) => {
+                let _wait = KeychainWait { engine: self, workspace, thread };
+                self.waiting(workspace, thread, json!(if cfg!(target_os = "macos") { "macosKeychain" } else { "systemKeychain" }));
+                lookup.await
+            }
+        };
+        done.map_err(|_| "Credential lookup failed".to_string())?
+    }
+    async fn prepare(
+        &self,
+        s: &Session,
+        registry: &[ProviderEntry],
+        policy: &AgentPolicy,
+    ) -> Result<Prepared, String> {
         let web = self.chat && s.thread["chatWeb"] == true;
         let mut connectors = if self.chat && !web { vec![] } else { super::connectors::load(
             self.data.as_ref().ok_or("Pi runtime is not configured")?,
@@ -367,7 +466,7 @@ impl PiEngine {
             serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact, &settings.response_style)).map_err(|e| e.to_string())?;
         if let Some(p) = &s.process {
             if p.alive.load(Ordering::SeqCst) && s.configuration == fingerprint {
-                return Ok(p.clone());
+                return Ok(Prepared::Running(p.clone()));
             }
             if p.alive.load(Ordering::SeqCst) {
                 if p.running.load(Ordering::SeqCst) || p.translator.lock().await.active {
@@ -376,7 +475,22 @@ impl PiEngine {
                 p.shutdown().await?;
             }
         }
+        let required = Self::model(registry, policy, None, Some(&s.thread))?.0.id.clone();
+        Ok(Prepared::Start(Start { web, connectors, settings, fingerprint, required }))
+    }
+    async fn launch(
+        &self,
+        s: &mut Session,
+        registry: &[ProviderEntry],
+        policy: &AgentPolicy,
+        Start { web, connectors, settings, fingerprint, required }: Start,
+        (credentials, delivery): (HashMap<String, String>, super::connectors::Delivery),
+    ) -> Result<Arc<Process>, String> {
         let (provider, model) = Self::model(registry, policy, None, Some(&s.thread))?;
+        // Only `required` was checked for a saved key, and the thread was free to change meanwhile.
+        if provider.id != required {
+            return Err("The thread's model changed while its engine was starting. Send the message again.".into());
+        }
         let id = s.thread["id"].as_str().ok_or("Pi session missing ID")?.to_owned();
         let home = self
             .data
@@ -384,12 +498,6 @@ impl PiEngine {
             .ok_or("Pi runtime is not configured")?
             .join(if self.chat { "chats/agent".into() } else { format!("{}/agent", self.profile.id()) })
             .join(if self.chat { &id } else { &s.workspace });
-        let (credentials, delivery) = {
-            let (registry, connectors, keys, required) = (registry.to_vec(), connectors.clone(), self.keys.clone(), provider.id.clone());
-            tokio::task::spawn_blocking(move || -> Result<_, String> {
-                Ok((config::credentials(&registry, keys.as_ref(), &required)?, super::connectors::delivery(&connectors, keys.as_ref())?))
-            }).await.map_err(|_| "Credential lookup failed".to_string())??
-        };
         let mut env = config::prepare(&home, registry, self.graph.as_ref(), &settings.auto_compact)?;
         env.extend(credentials);
         let features = super::engine_registry::features(self.data.as_deref());
@@ -1000,17 +1108,21 @@ impl PiEngine {
             if overridden { providers::validate(&registry, &effective)?; }
             super::engines::feature_policy(effective, &super::engine_registry::features(self.data.as_deref()))
         } else { policy };
-        let p = if matches!(method, "turn/interrupt" | "turn/steer") {
+        let live = if matches!(method, "turn/interrupt" | "turn/steer") {
             match &s.process {
-                Some(p) if p.alive.load(Ordering::SeqCst) => p.clone(),
+                Some(p) if p.alive.load(Ordering::SeqCst) => Some((p.clone(), s.thread.clone())),
                 _ if method == "turn/interrupt" => return Ok(json!({"result":{}})),
-                _ => self.spawn(s, &registry, &policy).await?,
+                _ => None,
             }
         } else {
-            self.spawn(s, &registry, &policy).await?
+            None
         };
-        let thread = s.thread.clone();
+        // Starting an engine may wait on the keychain; other requests must not wait with it.
         drop(sessions);
+        let (p, thread) = match live {
+            Some(live) => live,
+            None => self.engine(workspace, id, &registry, &policy).await?,
+        };
         let _operation = if matches!(method, "turn/interrupt" | "turn/steer") {
             None
         } else {

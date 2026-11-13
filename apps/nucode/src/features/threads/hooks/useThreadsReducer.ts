@@ -26,6 +26,8 @@ type ThreadActivityStatus = {
   lastDurationMs: number | null;
   /** Provider retry in progress; cleared by the next sign of progress or the turn's end. */
   retryNotice?: string | null;
+  /** What the engine start is blocked on (see waitingLabel); cleared by the backend or the turn's end. */
+  waitingOn?: string | null;
 };
 
 export type ThreadState = {
@@ -71,6 +73,7 @@ export type ThreadAction =
     }
   | { type: "markReviewing"; threadId: string; isReviewing: boolean }
   | { type: "setRetryNotice"; threadId: string; notice: string | null }
+  | { type: "setThreadWaiting"; threadId: string; waitingOn: string | null }
   | { type: "markUnread"; threadId: string; hasUnread: boolean }
   | { type: "removeItem"; threadId: string; itemId: string }
   | { type: "addAssistantMessage"; threadId: string; text: string; id?: string; isError?: boolean; retryMessage?: { text: string; images?: string[] } }

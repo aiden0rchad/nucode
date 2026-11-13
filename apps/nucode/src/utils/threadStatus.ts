@@ -6,6 +6,17 @@ export type ThreadStatusFlags = {
   isReviewing?: boolean;
 };
 
+// Reasons the backend gives in thread/waiting/changed. It names the platform because the
+// keychain is on the machine running the engine, which may not be the one showing this.
+const WAITING_LABELS: Record<string, string> = {
+  macosKeychain: "Waiting for macOS keychain access…",
+  systemKeychain: "Waiting for the system keychain…",
+};
+
+export function waitingLabel(waitingOn: string | null | undefined): string | null {
+  return (waitingOn && WAITING_LABELS[waitingOn]) || null;
+}
+
 export type ThreadStatusById = Record<string, ThreadStatusFlags>;
 
 export type ThreadStatusClass = "processing" | "reviewing" | "unread" | "ready" | "failed" | "stopped";

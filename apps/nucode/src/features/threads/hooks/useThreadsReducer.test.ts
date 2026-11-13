@@ -271,6 +271,20 @@ describe("threadReducer", () => {
     expect(failed.threadStatusById["thread-1"]?.retryNotice).toBeNull();
   });
 
+  it("keeps what a start is waiting on until the backend clears it or the turn ends", () => {
+    const waitingOn = (state: typeof initialState) => state.threadStatusById["thread-1"]?.waitingOn ?? null;
+    const wait = { type: "setThreadWaiting", threadId: "thread-1", waitingOn: "macosKeychain" } as const;
+    expect(threadReducer(initialState, wait)).toBe(initialState);
+    const running = threadReducer(initialState, { type: "markProcessing", threadId: "thread-1", isProcessing: true, timestamp: 1000 });
+    const waiting = threadReducer(running, wait);
+    expect(waitingOn(waiting)).toBe("macosKeychain");
+    expect(threadReducer(waiting, wait)).toBe(waiting);
+    // A resume while the dialog is up marks the thread processing again; the engine has still not started.
+    expect(waitingOn(threadReducer(waiting, { type: "markProcessing", threadId: "thread-1", isProcessing: true, timestamp: 2000 }))).toBe("macosKeychain");
+    expect(waitingOn(threadReducer(waiting, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: null }))).toBeNull();
+    expect(waitingOn(threadReducer(waiting, { type: "markProcessing", threadId: "thread-1", isProcessing: false, timestamp: 2000 }))).toBeNull();
+  });
+
   it("does not churn state for unchanged unread/review flags", () => {
     const base = {
       ...initialState,

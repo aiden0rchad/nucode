@@ -14,6 +14,7 @@ import type {
 import { PlanReadyFollowupMessage } from "../../app/components/PlanReadyFollowupMessage";
 import { RequestUserInputMessage } from "../../app/components/RequestUserInputMessage";
 import { useFileLinkOpener } from "../hooks/useFileLinkOpener";
+import { waitingLabel } from "@utils/threadStatus";
 import { formatCount, parseReasoning, statusToneFromText, summarizeToolGroup } from "../utils/messageRenderUtils";
 import {
   DiffRow,
@@ -43,6 +44,8 @@ type MessagesProps = {
   processingStartedAt?: number | null;
   /** Shown in place of the working label while the provider request is being retried. */
   retryNotice?: string | null;
+  /** Why the turn has not started yet, as thread/waiting/changed reports it. */
+  waitingOn?: string | null;
   lastDurationMs?: number | null;
   showPollingFetchStatus?: boolean;
   pollingIntervalMs?: number;
@@ -79,6 +82,7 @@ export const Messages = memo(function Messages({
   onLoadOlderHistory,
   processingStartedAt = null,
   retryNotice = null,
+  waitingOn = null,
   lastDurationMs = null,
   showPollingFetchStatus = false,
   pollingIntervalMs = 12000,
@@ -346,7 +350,7 @@ export const Messages = memo(function Messages({
           processingStartedAt={processingStartedAt}
           lastDurationMs={latestFailed || lastTurnStatus === "failed" || lastTurnStatus === "interrupted" || userInputNode || waitingForApproval ? null : lastDurationMs}
           hasItems={items.length > 0}
-          reasoningLabel={retryNotice || latestReasoningLabel}
+          reasoningLabel={retryNotice || waitingLabel(waitingOn) || latestReasoningLabel}
           showPollingFetchStatus={showPollingFetchStatus}
           pollingIntervalMs={pollingIntervalMs}
         />

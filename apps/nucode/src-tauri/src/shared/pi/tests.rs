@@ -3060,3 +3060,84 @@ async fn omp_fork_is_refused_while_the_source_turn_runs() {
     process.running.store(false, Ordering::SeqCst);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// A keychain behind its access dialog: reads block until the dialog is answered.
+#[derive(Default)]
+struct LockedKeychain {
+    answered: StdMutex<Option<bool>>,
+    changed: std::sync::Condvar,
+}
+impl LockedKeychain {
+    fn answer(&self, allow: Option<bool>) {
+        *self.answered.lock().unwrap() = allow;
+        self.changed.notify_all();
+    }
+}
+impl KeyStore for LockedKeychain {
+    fn get(&self, _: &str) -> Result<Option<String>, String> {
+        // Bounded, so a failed assertion ends the test instead of parking the runtime.
+        let (answered, _) = self.changed.wait_timeout_while(self.answered.lock().unwrap(), Duration::from_secs(30), |answered| answered.is_none()).unwrap();
+        if *answered == Some(true) { Ok(Some("keychain-secret-canary".into())) } else { Err("Cannot read provider Keychain".into()) }
+    }
+    fn set(&self, _: &str, _: &str) -> Result<(), String> { panic!("must not write credentials") }
+    fn delete(&self, _: &str) -> Result<(), String> { panic!("must not delete credentials") }
+}
+
+#[tokio::test]
+async fn an_engine_start_waiting_on_the_keychain_says_so_and_blocks_no_other_request() {
+    let dir = temp();
+    let cwd = dir.join("project-a");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let (mut engine, events) = file_engine(&dir);
+    let keys = Arc::new(LockedKeychain::default());
+    engine.fake = true;
+    engine.keys = keys.clone();
+    let providers = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+    engine.configure("workspace", providers, AgentPolicy::default()).await;
+    let file = write_session_file(&engine, "workspace", "waiting", &cwd.to_string_lossy());
+    write_session_file(&engine, "workspace", "other", &cwd.to_string_lossy());
+    let notices = || events.lock().unwrap().iter()
+        .filter(|(workspace, e)| workspace == "workspace" && e["method"] == "thread/waiting/changed" && e["params"]["threadId"] == "waiting")
+        .map(|(_, e)| e["params"]["waitingOn"].clone()).collect::<Vec<_>>();
+    let keychain = json!(if cfg!(target_os = "macos") { "macosKeychain" } else { "systemKeychain" });
+    let turn = || engine.request("workspace", "turn/start", json!({"threadId":"waiting","input":[{"type":"text","text":"hello"}]}));
+    // Resolves once the notice is out and every read-only request has answered behind it.
+    let readable = || async {
+        while notices().is_empty() { tokio::time::sleep(Duration::from_millis(20)).await; }
+        for (method, thread) in [("thread/services", "other"), ("thread/read", "other"), ("thread/resume", "other"), ("thread/read", "waiting")] {
+            let request = engine.request("workspace", method, json!({"threadId":thread,"action":"list"}));
+            tokio::time::timeout(Duration::from_secs(5), request).await
+                .unwrap_or_else(|_| panic!("{method} for {thread} waited on the keychain read")).unwrap();
+        }
+    };
+
+    // Denied: the notice goes out while the dialog is up and is cleared when the read fails.
+    let denied = turn();
+    tokio::pin!(denied);
+    tokio::select! { biased; _ = &mut denied => panic!("the keychain is still locked"), _ = readable() => {} }
+    assert_eq!(notices(), [keychain.clone()]);
+    keys.answer(Some(false));
+    assert_eq!(denied.await.unwrap_err(), "Cannot read provider Keychain");
+    assert_eq!(notices(), [keychain.clone(), Value::Null]);
+    assert!(engine.sessions.lock().await["waiting"].process.is_none());
+
+    // Allowed: two requests for the thread arrive behind one dialog and share one engine.
+    keys.answer(None);
+    events.lock().unwrap().clear();
+    let (allowed, rename) = (turn(), engine.request("workspace", "thread/name/set", json!({"threadId":"waiting","name":"Renamed"})));
+    tokio::pin!(allowed, rename);
+    tokio::select! { biased;
+        _ = &mut allowed => panic!("the keychain is still locked"),
+        _ = &mut rename => panic!("a second request must wait for the first start"),
+        _ = readable() => {}
+    }
+    keys.answer(Some(true));
+    let (allowed, rename) = tokio::join!(allowed, rename);
+    allowed.unwrap();
+    rename.unwrap();
+    assert_eq!(notices(), [keychain, Value::Null]);
+    engine.shutdown().await.unwrap();
+    let requests = std::fs::read_to_string(file.with_extension("requests")).unwrap();
+    assert_eq!(requests.matches("\"type\": \"get_state\"").count(), 1, "one thread must not start two engines");
+    std::fs::remove_dir_all(dir).unwrap();
+}
