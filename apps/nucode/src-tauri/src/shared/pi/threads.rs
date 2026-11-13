@@ -87,7 +87,7 @@ impl PiEngine {
             "thread/delete" => self.delete(workspace, id, &directory).await,
             _ => {
                 let target = params["targetWorkspaceId"].as_str().ok_or("Missing target project")?;
-                self.relocate(workspace, id, &directory, target).await
+                self.relocate(workspace, id, &directory, target, params["targetPath"].as_str()).await
             }
         }
     }
@@ -148,12 +148,13 @@ impl PiEngine {
         Ok(json!({"result":{}}))
     }
 
-    async fn relocate(&self, workspace: &str, id: &str, directory: &Path, target: &str) -> Result<Value, String> {
+    async fn relocate(&self, workspace: &str, id: &str, directory: &Path, target: &str, target_path: Option<&str>) -> Result<Value, String> {
         if target == workspace {
             return Err("The thread is already in that project".into());
         }
         let destination = self.directory(target)?;
-        let cwd = self.paths.lock().await.get(target).cloned().ok_or("Unknown target project")?;
+        let known = self.paths.lock().await.get(target).cloned();
+        let cwd = target_path.map(str::to_owned).or_else(|| known.clone()).ok_or("Unknown target project")?;
         let data = self.data.as_ref().ok_or("Pi runtime is not configured")?;
         let [file, streams, folder] = session_paths(directory, id);
         if !file.is_file() {
@@ -238,10 +239,15 @@ impl PiEngine {
                         thread[key] = session.thread[key].clone();
                     }
                 }
-                session.workspace = target.into();
-                session.file = moved[0].clone();
-                session.thread = thread.clone();
-            } else {
+                if known.is_some() {
+                    session.workspace = target.into();
+                    session.file = moved[0].clone();
+                    session.thread = thread.clone();
+                } else {
+                    // This engine does not serve the target; the engine that does finds the file by scanning.
+                    sessions.remove(id);
+                }
+            } else if known.is_some() {
                 sessions.insert(id.into(), Session { workspace: target.into(), thread: thread.clone(), file: moved[0].clone(), process: None, configuration: String::new() });
             }
         }

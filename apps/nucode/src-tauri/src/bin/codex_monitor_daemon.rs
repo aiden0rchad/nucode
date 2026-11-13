@@ -823,7 +823,7 @@ impl DaemonState {
         thread_id: String,
         target_workspace_id: String,
     ) -> Result<Value, String> {
-        codex_core::move_thread_core(&self.sessions, workspace_id, thread_id, target_workspace_id).await
+        codex_core::move_thread_core(&self.sessions, &self.workspaces, workspace_id, thread_id, target_workspace_id).await
     }
 
     async fn compact_thread(

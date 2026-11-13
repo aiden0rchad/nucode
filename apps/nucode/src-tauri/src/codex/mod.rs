@@ -383,7 +383,7 @@ pub(crate) async fn move_thread(
         .await;
     }
 
-    codex_core::move_thread_core(&state.sessions, workspace_id, thread_id, target_workspace_id).await
+    codex_core::move_thread_core(&state.sessions, &state.workspaces, workspace_id, thread_id, target_workspace_id).await
 }
 
 #[tauri::command]

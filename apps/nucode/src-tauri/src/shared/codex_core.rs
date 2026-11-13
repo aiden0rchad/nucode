@@ -526,16 +526,23 @@ pub(crate) async fn delete_thread_core(
 
 pub(crate) async fn move_thread_core(
     sessions: &Mutex<HashMap<String, Arc<WorkspaceSession>>>,
+    workspaces: &Mutex<HashMap<String, WorkspaceEntry>>,
     workspace_id: String,
     thread_id: String,
     target_workspace_id: String,
 ) -> Result<Value, String> {
+    let target_path = workspaces
+        .lock()
+        .await
+        .get(&target_workspace_id)
+        .map(|entry| entry.path.clone())
+        .ok_or("Unknown target project")?;
     let session = get_session_clone(sessions, &workspace_id).await?;
     session
         .send_request_for_workspace(
             &workspace_id,
             "thread/move",
-            json!({ "threadId": thread_id, "targetWorkspaceId": target_workspace_id }),
+            json!({ "threadId": thread_id, "targetWorkspaceId": target_workspace_id, "targetPath": target_path }),
         )
         .await
 }
@@ -841,6 +848,14 @@ mod history_tests;
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    #[tokio::test]
+    async fn move_thread_rejects_an_unknown_target_project() {
+        let sessions = Mutex::new(HashMap::new());
+        let workspaces = Mutex::new(HashMap::new());
+        let error = move_thread_core(&sessions, &workspaces, "a".into(), "t".into(), "missing".into()).await.unwrap_err();
+        assert_eq!(error, "Unknown target project");
+    }
 
     #[test]
     fn normalize_strips_file_uri_prefix() {
