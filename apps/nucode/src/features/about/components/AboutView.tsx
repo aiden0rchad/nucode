@@ -47,7 +47,7 @@ export function AboutView() {
           {version ? `Version ${version}` : "Version —"}
         </div>
         <div className="about-tagline">
-          Monitor the situation of your Codex agents
+          Orchestrate agents across your local projects.
         </div>
         <div className="about-divider" />
         <div className="about-links">

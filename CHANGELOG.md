@@ -5,15 +5,16 @@
 - **Settings:** every Settings page has a new layout: named groups, plain labels with one line of help, collapsed rows that show their current value, and a Save changes button on the pages that stage edits. Server, Browser, Models & Agents, Shortcuts and Projects were reorganized around what you are trying to do.
 - **Attachments:** drag files from your file manager onto the composer to attach them. Images show as thumbnails above the message box instead of file names.
 - **Scrolling:** you can scroll up through a conversation while a reply is being written. The view follows new text only when you are at the bottom.
-- **Project menu:** right-click a project for Pin, Edit, Section, Reveal in Finder, Archive chats and Remove project. Sections group projects in the sidebar under names you choose. Right-click a section's header to rename or delete it.
-- **Thread menu:** right-click a thread for Rename, Pin, Mark as unread, Project, Section, Fork, Share, Copy, Open in new window, Archive and Permanently delete. Rename, Pin, Mark as unread and Archive have shortcuts you can change in Settings → Shortcuts. Moving a thread to another project and deleting it permanently work for pi and omp threads.
+- **Project menu:** right-click a project for Pin, Edit, Section, Reveal in Finder, Archive chats and Remove project. Remove project says that the folder and its files stay on disk. Sections group projects in the sidebar under names you choose. Right-click a section's header to rename or delete it.
+- **Thread menu:** right-click a thread for Rename, Pin, Mark as unread, Project, Section, Fork, Share, Copy, Open in new window, Archive and Permanently delete. Rename, Pin, Mark as unread and Archive have shortcuts you can change in Settings → Shortcuts. Moving a thread to another project and deleting it permanently work for pi and omp threads. The Copy items show a short notice naming what was copied, and Fork into a new worktree is left out when worktrees are turned off in Settings.
 - **Thread windows:** Open in new window shows one thread in its own window, with its transcript and composer. It closes when the thread is archived or deleted and follows the thread when it moves.
+- **Closed windows:** a closed thread, About or browser sign-in window is freed. Before, each one stayed behind as an invisible window until nucode quit.
 - **Long titles:** a project or thread title too long for the sidebar scrolls to its end when you point at it.
 - **Session rail:** the Context row at the top is gone. The Context section already shows how full the window is.
 - **Dictation:** a keyboard shortcut that begins with the hold-to-talk key no longer starts a recording.
 - **Dialogs:** the window behind a dialog is dimmed instead of blacked out.
 - **Right-click:** an area with no menu of its own no longer shows the web view's Reload menu. Fields, links, pictures, the terminal and selected text keep theirs.
-- **Keychain prompt:** when macOS asks for your keychain password before a pi or omp engine can start, as it does after each newly installed build, the conversation shows "Waiting for macOS keychain access…" instead of "Working…", and other threads and the session rail keep responding while the dialog is open.
+- **Keychain prompt:** when macOS asks for your keychain password before a pi or omp engine can start, as it can after a newly installed build, the conversation shows "Waiting for macOS keychain access…" instead of "Working…", and other threads and the session rail keep responding while the dialog is open.
 - **Model switching:** a thread that switched to a Claude model after another model had reasoned in it could fail on every turn with a content-filter stop. The earlier model's reasoning is no longer replayed to the new model; its answers and tool results still are.
 
 ## 0.8.1 — November 11, 2026

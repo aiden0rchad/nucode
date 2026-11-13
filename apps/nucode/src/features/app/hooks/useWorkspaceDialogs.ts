@@ -267,7 +267,7 @@ export function useWorkspaceDialogs() {
   const confirmWorkspaceRemoval = useCallback(
     async (workspaces: WorkspaceInfo[], workspaceId: string) => {
       const workspace = workspaces.find((entry) => entry.id === workspaceId);
-      const workspaceName = workspace?.name || "this workspace";
+      const workspaceName = workspace?.name || "this project";
       const worktreeCount = workspaces.filter(
         (entry) => entry.parentId === workspaceId,
       ).length;
@@ -279,11 +279,11 @@ export function useWorkspaceDialogs() {
           : "";
 
       return ask(
-        `Are you sure you want to delete "${workspaceName}"?\n\nThis will remove the workspace from nucode.${detail}`,
+        `Remove "${workspaceName}" from nucode?\n\nIts folder and files stay on disk.${detail}`,
         {
-          title: "Delete Workspace",
+          title: "Remove project",
           kind: "warning",
-          okLabel: "Delete",
+          okLabel: "Remove",
           cancelLabel: "Cancel",
         },
       );
@@ -311,7 +311,7 @@ export function useWorkspaceDialogs() {
   const showWorkspaceRemovalError = useCallback(async (error: unknown) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     await message(errorMessage, {
-      title: "Delete workspace failed",
+      title: "Couldn't remove the project",
       kind: "error",
     });
   }, []);
