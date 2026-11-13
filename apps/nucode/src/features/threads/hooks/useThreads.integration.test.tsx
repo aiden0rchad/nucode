@@ -573,6 +573,26 @@ describe("useThreads UX integration", () => {
     });
   });
 
+  it("reports the keychain wait of a thread being created, then of the active thread", async () => {
+    const { result } = renderHook(() => useThreads({ activeWorkspace: workspace, onWorkspaceConnected: vi.fn() }));
+    // A first message: thread/start is still pending, so the notice names a thread unknown here.
+    act(() => handlers?.onThreadWaitingChanged?.("ws-1", "thread-new", "macosKeychain"));
+    expect(result.current.waitingOn).toBe("macosKeychain");
+    act(() => handlers?.onThreadWaitingChanged?.("ws-1", "thread-new", null));
+    expect(result.current.waitingOn).toBeNull();
+
+    // A later message in that thread: the wait belongs to the running turn.
+    await act(async () => result.current.setActiveThreadId("thread-new"));
+    act(() => handlers?.onTurnStarted?.("ws-1", "thread-new", "turn-1"));
+    act(() => handlers?.onThreadWaitingChanged?.("ws-1", "thread-new", "systemKeychain"));
+    expect(result.current.waitingOn).toBe("systemKeychain");
+    // Another thread's wait in the same workspace is not this thread's.
+    act(() => handlers?.onThreadWaitingChanged?.("ws-1", "thread-other", "macosKeychain"));
+    expect(result.current.waitingOn).toBe("systemKeychain");
+    act(() => handlers?.onTurnCompleted?.("ws-1", "thread-new", "turn-1"));
+    expect(result.current.waitingOn).toBeNull();
+  });
+
   it("stores turn diff updates from app-server events", () => {
     const { result } = renderHook(() =>
       useThreads({

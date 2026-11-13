@@ -900,8 +900,8 @@ describe("useThreadTurnEvents", () => {
       result.current.onThreadWaitingChanged("ws-1", "thread-1", null);
     });
 
-    expect(dispatch).toHaveBeenNthCalledWith(1, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: "macosKeychain" });
-    expect(dispatch).toHaveBeenNthCalledWith(2, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: null });
+    expect(dispatch).toHaveBeenNthCalledWith(1, { type: "setThreadWaiting", workspaceId: "ws-1", threadId: "thread-1", waitingOn: "macosKeychain" });
+    expect(dispatch).toHaveBeenNthCalledWith(2, { type: "setThreadWaiting", workspaceId: "ws-1", threadId: "thread-1", waitingOn: null });
     expect(markProcessing).not.toHaveBeenCalled();
   });
 

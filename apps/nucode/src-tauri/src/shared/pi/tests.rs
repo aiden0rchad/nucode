@@ -3141,3 +3141,34 @@ async fn an_engine_start_waiting_on_the_keychain_says_so_and_blocks_no_other_req
     assert_eq!(requests.matches("\"type\": \"get_state\"").count(), 1, "one thread must not start two engines");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn a_new_thread_waiting_on_the_keychain_says_so_under_the_id_it_will_get() {
+    let dir = temp();
+    std::fs::create_dir_all(dir.join("project-a")).unwrap();
+    let (mut engine, events) = file_engine(&dir);
+    let keys = Arc::new(LockedKeychain::default());
+    engine.fake = true;
+    engine.keys = keys.clone();
+    let providers = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+    engine.configure("workspace", providers, AgentPolicy::default()).await;
+    let recorded = || events.lock().unwrap().iter().filter(|(workspace, _)| workspace == "workspace")
+        .filter_map(|(_, e)| match e["method"].as_str()? {
+            "thread/waiting/changed" => Some((e["params"]["threadId"].clone(), e["params"]["waitingOn"].clone())),
+            "thread/started" => Some((e["params"]["thread"]["id"].clone(), json!("started"))),
+            _ => None,
+        }).collect::<Vec<_>>();
+    // The client learns the thread's ID only from the answer, so the notice has to reach its workspace first.
+    let start = engine.request("workspace", "thread/start", json!({"model":"first/fake"}));
+    tokio::pin!(start);
+    tokio::select! { biased;
+        _ = &mut start => panic!("the keychain is still locked"),
+        _ = async { while recorded().is_empty() { tokio::time::sleep(Duration::from_millis(20)).await; } } => {}
+    }
+    keys.answer(Some(true));
+    let id = start.await.unwrap()["result"]["thread"]["id"].clone();
+    let keychain = json!(if cfg!(target_os = "macos") { "macosKeychain" } else { "systemKeychain" });
+    assert_eq!(recorded(), [(id.clone(), keychain), (id.clone(), Value::Null), (id, json!("started"))]);
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}

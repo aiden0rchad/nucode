@@ -392,8 +392,8 @@ export function useThreadTurnEvents({
   );
 
   const onThreadWaitingChanged = useCallback(
-    (_workspaceId: string, threadId: string, waitingOn: string | null) => {
-      dispatch({ type: "setThreadWaiting", threadId, waitingOn });
+    (workspaceId: string, threadId: string, waitingOn: string | null) => {
+      dispatch({ type: "setThreadWaiting", workspaceId, threadId, waitingOn });
     },
     [dispatch],
   );

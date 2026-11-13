@@ -40,6 +40,8 @@ type UseMainAppLayoutSurfacesArgs = {
   threadsByWorkspace: SidebarProps["threadsByWorkspace"];
   threadParentById: SidebarProps["threadParentById"];
   threadStatusById: ThreadState["threadStatusById"];
+  /** What the active thread, or the one being created, waits on before its turn can start. */
+  waitingOn: string | null;
   threadResumeLoadingById: Record<string, boolean>;
   threadListLoadingByWorkspace: SidebarProps["threadListLoadingByWorkspace"];
   threadListPagingByWorkspace: SidebarProps["threadListPagingByWorkspace"];
@@ -234,6 +236,7 @@ function buildPrimarySurface({
   threadsByWorkspace,
   threadParentById,
   threadStatusById,
+  waitingOn,
   threadResumeLoadingById,
   threadListLoadingByWorkspace,
   threadListPagingByWorkspace,
@@ -445,9 +448,7 @@ function buildPrimarySurface({
       retryNotice: activeThreadId
         ? threadStatusById[activeThreadId]?.retryNotice ?? null
         : null,
-      waitingOn: activeThreadId
-        ? threadStatusById[activeThreadId]?.waitingOn ?? null
-        : null,
+      waitingOn,
       lastDurationMs: activeThreadId
         ? threadStatusById[activeThreadId]?.lastDurationMs ?? null
         : null,
@@ -955,6 +956,7 @@ export function useMainAppLayoutSurfaces({
   threadsByWorkspace,
   threadParentById,
   threadStatusById,
+  waitingOn,
   threadResumeLoadingById,
   threadListLoadingByWorkspace,
   threadListPagingByWorkspace,
@@ -1108,6 +1110,7 @@ export function useMainAppLayoutSurfaces({
     threadsByWorkspace,
     threadParentById,
     threadStatusById,
+    waitingOn,
     threadResumeLoadingById,
     threadListLoadingByWorkspace,
     threadListPagingByWorkspace,

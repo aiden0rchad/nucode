@@ -35,6 +35,8 @@ export type ThreadState = {
   itemsByThread: Record<string, ConversationItem[]>;
   maxItemsPerThread: number | null;
   expandedHistoryByThread?: Record<string, boolean>;
+  /** A thread still being created that waits on something; it has no status here until thread/start answers. */
+  startWaitingByWorkspace?: Record<string, { threadId: string; waitingOn: string }>;
   threadsByWorkspace: Record<string, ThreadSummary[]>;
   hiddenThreadIdsByWorkspace: Record<string, Record<string, true>>;
   threadParentById: Record<string, string>;
@@ -73,7 +75,7 @@ export type ThreadAction =
     }
   | { type: "markReviewing"; threadId: string; isReviewing: boolean }
   | { type: "setRetryNotice"; threadId: string; notice: string | null }
-  | { type: "setThreadWaiting"; threadId: string; waitingOn: string | null }
+  | { type: "setThreadWaiting"; workspaceId: string; threadId: string; waitingOn: string | null }
   | { type: "markUnread"; threadId: string; hasUnread: boolean }
   | { type: "removeItem"; threadId: string; itemId: string }
   | { type: "addAssistantMessage"; threadId: string; text: string; id?: string; isError?: boolean; retryMessage?: { text: string; images?: string[] } }

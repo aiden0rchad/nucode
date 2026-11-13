@@ -271,18 +271,29 @@ describe("threadReducer", () => {
     expect(failed.threadStatusById["thread-1"]?.retryNotice).toBeNull();
   });
 
-  it("keeps what a start is waiting on until the backend clears it or the turn ends", () => {
+  it("keeps what a running thread waits on until the backend clears it or the turn ends", () => {
     const waitingOn = (state: typeof initialState) => state.threadStatusById["thread-1"]?.waitingOn ?? null;
-    const wait = { type: "setThreadWaiting", threadId: "thread-1", waitingOn: "macosKeychain" } as const;
-    expect(threadReducer(initialState, wait)).toBe(initialState);
+    const wait = { type: "setThreadWaiting", workspaceId: "ws-1", threadId: "thread-1", waitingOn: "macosKeychain" } as const;
     const running = threadReducer(initialState, { type: "markProcessing", threadId: "thread-1", isProcessing: true, timestamp: 1000 });
     const waiting = threadReducer(running, wait);
     expect(waitingOn(waiting)).toBe("macosKeychain");
+    expect(waiting.startWaitingByWorkspace).toBeUndefined();
     expect(threadReducer(waiting, wait)).toBe(waiting);
     // A resume while the dialog is up marks the thread processing again; the engine has still not started.
     expect(waitingOn(threadReducer(waiting, { type: "markProcessing", threadId: "thread-1", isProcessing: true, timestamp: 2000 }))).toBe("macosKeychain");
-    expect(waitingOn(threadReducer(waiting, { type: "setThreadWaiting", threadId: "thread-1", waitingOn: null }))).toBeNull();
+    expect(waitingOn(threadReducer(waiting, { ...wait, waitingOn: null }))).toBeNull();
     expect(waitingOn(threadReducer(waiting, { type: "markProcessing", threadId: "thread-1", isProcessing: false, timestamp: 2000 }))).toBeNull();
+  });
+
+  it("keeps what a thread being created waits on under its workspace", () => {
+    // thread/start has not answered, so the thread has no status to hold the wait.
+    const wait = { type: "setThreadWaiting", workspaceId: "ws-1", threadId: "thread-new", waitingOn: "macosKeychain" } as const;
+    const waiting = threadReducer(initialState, wait);
+    expect(waiting.startWaitingByWorkspace).toEqual({ "ws-1": { threadId: "thread-new", waitingOn: "macosKeychain" } });
+    expect(waiting.threadStatusById["thread-new"]).toBeUndefined();
+    expect(threadReducer(waiting, wait)).toBe(waiting);
+    expect(threadReducer(waiting, { ...wait, threadId: "another-thread", waitingOn: null })).toBe(waiting);
+    expect(threadReducer(waiting, { ...wait, waitingOn: null }).startWaitingByWorkspace).toEqual({});
   });
 
   it("does not churn state for unchanged unread/review flags", () => {

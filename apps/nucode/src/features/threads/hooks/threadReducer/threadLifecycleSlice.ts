@@ -308,16 +308,30 @@ export function reduceThreadLifecycle(
     }
     case "setThreadWaiting": {
       const previous = state.threadStatusById[action.threadId];
-      if (!previous?.isProcessing || (previous.waitingOn ?? null) === action.waitingOn) {
-        return state;
+      if (previous?.isProcessing) {
+        if ((previous.waitingOn ?? null) === action.waitingOn) {
+          return state;
+        }
+        return {
+          ...state,
+          threadStatusById: {
+            ...state.threadStatusById,
+            [action.threadId]: { ...previous, waitingOn: action.waitingOn },
+          },
+        };
       }
-      return {
-        ...state,
-        threadStatusById: {
-          ...state.threadStatusById,
-          [action.threadId]: { ...previous, waitingOn: action.waitingOn },
-        },
-      };
+      // No turn runs on it yet: the thread is being created, so the wait is its workspace's.
+      const { [action.workspaceId]: starting, ...others } = state.startWaitingByWorkspace ?? {};
+      if (action.waitingOn) {
+        if (starting?.threadId === action.threadId && starting.waitingOn === action.waitingOn) {
+          return state;
+        }
+        return {
+          ...state,
+          startWaitingByWorkspace: { ...others, [action.workspaceId]: { threadId: action.threadId, waitingOn: action.waitingOn } },
+        };
+      }
+      return starting?.threadId === action.threadId ? { ...state, startWaitingByWorkspace: others } : state;
     }
     case "markReviewing": {
       const previous = state.threadStatusById[action.threadId];

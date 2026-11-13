@@ -988,6 +988,10 @@ export function useThreads({
     threadParentById: state.threadParentById,
     isSubagentThread,
     threadStatusById: state.threadStatusById,
+    // What the active thread waits on, or with none active yet, the thread being created.
+    waitingOn: (activeThreadId
+      ? state.threadStatusById[activeThreadId]?.waitingOn
+      : activeWorkspaceId && state.startWaitingByWorkspace?.[activeWorkspaceId]?.waitingOn) || null,
     threadResumeLoadingById: state.threadResumeLoadingById,
     threadListLoadingByWorkspace: state.threadListLoadingByWorkspace,
     threadListPagingByWorkspace: state.threadListPagingByWorkspace,

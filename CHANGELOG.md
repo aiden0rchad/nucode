@@ -13,7 +13,7 @@
 - **Dictation:** a keyboard shortcut that begins with the hold-to-talk key no longer starts a recording.
 - **Dialogs:** the window behind a dialog is dimmed instead of blacked out.
 - **Right-click:** an area with no menu of its own no longer shows the web view's Reload menu. Fields, links, pictures, the terminal and selected text keep theirs.
-- **Keychain prompt:** when macOS asks for your keychain password before a pi or omp engine can start, as it does after each newly installed build, a message sent in an existing thread shows "Waiting for macOS keychain access…" instead of "Working…", and other threads and the session rail keep responding while the dialog is open.
+- **Keychain prompt:** when macOS asks for your keychain password before a pi or omp engine can start, as it does after each newly installed build, the conversation shows "Waiting for macOS keychain access…" instead of "Working…", and other threads and the session rail keep responding while the dialog is open.
 - **Model switching:** a thread that switched to a Claude model after another model had reasoned in it could fail on every turn with a content-filter stop. The earlier model's reasoning is no longer replayed to the new model; its answers and tool results still are.
 
 ## 0.8.1 — November 11, 2026
