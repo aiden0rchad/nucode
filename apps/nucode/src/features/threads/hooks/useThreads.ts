@@ -138,6 +138,10 @@ export function useThreads({
   itemsByThreadRef.current = state.itemsByThread;
   threadsByWorkspaceRef.current = state.threadsByWorkspace;
   activeTurnIdByThreadRef.current = state.activeTurnIdByThread;
+  const activeThreadIdByWorkspaceRef = useRef(state.activeThreadIdByWorkspace);
+  activeThreadIdByWorkspaceRef.current = state.activeThreadIdByWorkspace;
+  // Filled in below, once the thread actions exist.
+  const loadThreadTakingOverRef = useRef<(workspaceId: string, threadId: string) => void>(() => {});
   threadParentByIdRef.current = state.threadParentById;
   const { approvalAllowlistRef, handleApprovalDecision, handleApprovalRemember } =
     useThreadApprovals({ dispatch, onDebug });
@@ -443,6 +447,7 @@ export function useThreads({
       if (!workspaceId || !threadId) {
         return;
       }
+      loadThreadTakingOverRef.current(workspaceId, threadId);
       threadHandlers.onThreadArchived?.(workspaceId, threadId);
       unpinThread(workspaceId, threadId);
 
@@ -852,6 +857,22 @@ export function useThreads({
     ],
   );
 
+  // When the open thread is archived or deleted, the next row becomes the open one without anyone
+  // opening it. Called before the row is removed, this loads that next thread's messages.
+  const loadThreadTakingOver = useCallback(
+    (workspaceId: string, threadId: string) => {
+      if (activeThreadIdByWorkspaceRef.current[workspaceId] !== threadId) {
+        return;
+      }
+      const next = (threadsByWorkspaceRef.current[workspaceId] ?? []).find((thread) => thread.id !== threadId);
+      if (next && !hasLocalThreadSnapshot(next.id)) {
+        void resumeThreadForWorkspace(workspaceId, next.id);
+      }
+    },
+    [hasLocalThreadSnapshot, resumeThreadForWorkspace],
+  );
+  loadThreadTakingOverRef.current = loadThreadTakingOver;
+
   // Archives a thread. The row leaves the list at once; if the backend refuses, it
   // comes back where it was and an error toast says why. Resolves to whether it stuck.
   const removeThread = useCallback(
@@ -861,6 +882,7 @@ export function useThreads({
       const summary = index === -1 ? null : list[index];
       const pinned = getPinTimestamp(workspaceId, threadId) !== null;
       unpinThread(workspaceId, threadId);
+      loadThreadTakingOver(workspaceId, threadId);
       dispatch({ type: "removeThread", workspaceId, threadId });
       const failure = await archiveThread(workspaceId, threadId);
       if (failure === null) {
@@ -880,7 +902,7 @@ export function useThreads({
       });
       return false;
     },
-    [archiveThread, getPinTimestamp, pinThread, unpinThread],
+    [archiveThread, getPinTimestamp, loadThreadTakingOver, pinThread, unpinThread],
   );
 
   const deleteThreadPermanently = useCallback(
@@ -895,11 +917,12 @@ export function useThreads({
         return false;
       }
       unpinThread(workspaceId, threadId);
+      loadThreadTakingOver(workspaceId, threadId);
       dispatch({ type: "removeThread", workspaceId, threadId });
       void closeThreadWindow(threadId).catch(() => {});
       return true;
     },
-    [unpinThread],
+    [loadThreadTakingOver, unpinThread],
   );
 
   // Moves a thread to another project. Resolves to the moved thread's id on success.

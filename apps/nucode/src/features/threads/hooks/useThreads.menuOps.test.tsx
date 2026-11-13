@@ -140,6 +140,60 @@ describe("permanent delete", () => {
   });
 });
 
+describe("the thread that takes an open thread's place", () => {
+  const open = async (hook: ReturnType<typeof setup>, threadId: string) => {
+    vi.mocked(resumeThread).mockResolvedValue({ result: { thread: { id: threadId, preview: "x", turns: [] } } });
+    await act(async () => {
+      hook.result.current.setActiveThreadId(threadId, "ws-1");
+    });
+    vi.mocked(resumeThread).mockClear();
+  };
+
+  it("is loaded when the open thread is archived", async () => {
+    vi.mocked(archiveThread).mockResolvedValue({});
+    const hook = setup();
+    const [openId, nextId] = ids(hook);
+    await open(hook, openId);
+    await act(async () => {
+      await hook.result.current.removeThread("ws-1", openId);
+    });
+    expect(hook.result.current.activeThreadId).toBe(nextId);
+    expect(resumeThread).toHaveBeenCalledWith("ws-1", nextId);
+  });
+
+  it("is loaded when the open thread is permanently deleted", async () => {
+    vi.mocked(deleteThread).mockResolvedValue({});
+    const hook = setup();
+    const [openId, nextId] = ids(hook);
+    await open(hook, openId);
+    await act(async () => {
+      await hook.result.current.deleteThreadPermanently("ws-1", openId);
+    });
+    expect(resumeThread).toHaveBeenCalledWith("ws-1", nextId);
+  });
+
+  it("is loaded when the engine reports the open thread archived", async () => {
+    const hook = setup();
+    const [openId, nextId] = ids(hook);
+    await open(hook, openId);
+    await act(async () => {
+      handlers?.onThreadArchived?.("ws-1", openId);
+    });
+    expect(resumeThread).toHaveBeenCalledWith("ws-1", nextId);
+  });
+
+  it("is left alone when another thread is the open one", async () => {
+    vi.mocked(archiveThread).mockResolvedValue({});
+    const hook = setup();
+    const [openId, otherId] = ids(hook);
+    await open(hook, openId);
+    await act(async () => {
+      await hook.result.current.removeThread("ws-1", otherId);
+    });
+    expect(resumeThread).not.toHaveBeenCalled();
+  });
+});
+
 describe("moving to another project", () => {
   it("moves the row, the pin and the custom name to the new workspace id", async () => {
     vi.mocked(moveThread).mockResolvedValue({ result: { thread: { id: "t1", preview: "First", updatedAt: 5 } } });
