@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ErrorToasts } from "./ErrorToasts";
+
+vi.mock("@/features/diagnostics/client", async (original) => ({
+  ...(await original<typeof import("@/features/diagnostics/client")>()),
+  diagnosticsEnabled: () => true,
+}));
+
+afterEach(cleanup);
 
 describe("ErrorToasts", () => {
   it("renders assertive live region and dismisses items", () => {
@@ -21,5 +28,20 @@ describe("ErrorToasts", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(onDismiss).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("shows a confirmation as a status without the report button", () => {
+    render(
+      <ErrorToasts
+        toasts={[
+          { id: "e", title: "Failed", message: "Something failed" },
+          { id: "i", title: "Moved to Docs", message: "The chat was moved.", tone: "info" },
+        ]}
+        onDismiss={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("Moved to Docs");
+    expect(screen.getAllByRole("button", { name: "Report this" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
   });
 });

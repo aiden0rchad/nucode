@@ -28,14 +28,14 @@ export function ErrorToasts({ toasts, onDismiss }: ErrorToastsProps) {
               type="button"
               className="ghost error-toast-dismiss"
               onClick={() => onDismiss(toast.id)}
-              aria-label="Dismiss error"
+              aria-label={toast.tone === "info" ? "Dismiss" : "Dismiss error"}
               title="Dismiss"
             >
               ×
             </button>
           </ToastHeader>
           <ToastBody className="error-toast-body">{toast.message}</ToastBody>
-          {diagnosticsEnabled() && <button type="button" onClick={() => openFeedback({ relatedFingerprint: "697cfae5c4ba4fe3" })}>Report this</button>}
+          {toast.tone !== "info" && diagnosticsEnabled() && <button type="button" onClick={() => openFeedback({ relatedFingerprint: "697cfae5c4ba4fe3" })}>Report this</button>}
         </ToastCard>
       ))}
     </ToastViewport>

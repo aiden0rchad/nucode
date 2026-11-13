@@ -21,7 +21,8 @@ function makeToastId() {
 }
 
 export function pushErrorToast(input: ErrorToastInput) {
-  if (diagnosticsEnabled()) record({ kind: "error", area: "ui", code: "ui.error_toast", message: "Error notification displayed" });
+  // A confirmation is not an error: it is not recorded as one.
+  if (input.tone !== "info" && diagnosticsEnabled()) record({ kind: "error", area: "ui", code: "ui.error_toast", message: "Error notification displayed" });
   const toast: ErrorToast = {
     id: input.id ?? makeToastId(),
     title: input.title,
