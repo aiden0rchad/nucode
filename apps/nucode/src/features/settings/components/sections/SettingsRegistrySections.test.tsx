@@ -52,6 +52,8 @@ describe("provider registry settings", () => {
     choose("Local", "Edit");
     const field = () => screen.getByLabelText("Context window for small") as HTMLInputElement;
     expect(field().value).toBe("128k");
+    expect(screen.getByText("Images auto · 128k context · Reasoning unknown")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Options/ }).getAttribute("aria-expanded")).toBe("false");
     fireEvent.change(field(), { target: { value: "lots" } });
     fireEvent.blur(field());
     expect(field().value).toBe("128k");

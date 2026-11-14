@@ -105,6 +105,7 @@ export function SettingsProvidersSection({ appSettings, onUpdateAppSettings }: P
         {draft.models.map(m => {
           const detectedImages = m.detectedSupportsImages ?? (m.supportsImagesSource !== "user" ? m.supportsImages : null);
           return <div key={m.id} className="settings-subrows"><SettingsToggleRow title={m.displayName || m.id}><SettingsToggleSwitch pressed={m.enabled} onClick={() => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, enabled: !(m.enabled) } : v) })} /></SettingsToggleRow>
+          <SettingsDisclosureRow label="Options" summary={[m.supportsImagesSource === "user" ? m.supportsImages ? "Images on" : "Images off" : "Images auto", m.contextWindow ? `${formatK(m.contextWindow)} context` : "Default context", m.reasoning ? m.reasoning.supported ? `${m.reasoning.levels.length} effort ${m.reasoning.levels.length === 1 ? "level" : "levels"}` : "No reasoning" : "Reasoning unknown"].join(" · ")}>
           <SettingsFieldRow title="Images" subtitle={`Detected: ${detectedImages == null ? "unknown" : detectedImages ? "yes" : "no"}`}>
             <SettingsSelect aria-label={`Images for ${m.displayName || m.id}`} disabled={busy} value={m.supportsImagesSource === "user" ? m.supportsImages ? "on" : "off" : "auto"} onChange={e => {
               const auto = e.target.value === "auto";
@@ -126,7 +127,7 @@ export function SettingsProvidersSection({ appSettings, onUpdateAppSettings }: P
             const next = { ...draft, models: result.models };
             setDraft(next);
             await onUpdateAppSettings({ ...appSettings, providers: providers.some(p => p.id === draft.id) ? providers.map(p => p.id === draft.id ? next : p) : [...providers, next] });
-          })} /></div>; })}
+          })} /></SettingsDisclosureRow></div>; })}
         {!draft.models.length && <SettingsEmpty>No models yet. Test the connection to fetch them, or add one by ID.</SettingsEmpty>}
         <SettingsFieldRow title="Model ID" subtitle="Add a model by hand if the provider does not list it."><div className="settings-field-actions"><SettingsTextField identifier className="is-mono" value={manual} onChange={e => setManual(e.target.value)} /><SettingsButton type="button" disabled={!manual.trim()} onClick={() => { if (!draft.models.some(m => m.id === manual.trim())) setDraft({ ...draft, models: [...draft.models, { id: manual.trim(), enabled: true }] }); setManual(""); }}>Add model ID manually</SettingsButton></div></SettingsFieldRow>
       </SettingsGroup>
