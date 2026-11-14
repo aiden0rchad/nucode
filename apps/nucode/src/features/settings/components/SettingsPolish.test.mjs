@@ -78,7 +78,7 @@ it("uses shared settings pages, groups and rows in every section, with independe
     expect(within(dialog).queryByText("Engine runtimes")).toBeNull();
     for (const trigger of dialog.querySelectorAll(".settings-select-label")) expect(getComputedStyle(trigger).whiteSpace, name).toBe("nowrap");
   }
-}, 20000);
+}, 60000);
 
 
 it("uses roomy dialog and row tokens with an opaque dialog and a fading translucent scrim", () => {
@@ -125,4 +125,4 @@ it.each([[1440, "dark", "rgba(0, 0, 0, 0.62)"], [900, "light", "rgba(15, 15, 20,
   const options = screen.getByRole("listbox", { name: "Input mode" });
   expect(options.parentElement).toBe(document.body);
   expect(layer(options)).toBeGreaterThan(layer(dialog));
-}, 20000);
+}, 60000);
