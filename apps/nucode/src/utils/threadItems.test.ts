@@ -874,6 +874,27 @@ describe("threadItems", () => {
     }
   });
 
+  it("names an engine's own sub-agents by role and number instead of their ids", () => {
+    const item = buildConversationItem({
+      type: "collabAgentToolCall",
+      id: "call-1",
+      tool: "spawnAgent",
+      status: "inProgress",
+      senderThreadId: "thread-a",
+      receiverThreadIds: ["call-1:agent:0", "call-1:agent:1"],
+      prompt: "Map the code",
+      agentsStates: {
+        "call-1:agent:0": { status: "completed", agent: "researcher", model: "cloud/strong", message: "Done" },
+        "call-1:agent:1": { status: "running", agent: "researcher", model: "cloud/strong" },
+      },
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.detail).toBe("Researcher 1, Researcher 2");
+      expect(item.output).toBe("Map the code\n\nResearcher 1: completed · strong\nDone\nResearcher 2: running · strong");
+    }
+  });
+
   it("captures rich collab metadata from receiver_agents and agent_statuses", () => {
     const item = buildConversationItem({
       type: "collabToolCall",

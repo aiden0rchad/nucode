@@ -187,9 +187,19 @@ function withCollabAgentMetadata(
   });
 }
 
+// An engine's own sub-agents are addressed as "<tool call id>:agent:<n>", which means nothing to a reader.
+const subagentNumber = (threadId: string) => {
+  const match = /:agent:(\d+)$/.exec(threadId);
+  return match ? Number(match[1]) + 1 : null;
+};
+
 function formatCollabAgentLabel(agent: CollabAgentRef) {
   const nickname = agent.nickname?.trim();
   const role = agent.role?.trim();
+  const number = subagentNumber(agent.threadId);
+  if (number !== null && !nickname) {
+    return `${role ? role.replace(/^./, (letter) => letter.toUpperCase()) : "Sub-agent"} ${number}`;
+  }
   if (nickname && role) {
     return `${nickname} [${role}]`;
   }
@@ -207,7 +217,7 @@ function formatCollabAgentStatuses(value: CollabAgentStatus[]) {
     return "";
   }
   return value
-    .map((entry) => `${formatCollabAgentLabel(entry)}: ${entry.status}${entry.model ? ` · ${entry.model}` : ""}${entry.usage ? ` · ${entry.usage.input} in / ${entry.usage.output} out · $${entry.usage.cost.toFixed(4)}` : ""}${entry.message ? `\n${entry.message}` : ""}`)
+    .map((entry) => `${formatCollabAgentLabel(entry)}: ${entry.status}${entry.model ? ` · ${subagentNumber(entry.threadId) !== null ? entry.model.slice(entry.model.indexOf("/") + 1) : entry.model}` : ""}${entry.usage ? ` · ${entry.usage.input} in / ${entry.usage.output} out · $${entry.usage.cost.toFixed(4)}` : ""}${entry.message ? `\n${entry.message}` : ""}`)
     .join("\n");
 }
 
@@ -285,14 +295,18 @@ function extractCollabPrompt(
 
 function buildCollabDetail(
   sender: CollabAgentRef | undefined,
-  receivers: CollabAgentRef[],
+  agents: CollabAgentRef[],
+  statuses: CollabAgentStatus[] = [],
 ) {
+  // A receiver listed by id alone takes its role from its status entry.
+  const receivers = agents.map((agent) => agent.role || agent.nickname ? agent : statuses.find((entry) => entry.threadId === agent.threadId) ?? agent);
+  const names = receivers.map((entry) => formatCollabAgentLabel(entry)).join(", ");
+  // The sender of an engine's own sub-agents is this thread; its id adds nothing.
+  if (receivers.length > 0 && receivers.every((entry) => subagentNumber(entry.threadId) !== null)) {
+    return names;
+  }
   const detailParts = [sender ? `From ${formatCollabAgentLabel(sender)}` : ""]
-    .concat(
-      receivers.length > 0
-        ? `→ ${receivers.map((entry) => formatCollabAgentLabel(entry)).join(", ")}`
-        : "",
-    )
+    .concat(receivers.length > 0 ? `→ ${names}` : "")
     .filter(Boolean);
   return detailParts.join(" ");
 }
@@ -368,7 +382,7 @@ export function parseCollabToolCallItem(
     kind: "tool",
     toolType: "collabToolCall",
     title: tool ? `Collab: ${tool}` : "Collab tool call",
-    detail: buildCollabDetail(sender ?? undefined, receiverAgents),
+    detail: buildCollabDetail(sender ?? undefined, receiverAgents, collabStatuses),
     status,
     output: [error, buildCollabOutput(prompt, collabStatuses)].filter(Boolean).join("\n\n"),
     collabSender: sender ?? undefined,
@@ -431,7 +445,7 @@ export function enrichConversationItemsWithThreads(
           : [];
 
     const prompt = extractCollabPrompt(item.output, item.collabStatuses);
-    const nextDetail = buildCollabDetail(nextSender, detailReceivers);
+    const nextDetail = buildCollabDetail(nextSender, detailReceivers, nextStatuses);
     const nextOutput = buildCollabOutput(prompt, nextStatuses);
 
     const receiversChanged = nextReceivers.some(

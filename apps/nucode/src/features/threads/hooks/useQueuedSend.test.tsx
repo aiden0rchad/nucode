@@ -59,6 +59,14 @@ describe("useQueuedSend", () => {
     expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 
+  it.each(["/context-size 400k", "/autocompact 80"])("runs %s at once while a turn is running instead of queueing it", async text => {
+    const options = { ...makeOptions(), isProcessing: true, activeThreadId: "thread-1" };
+    const { result } = renderHook(() => useQueuedSend(options));
+    await act(async () => { await result.current.handleSend(text); });
+    expect(options.startContextCommand).toHaveBeenCalledWith(text);
+    expect(result.current.activeQueue).toEqual([]);
+  });
+
   it("sends queued messages one at a time after processing completes", async () => {
     const options = makeOptions();
     const { result, rerender } = renderHook(

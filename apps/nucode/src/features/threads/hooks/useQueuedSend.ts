@@ -74,6 +74,9 @@ type SlashCommandKind =
   | "context-size"
   | "autocompact";
 
+// These only change a setting that applies from the next turn, so they need not wait for the running one.
+const immediateCommands: ReadonlySet<SlashCommandKind> = new Set(["context-size", "autocompact"]);
+
 function parseSlashCommand(text: string): SlashCommandKind | null {
   const match = /^\/(compact|fast|fork|mcp|new|resume|review|status|context-size|autocompact)(?=\s|$)/i.exec(text);
   return match ? match[1].toLowerCase() as SlashCommandKind : null;
@@ -238,6 +241,11 @@ export function useQueuedSend({
         return;
       }
       if (activeThreadId && isReviewing) {
+        return;
+      }
+      if (command && immediateCommands.has(command)) {
+        await runSlashCommand(command, trimmed);
+        clearActiveImages();
         return;
       }
       if ((isProcessing || isStopping) && activeThreadId && effectiveIntent === "queue") {

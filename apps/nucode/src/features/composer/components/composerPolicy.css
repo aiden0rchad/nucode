@@ -19,7 +19,7 @@
 .reasoning-model-heading .command-controls { margin-left: auto; }
 .command-toggle-error { position: absolute; top: 100%; left: 0; z-index: var(--z-popover); width: 240px; padding: 8px; background: var(--surface-card); border: 1px solid var(--border-muted); border-radius: 6px; font-size: 12px; }
 .command-editor { --ds-modal-card-bg: var(--surface-popover); width: min(740px, calc(100vw - 32px)); padding: 0; border-radius: 18px; overflow: hidden; }
-.command-editor > div { display: flex; flex-direction: column; height: min(650px, calc(100vh - 48px)); }
+.command-editor > div { display: flex; flex-direction: column; height: min(780px, calc(100vh - 48px)); }
 .command-editor header, .command-editor footer { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .command-editor header { padding: 22px 24px 18px; background: linear-gradient(110deg, color-mix(in srgb, var(--text-accent) 8%, transparent), transparent 65%); }
 .command-editor-emblem { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border: 1px solid color-mix(in srgb, var(--text-accent) 25%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--text-accent) 10%, transparent); color: var(--text-accent); }

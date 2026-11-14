@@ -1,7 +1,7 @@
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { useFeatures } from "@settings/features";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Gauge, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Gauge, RotateCcw, Star } from "lucide-react";
 import { modelFamily } from "@/features/models/modelFamily";
 import { ModelGlyph } from "@/features/models/components/ModelGlyph";
 import type { EngineKind, ReasoningCapability } from "@/types";
@@ -10,7 +10,7 @@ import { AnchoredPopover } from "@/features/design-system/components/popover/Anc
 import { clampReasoning, reasoningLabel } from "@/features/models/reasoning";
 import { useReasoningAnimationSpeed } from "./useReasoningAnimationSpeed";
 import { ComposerModelList, type ComposerModel } from "./ComposerModelList";
-import { ChainOfCommandControls } from "./ComposerPolicy";
+import { ChainOfCommandControls, useChainOfCommandOn } from "./ComposerPolicy";
 import "./reasoning.css";
 
 export type ReasoningControlProps = {
@@ -31,6 +31,7 @@ export type ReasoningControlProps = {
 };
 export function ReasoningControl({ engine, teamControls = true, capability, value, onChange, disabled, unavailable, onOpenSettings, modelName = "Model", models = [], selectedModelId, defaultModelId, onSelectModel, modelPickerRequest = 0 }: ReasoningControlProps) {
   const effects = useFeatures().reasoningEffects;
+  const teamOn = useChainOfCommandOn() && teamControls;
   const family = modelFamily(models.find(model => model.id === selectedModelId) ?? { name: modelName, id: selectedModelId });
   const trigger = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
@@ -119,7 +120,7 @@ export function ReasoningControl({ engine, teamControls = true, capability, valu
   return <div className="reasoning-control" ref={menu.containerRef}>
     {/* One trigger drawn as two segments: the model half opens the model list, the effort half the slider. */}
     <button ref={trigger} type="button" className="ghost composer-chip reasoning-chip" style={sliderStyle} aria-label={`${modelName}${noReasoning ? "" : ` · ${chipLabel}`}${adjusted && !noReasoning ? " (adjusted for model)" : ""}`} aria-haspopup="dialog" aria-expanded={menu.isOpen} disabled={disabled} onClick={event => { if (!menu.isOpen) { const toModels = noReasoning || (!!onSelectModel && !!(event.target as HTMLElement).closest?.(".reasoning-chip-model-segment")); returning.current = false; setOutgoing(null); setView(toModels ? "models" : "slider"); setModelError(""); } menu.toggle(); }} title={unavailable || (adjusted ? `${reasoningLabel(value!)} is unavailable; using ${chipLabel}` : modelTitle)}>
-      <span className="reasoning-chip-segment reasoning-chip-model-segment"><ModelGlyph family={family} className="reasoning-chip-glyph" /><ModelChipName name={modelName.split(" · ")[0]} /><ChevronDown size={14} aria-hidden /></span>
+      <span className="reasoning-chip-segment reasoning-chip-model-segment"><ModelGlyph family={family} className="reasoning-chip-glyph" /><ModelChipName name={modelName.split(" · ")[0]} />{teamOn && <span className="reasoning-chip-team" role="img" aria-label="Chain of Command on" title="Chain of Command on"><Star size={11} fill="currentColor" aria-hidden /></span>}<ChevronDown size={14} aria-hidden /></span>
       {!noReasoning && <span className="reasoning-chip-segment reasoning-chip-effort-segment"><Gauge className="reasoning-chip-icon" size={16} aria-hidden /><span className="reasoning-chip-prefix" aria-hidden>Effort</span><span className={`reasoning-chip-label${unknown ? " unknown" : ""}`} style={{ minWidth: `${Math.max(...labels.map(text => text.length))}ch` }}>{labels.map(text => <span className="reasoning-chip-sizer" aria-hidden="true" key={text}>{text}</span>)}<span className="reasoning-chip-value">{chipLabel}<ChevronDown size={14} aria-hidden /></span></span></span>}
     </button>
     {menu.isOpen && <AnchoredPopover anchorRef={trigger} surfaceRef={popover} className={`reasoning-popover${effects ? "" : " effects-off"}${burning ? " burning" : warm ? " warm" : ""}${drag !== null ? " dragging" : ""}`} style={sliderStyle} role="dialog" aria-label={view === "models" ? "Select model" : "Model and reasoning"} onKeyDown={event => { if (event.key === "Escape" && view === "models") { event.preventDefault(); event.stopPropagation(); switchView("slider"); } }}>

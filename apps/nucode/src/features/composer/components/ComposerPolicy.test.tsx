@@ -29,8 +29,10 @@ it("toggles real policy, exposes configuration only when enabled, and preserves 
   expect(toggle.querySelector(".command-insignia")?.getAttribute("width")).toBe("20");
   expect(toggle.classList.contains("is-activating")).toBe(false);
   expect(screen.queryByRole("button", { name: "Configure Chain of Command" })).toBeNull();
+  expect(chip.querySelector(".reasoning-chip-team")).toBeNull();
   fireEvent.click(toggle);
   await waitFor(() => expect(toggle.getAttribute("aria-pressed")).toBe("true"));
+  expect(chip.querySelector(".reasoning-chip-team")?.getAttribute("aria-label")).toBe("Chain of Command on");
   expect(toggle.classList.contains("is-activating")).toBe(true);
   expect([...toggle.querySelectorAll<SVGElement>(".command-star")].map(star => star.style.getPropertyValue("--star-index"))).toEqual(["0", "1", "2", "3", "4"]);
   const animationEnd = createEvent.animationEnd(toggle);

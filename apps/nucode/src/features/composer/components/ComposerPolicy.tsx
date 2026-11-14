@@ -86,6 +86,13 @@ export function ComposerPolicyProvider({ policy, scope, scopeKey = scope, onChan
   </ComposerPolicy.Provider>;
 }
 
+/** True when this composer's turns run as a Chain of Command team. */
+export function useChainOfCommandOn() {
+  const context = useContext(ComposerPolicy);
+  const { subagents: available } = useFeatures();
+  return !!context && available && !context.unavailable && context.policy.subagents.enabled && context.policy.subagents.mode === "chain-of-command";
+}
+
 export function ChainOfCommandControls({ disabled, engine = "pi", onConfigure }: { disabled?: boolean; engine?: EngineKind; onConfigure: () => void }) {
   const context = useContext(ComposerPolicy);
   const { subagents: available, reasoningEffects } = useFeatures();
