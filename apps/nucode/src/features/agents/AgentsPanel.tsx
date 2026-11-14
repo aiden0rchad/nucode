@@ -11,6 +11,7 @@ import { formatK } from "@/features/threads/hooks/contextCommands";
 import { PanelShell } from "@/features/layout/components/PanelShell";
 import type { PanelTabId } from "@/features/layout/components/PanelTabs";
 import { agentGroups, AgentsContext, runningAgents } from "./agents";
+import { agentErrorText } from "./AgentBudgetNotice";
 import "./agents.css";
 
 export function transcriptItems(messages: Record<string, unknown>[]): ConversationItem[] {
@@ -79,7 +80,7 @@ export function AgentActivity({ loadTranscript = getSubagentTranscript }: { load
         <span className="agent-detail">{node.usage ? `${formatK((node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0))} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span>
         {node.task && <span className="agent-detail agent-preview" title={node.task}>{node.task}</span>}
         {node.lastMessage && <span className="agent-detail agent-preview" title={node.lastMessage}>{node.lastMessage}</span>}
-        {node.status === "failed" && node.errorMessage && <span role="alert">{node.errorMessage}</span>}
+        {node.status === "failed" && node.errorMessage && <span role="alert">{agentErrorText(node.errorMessage)}</span>}
       </span>
     </button>
     {!!node.children.length && <ul>{node.children.map(renderNode)}</ul>}

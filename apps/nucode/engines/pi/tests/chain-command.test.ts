@@ -65,13 +65,16 @@ test("nested subprocesses share one turn budget, reset it, route models and fail
   const result = await tool.execute("parallel", { tasks: [1,2].map(n => ({ agent: "colonel", task: "batch " + n })) }, undefined, undefined, ctx);
   const children = result.details.results.flatMap((r: any) => r.messages.filter((m: any) => m.toolName === "subagent").flatMap((m: any) => m.details.results));
   assert.equal(children.length, 4);
-  assert.equal(children.filter((r: any) => r.status === "completed").length, 3);
-  assert.match(children.find((r: any) => r.status === "failed").stderr, /across the command tree/);
+  assert.equal(children.filter((r: any) => r.status === "completed").length, 2);
+  for (const refused of children.filter((r: any) => r.status === "failed")) assert.match(refused.stderr, /max per turn \(5\) reached across the command tree; the last agent is kept for a major/);
   for (const child of children.filter((r: any) => r.status === "completed")) {
     assert.deepEqual(JSON.parse(child.messages[0].content[0].text), { role: "enlisted", provider: "nucode-local", model: "small", thinking: "low" });
     assert.ok(child.startedAt > 0 && child.endedAt >= child.startedAt, "persist actual child timing");
   }
-  assert.match((await tool.execute("qa", { agent: "major", task: "review" }, undefined, undefined, ctx)).details.results[0].stderr, /across the command tree/);
+  // The place the enlisted agents could not take is still there for QA, once.
+  assert.equal((await tool.execute("qa", { agent: "major", task: "review" }, undefined, undefined, ctx)).details.results[0].status, "completed");
+  const spent = (await tool.execute("qa-again", { agent: "major", task: "review" }, undefined, undefined, ctx)).details.results[0].stderr;
+  assert.match(spent, /across the command tree/); assert.doesNotMatch(spent, /kept for a major/);
   events.agent_end();
   assert.deepEqual(readdirSync(join(home, "nucode")), ["policy.json"]);
   thinking = "off";

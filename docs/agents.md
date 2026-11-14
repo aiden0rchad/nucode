@@ -61,7 +61,7 @@ Active descendants inherit a snapshot of the root's policy. Edits to another con
 | Limit | Scope and behavior |
 | --- | --- |
 | Maximum concurrency | Active child model work in the root command tree; the commander is excluded. Coordinators can lend a slot while waiting. |
-| Maximum children per turn | Shared reservations across the command tree; a descendant cannot create a fresh root allowance. |
+| Maximum children per turn | Shared reservations across the command tree; a descendant cannot create a fresh root allowance. With three or more, the last place is kept for a major, so a turn that spends its agents on building and fixing can still verify. When a turn runs out, the conversation shows how many agents were not started and offers a higher limit in one click. |
 | Maximum depth | Bounds delegation depth; does not count as permission to access broader files or tools. |
 | Run time | A root run and descendants share one absolute deadline. Zero disables this limit. |
 | Daily team tokens | Project-wide reported usage for eligible Code Chain of Command work; resets at 00:00 UTC. Zero disables it. |

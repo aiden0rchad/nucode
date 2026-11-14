@@ -86,6 +86,9 @@ export function ComposerPolicyProvider({ policy, scope, scopeKey = scope, onChan
   </ComposerPolicy.Provider>;
 }
 
+/** The team this composer's turns run with, and the way to change it; null outside a composer. */
+export function useTeamPolicy() { return useContext(ComposerPolicy); }
+
 /** True when this composer's turns run as a Chain of Command team. */
 export function useChainOfCommandOn() {
   const context = useContext(ComposerPolicy);

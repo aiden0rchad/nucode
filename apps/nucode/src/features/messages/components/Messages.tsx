@@ -28,6 +28,7 @@ import {
 } from "./MessageRows";
 import { useMessagesViewState } from "./useMessagesViewState";
 import { isTurnError, TurnErrorCard } from "./TurnErrorCard";
+import { AgentBudgetNotice } from "@/features/agents/AgentBudgetNotice";
 
 type MessagesProps = {
   items: ConversationItem[];
@@ -345,6 +346,7 @@ export const Messages = memo(function Messages({
         {!isThinking && !isLoadingMessages && !userInputNode && !waitingForApproval && (lastTurnStatus === "interrupted" || (lastTurnStatus === "failed" && !latestFailed)) && <p role="status" className={`thread-recovery-state ${lastTurnStatus === "failed" ? "is-failed" : ""}`}>
           <strong>{lastTurnStatus === "interrupted" ? "Stopped" : "Failed"}</strong> — Review the saved progress, then send a follow-up to continue. Nothing restarts automatically.
         </p>}
+        {!isThinking && !isLoadingMessages && <AgentBudgetNotice items={items} />}
         <WorkingIndicator
           isThinking={isThinking && !userInputNode && !waitingForApproval}
           processingStartedAt={processingStartedAt}

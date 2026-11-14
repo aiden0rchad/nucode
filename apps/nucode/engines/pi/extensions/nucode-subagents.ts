@@ -96,7 +96,7 @@ export default function (pi: ExtensionAPI) {
           if (policy.mode === "chain-of-command") {
             budget = depth === 0 ? turnBudget ??= createSubagentBudget(home, policy.maxConcurrent) : process.env.NUCODE_SUBAGENT_BUDGET;
             if (!budget || !inside(budget, join(home, "nucode"))) throw new Error("Missing managed Chain of Command budget");
-            reserveSubagent(budget, policy.maxPerTurn);
+            reserveSubagent(budget, policy.maxPerTurn, commandRank(role.name, policy.roles) === "major");
           }
           count++;
           while (active >= policy.maxConcurrent) {
