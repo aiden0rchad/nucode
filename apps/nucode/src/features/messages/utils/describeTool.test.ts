@@ -24,6 +24,7 @@ describe("describeTool", () => {
     expect(describeTool(tool({ title: "Tool: read", detail: JSON.stringify({ path }) }))).toEqual({ verb: "Looked up", target, category: "lookup" });
   });
   it("uses agent names when recovered delegation records lack receiver metadata", () => {
+    expect(describeTool(tool({ title: "Tool: read", detail: JSON.stringify({ path: "artifact://0:247-600" }) }))).toEqual({ verb: "Read", target: "the rest of an earlier result", category: "read" });
     expect(describeTool(tool({ toolType: "collabToolCall", title: "Collab: spawnAgent", agentsTree: [{ id: "first", agent: "Researcher", status: "completed", children: [] }, { id: "second", agent: "Reviewer", status: "completed", children: [] }] })).target).toBe("Researcher +1");
     expect(describeTool(tool({ toolType: "collabToolCall", title: "Collab: spawnAgent" })).target).toBe("agent");
   });

@@ -463,6 +463,8 @@ export function describeTool(item: Extract<ConversationItem, { kind: "tool" }>):
   const path = stripRange(firstStringField(args, ["path", "file", "filename", "file_path"]));
   const lower = name.toLowerCase();
   if (lower === "read" && path.startsWith("xd://")) return { verb: "Looked up", target: `${humanize(path.slice(5).replace(/^mcp__/, "").replace(/^nucode_browser_/, ""))} tool`, category: "lookup" };
+  // An engine keeps a long result as an artifact and reads it back by number; "Read 0" says nothing.
+  if (lower === "read" && path.startsWith("artifact://")) return { verb: "Read", target: "the rest of an earlier result", category: "read" };
   if (lower === "preview_server") return { verb: args?.action === "start" ? "Started preview" : args?.action === "stop" ? "Stopped preview" : "Checked previews", target: firstStringField(args, ["label"]), category: "command" };
   if (lower === "subagent" || lower === "task") return { verb: "Ran sub-agent", target: firstStringField(args, ["agent", "description"]), category: "agent" };
   if (/codegraph|explore/.test(lower)) return { verb: "Explored code", target: firstStringField(args, ["query"]), category: "search" };
