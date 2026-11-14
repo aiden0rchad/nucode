@@ -88,6 +88,11 @@ describe("Agents panel", () => {
     rerender(view([item([{ ...node, usage: { input: 10, output: 2, cost: 0 } }])]));
     expect(screen.getByText("12 tokens · $0.0000")).toBeTruthy();
   });
+  it("writes long runs as minutes and large usage in thousands or millions", () => {
+    render(view([item([{ ...node, status: "completed", startedAt: 1000, endedAt: 306000, usage: { input: 1_300_000, output: 16_276, cost: null } }])]));
+    expect(screen.getByText("completed · 5:05")).toBeTruthy();
+    expect(screen.getByText("1.3m tokens · cost unavailable")).toBeTruthy();
+  });
   it("updates nested nodes and badges and loads only the selected transcript", async () => {
     const child = { ...node, id: "call:agent:0/nested:agent:0", agent: "Reviewer" };
     const { rerender } = render(view([item([{ ...node, children: [child] }])]));

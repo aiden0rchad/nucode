@@ -6,6 +6,8 @@ import type { AgentNode, ConversationItem } from "@/types";
 import { getSubagentTranscript } from "@services/tauri";
 import { buildConversationItem } from "@utils/threadItems";
 import { Messages } from "@/features/messages/components/Messages";
+import { formatDurationMs } from "@/features/messages/utils/messageRenderUtils";
+import { formatK } from "@/features/threads/hooks/contextCommands";
 import { PanelShell } from "@/features/layout/components/PanelShell";
 import type { PanelTabId } from "@/features/layout/components/PanelTabs";
 import { agentGroups, AgentsContext, runningAgents } from "./agents";
@@ -73,8 +75,8 @@ export function AgentActivity({ loadTranscript = getSubagentTranscript }: { load
     <button className="agent-node" aria-label={`View ${node.agent || "agent"} transcript, ${node.status}`} onClick={() => setSelection({ node, workspaceId, threadId })}>
       <span className={`agent-status ${node.status}`} aria-label={node.status} />
       <span><strong>{node.agent || "Agent"}</strong> <small title={formatModelRef(settings, node.model).title}>{node.model ? formatModelRef(settings, node.model).name : ""}</small>
-        <span className="agent-detail">{node.status} · {node.startedAt && (node.endedAt != null || node.status === "running") ? `${Math.max(0, Math.floor(((node.endedAt ?? now) - node.startedAt) / 1000))}s` : "elapsed unavailable"}</span>
-        <span className="agent-detail">{node.usage ? `${(node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0)} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span>
+        <span className="agent-detail">{node.status} · {node.startedAt && (node.endedAt != null || node.status === "running") ? formatDurationMs(Math.max(0, (node.endedAt ?? now) - node.startedAt)) : "elapsed unavailable"}</span>
+        <span className="agent-detail">{node.usage ? `${formatK((node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0))} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span>
         {node.task && <span className="agent-detail agent-preview" title={node.task}>{node.task}</span>}
         {node.lastMessage && <span className="agent-detail agent-preview" title={node.lastMessage}>{node.lastMessage}</span>}
         {node.status === "failed" && node.errorMessage && <span role="alert">{node.errorMessage}</span>}

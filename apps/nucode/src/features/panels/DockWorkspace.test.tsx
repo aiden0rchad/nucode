@@ -9,6 +9,7 @@ import { browserNativeBounds, browserRequest, subscribeBrowser } from "@services
 import type { BrowserState } from "@/features/browser/browser";
 import { FeatureSettings } from "@settings/features";
 import type { AppSettings } from "@/types";
+import { AgentsContext } from "@/features/agents/agents";
 
 vi.mock("@services/tauri", () => ({ browserRequest: vi.fn(), subscribeBrowser: vi.fn(), openBrowserDownloads: vi.fn(), browserNativeBounds: vi.fn() }));
 vi.mock("@/features/browser/BrowserAnnotations", () => ({ BrowserAnnotations: ({ onAdd }: { onAdd: (context: { text: string; image?: string }) => void }) => <button onClick={() => onAdd({ text: "Selected heading", image: "data:image/png;base64,cG5n" })}>Attach browser draft</button> }));
@@ -305,6 +306,21 @@ it("reveals a hidden Browser when the rail opens a server", async () => {
   await waitFor(() => expect(dockPanes(layout().tree)).toContain("browser"));
   expect(pane("browser").hidden).toBe(false);
   expect(screen.getByRole("button", { name: "Toggle Browser" }).getAttribute("aria-pressed")).toBe("true");
+});
+it("shows an Agents toggle while sub-agents run and opens their tree with it", () => {
+  const team = [...tools, { id: "agents", label: "Agents", content: <p>Agent tree</p> }];
+  const view = (status: "running" | "completed") => <AgentsContext.Provider value={{ workspaceId: "ws", threadId: "main", itemsByThread: { main: [{ id: "call", kind: "tool", toolType: "collabToolCall", title: "Agents", detail: "", agentsTree: [{ id: "call:agent:0", agent: "colonel", status, children: [] }] }] } }}>
+    <WorkspaceShell dock scope="code:one" title="Code thread" tools={team} sessionRail={<Rail />} onInterrupt={() => {}}><div className="app layout-desktop"><main className="main" /></div></WorkspaceShell>
+  </AgentsContext.Provider>;
+  const { rerender } = render(view("completed"));
+  expect(screen.queryByRole("button", { name: "Toggle Agents" })).toBeNull();
+  rerender(view("running"));
+  const toggle = screen.getByRole("button", { name: "Toggle Agents" });
+  expect(toggle.title).toBe("Agents · 1 running");
+  fireEvent.click(toggle);
+  expect(screen.getByText("Agent tree")).toBeTruthy();
+  rerender(view("completed"));
+  expect(screen.getByRole("button", { name: "Toggle Agents" }).getAttribute("aria-pressed")).toBe("true");
 });
 it("opens rail and secondary view actions and respects live feature gates", async () => {
   const view = render(shell()); fireEvent.click(screen.getByRole("button", { name: "Inspect changes" }));
