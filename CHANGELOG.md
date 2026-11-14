@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.2 — November 13, 2026
 
 - **Settings:** every Settings page has a new layout: named groups, plain labels with one line of help, collapsed rows that show their current value, and a Save changes button on the pages that stage edits. Server, Browser, Models & Agents, Shortcuts and Projects were reorganized around what you are trying to do.
 - **Attachments:** drag files from your file manager onto the composer to attach them. Images show as thumbnails above the message box instead of file names.
@@ -16,6 +16,10 @@
 - **Right-click:** an area with no menu of its own no longer shows the web view's Reload menu. Fields, links, pictures, the terminal and selected text keep theirs.
 - **Keychain prompt:** when macOS asks for your keychain password before a pi or omp engine can start, as it can after a newly installed build, the conversation shows "Waiting for macOS keychain access…" instead of "Working…", and other threads and the session rail keep responding while the dialog is open.
 - **Model switching:** a thread that switched to a Claude model after another model had reasoned in it could fail on every turn with a content-filter stop. The earlier model's reasoning is no longer replayed to the new model; its answers and tool results still are.
+
+### Release status
+
+Published as a macOS Apple Silicon release, with a DMG installer, build manifest and SHA-256 checksums. Windows remains on 0.8.0. This remains an early-development release; the macOS package is development-signed and not notarized.
 
 ## 0.8.1 — November 11, 2026
 

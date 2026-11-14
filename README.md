@@ -60,11 +60,11 @@ Code uses the selected enabled engine. Chat and Work use dedicated pi profiles; 
 
 ### Download the latest desktop build
 
-The current version is **0.8.1**. The [v0.8.1 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1) has the latest Mac build; the Windows build is in the [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0). See the [changelog](CHANGELOG.md).
+The current version is **0.8.2**. The [v0.8.2 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.2) has the latest Mac build; the Windows build is in the [v0.8.0 release](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0). See the [changelog](CHANGELOG.md).
 
 | Your computer | File |
 | --- | --- |
-| Apple Silicon Mac | `nucode_0.8.1_aarch64.dmg` — development signed, not notarized. |
+| Apple Silicon Mac | `nucode_0.8.2_aarch64.dmg` — development signed, not notarized. |
 | Intel/AMD Windows x64 | `nucode_0.8.0_x64-setup.exe` from v0.8.0 — unsigned. |
 
 These are experimental packages. Follow the [step-by-step installation guide](docs/getting-started.md) and read the [build notes and limits](docs/releases.md). The download includes supporting runtimes; development tools are needed for source builds, not normal use of the packaged app.

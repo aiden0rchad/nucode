@@ -14,11 +14,11 @@ An **API key** is a secret credential from the provider’s API dashboard. Cloud
 
 ## 1. Install the app
 
-The current downloads are **early test builds**, not a stable release. The [v0.8.1 release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1) has the Mac files, checksums, and build notes; the Windows installer is on the [v0.8.0 release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0).
+The current downloads are **early test builds**, not a stable release. The [v0.8.2 release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.2) has the Mac files, checksums, and build notes; the Windows installer is on the [v0.8.0 release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.0).
 
 | Your computer | Download or setup path |
 | --- | --- |
-| Mac with Apple Silicon | `nucode_0.8.1_aarch64.dmg` from the v0.8.1 release page. |
+| Mac with Apple Silicon | `nucode_0.8.2_aarch64.dmg` from the v0.8.2 release page. |
 | Windows on a 64-bit Intel/AMD PC | `nucode_0.8.0_x64-setup.exe` from the v0.8.0 release page. |
 | Intel Mac or Linux | Use the advanced [source-build instructions](#build-from-source); further platform validation is needed. |
 | iPhone/iPad | Experimental [remote/iOS setup](remote.md); not a beginner desktop-install path. |
@@ -26,7 +26,7 @@ The current downloads are **early test builds**, not a stable release. The [v0.8
 ### macOS: Apple Silicon
 
 1. Choose **Apple menu → About This Mac**. A **Chip** entry naming Apple M-series hardware means Apple Silicon. An Intel processor needs a different build path.
-2. On the [release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.1), expand **Assets** if needed and download **nucode_0.8.1_aarch64.dmg**. The source-code ZIP is for developers, not the installer.
+2. On the [release page](https://github.com/aiden0rchad/nucode/releases/tag/v0.8.2), expand **Assets** if needed and download **nucode_0.8.2_aarch64.dmg**. The source-code ZIP is for developers, not the installer.
 3. Open the downloaded DMG and copy **nucode.app** into **Applications**.
 4. Open nucode from Applications.
 
