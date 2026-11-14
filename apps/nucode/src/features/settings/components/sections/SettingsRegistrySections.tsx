@@ -5,6 +5,7 @@ import { RowMenu } from "@/features/chat/RowMenu";
 import { formatRelativeTimeShort } from "@utils/time";
 import { ModelReasoningSettings } from "./ModelReasoningSettings";
 import { ExecutionLimits } from "./ExecutionLimits";
+import { formatK, parseContextSize } from "@/features/threads/hooks/contextCommands";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AppSettings, ProviderEntry, ProviderKind, ProviderAuth, AgentPolicy, WorkspaceInfo, WorkspaceSettings } from "@/types";
 import { providerSetApiKey, providerHasApiKey, providerDeleteApiKey, providerTestAndFetch } from "@services/tauri";
@@ -109,6 +110,14 @@ export function SettingsProvidersSection({ appSettings, onUpdateAppSettings }: P
               const auto = e.target.value === "auto";
               setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, supportsImages: auto ? detectedImages ?? null : e.target.value === "on", supportsImagesSource: auto ? detectedImages == null ? null : "detected" : "user", detectedSupportsImages: detectedImages ?? null } : v) });
             }}><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></SettingsSelect>
+          </SettingsFieldRow>
+          <SettingsFieldRow title="Context window" subtitle="Tokens nucode assumes this model holds, such as 200k or 1m. Empty uses the default.">
+            <SettingsTextField key={m.contextWindow ?? "default"} aria-label={`Context window for ${m.displayName || m.id}`} disabled={busy} placeholder="Default" defaultValue={m.contextWindow ? formatK(m.contextWindow) : ""} onBlur={e => {
+              const text = e.target.value.trim();
+              const size = text ? parseContextSize(text) : null;
+              if (text && size === null) { e.target.value = m.contextWindow ? formatK(m.contextWindow) : ""; return; }
+              if (size !== (m.contextWindow ?? null)) setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? { ...v, contextWindow: size } : v) });
+            }} />
           </SettingsFieldRow>
           <ModelReasoningSettings model={m} disabled={busy} onChange={model => setDraft({ ...draft, models: draft.models.map(v => v.id === m.id ? model : v) })} onDetect={() => void run(async () => {
             await save(draft);

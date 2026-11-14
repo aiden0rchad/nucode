@@ -81,7 +81,7 @@ export default function CommandPolicyEditor({ policy, providers, tab, onChange, 
         </div>;
       })}
     </div>
-    <p className="command-hint">Mix cloud and local models. Inherit uses the default subagent model, then the parent’s model.</p>
+    <p className="command-hint">Mix cloud and local models. Inherit uses the default subagent model, then the parent’s model. Each role can run at its own effort.</p>
   </div>;
 
   if (tab === "subagents") return <div className="command-limits">

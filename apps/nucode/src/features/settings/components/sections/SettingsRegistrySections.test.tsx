@@ -45,6 +45,26 @@ describe("provider registry settings", () => {
     choose("Local", "Edit");
     expect(screen.getByLabelText("Images for small")).toHaveProperty("value", "on");
   });
+  it("saves a model's context window and ignores a malformed size", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const initial: ProviderEntry = { ...provider, models: [{ id: "small", enabled: true, contextWindow: 128000 }] };
+    render(<SettingsProvidersSection appSettings={{ providers: [initial] } as AppSettings} onUpdateAppSettings={save} />);
+    choose("Local", "Edit");
+    const field = () => screen.getByLabelText("Context window for small") as HTMLInputElement;
+    expect(field().value).toBe("128k");
+    fireEvent.change(field(), { target: { value: "lots" } });
+    fireEvent.blur(field());
+    expect(field().value).toBe("128k");
+    fireEvent.change(field(), { target: { value: "200k" } });
+    fireEvent.blur(field());
+    fireEvent.click(screen.getByText("Save provider"));
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ providers: [expect.objectContaining({ models: [expect.objectContaining({ id: "small", contextWindow: 200000 })] })] })));
+    await waitFor(() => expect(screen.getByText("Save provider")).toHaveProperty("disabled", false));
+    fireEvent.change(field(), { target: { value: "" } });
+    fireEvent.blur(field());
+    fireEvent.click(screen.getByText("Save provider"));
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ providers: [expect.objectContaining({ models: [expect.objectContaining({ id: "small", contextWindow: null })] })] })));
+  });
   it("shows image detection returned by Test & fetch models", async () => {
     vi.mocked(providerTestAndFetch).mockResolvedValue({ ok: true, latencyMs: 12, models: [{ id: "small", enabled: true, supportsImages: false, supportsImagesSource: "user", detectedSupportsImages: true }] });
     render(<Providers initial={[provider]} />);
