@@ -104,7 +104,7 @@ function stoppedDelegation(item: Extract<ConversationItem, { kind: "tool" }>) {
     && nodes.every(node => node.status === "aborted" || node.status === "completed");
 }
 
-function summarizeCollabLabel(title: string, status?: string) {
+function summarizeCollabLabel(title: string, status?: string, agents: { status: string }[] = []) {
   const tool = title.replace(/^collab:\s*/i, "").trim().toLowerCase();
   const tone = statusToneFromText(status);
   if (tool.includes("wait")) {
@@ -118,7 +118,8 @@ function summarizeCollabLabel(title: string, status?: string) {
   }
   if (tool.includes("spawn")) {
     if (tone === "failed") {
-      return "spawn failed";
+      const started = agents.filter((agent) => agent.status !== "errored").length;
+      return started > 0 && started < agents.length ? `spawned ${started} of ${agents.length}` : "spawn failed";
     }
     return tone === "processing" ? "spawning" : "spawned";
   }
@@ -447,7 +448,7 @@ export function describeTool(item: Extract<ConversationItem, { kind: "tool" }>):
   if (item.toolType === "webSearch") return { verb: "Searched", target: item.detail || "the web", category: "search" };
   if (item.toolType === "imageView") return { verb: "Viewed", target: basename(item.detail || "") || "image", category: "read" };
   if (item.toolType === "collabToolCall") {
-    const label = stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status);
+    const label = stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status, item.collabStatuses);
     return { verb: label.charAt(0).toUpperCase() + label.slice(1), target: summarizeCollabReceiver(item), category: "agent" };
   }
   if (item.toolType === "hook") return { verb: "Hook", target: item.title.replace(/^Hook:\s*/i, "").trim(), category: "other" };
@@ -559,7 +560,7 @@ export function buildToolSummary(
 
   if (item.toolType === "collabToolCall") {
     return {
-      label: stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status),
+      label: stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status, item.collabStatuses),
       value: summarizeCollabReceiver(item),
       detail: item.detail || "",
       output: item.output || "",

@@ -50,6 +50,21 @@ export function agentGroups(items: ConversationItem[], byThread: Record<string, 
   }).reverse() })).filter(g => g.nodes.length);
 }
 
+const refusal = /Subagent max per turn \((\d+)\) reached/;
+
+/** Why the turn's agent limit refused an agent and what that limit was, or null for any other error. */
+export function agentRefusal(message?: string | null): { limit: number; reason: string } | null {
+  const hit = refusal.exec(message ?? "");
+  if (!hit) return null;
+  return { limit: Number(hit[1]), reason: /kept for a major/.test(message ?? "") ? `the last of this turn's ${hit[1]} agents is kept for the QA check` : `this turn had already used its ${hit[1]} agents` };
+}
+
+/** Says in plain words why an agent did not run, when the reason is the turn's agent limit. */
+export function agentErrorText(message: string): string {
+  const refused = agentRefusal(message);
+  return refused ? `Not started: ${refused.reason}.` : message;
+}
+
 export function runningAgents(nodes: AgentNode[]): number {
   return nodes.reduce((n, node) => n + Number(node.status === "running") + runningAgents(node.children), 0);
 }
@@ -64,4 +79,11 @@ export function useRunningAgents(threadId?: string) {
   const context = useContext(AgentsContext);
   const id = threadId ?? context.threadId ?? "";
   return runningAgents(agentGroups(context.itemsByThread[id] ?? [], context.itemsByThread, new Set([id]), context.details).flatMap(g => g.nodes));
+}
+
+/** True once the open thread has started an agent in any turn, so there is a tree to look at. */
+export function useHasAgents() {
+  const context = useContext(AgentsContext);
+  const id = context.threadId ?? "";
+  return agentGroups(context.itemsByThread[id] ?? [], context.itemsByThread, new Set([id]), context.details).length > 0;
 }

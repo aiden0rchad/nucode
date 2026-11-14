@@ -19,7 +19,7 @@ import { dockGeometry, dockPanes, hideDockPane, initialDock, moveDockPane, panel
 
 import { BrowserTabIcon, PanelTabList, pageStatusText } from "./PanelTabList";
 import { panelToolIcons } from "./toolIcons";
-import { useRunningAgents } from "@/features/agents/agents";
+import { useHasAgents, useRunningAgents } from "@/features/agents/agents";
 
 // Browser keeps its own titlebar toggle; its new tab lists every other tool (as Codex does). Files toggles only while open.
 // Every tool has a titlebar toggle (Claude Code order: inspector, terminal, changes, browser, files).
@@ -49,6 +49,7 @@ export function DockWorkspace({ children, scope, title, tools = [], searchUrl, o
   tree = removeDockPane(tree, "session") ?? { type: "pane", id: "conversation" };
   const geometry = dockGeometry(tree), visible = new Set(Object.keys(geometry.panes));
   const runningTeam = useRunningAgents();
+  const hasTeam = useHasAgents();
   const reorderPane = useSidebarReorder((source, targetPaneId) => {
     if (visible.has(source) && source !== "conversation") setDock(layout => moveDockPane(layout, source, "bottom", targetPaneId));
   }, undefined, { ignore: 'button, input, select, [role="tab"]' });
@@ -218,7 +219,7 @@ export function DockWorkspace({ children, scope, title, tools = [], searchUrl, o
           return shownTools.map(tool => { const asPanel = panelOnly && tool.id === "browser"; const Icon = asPanel ? PanelRight : tool.icon; return <IconButton className="ghost" data-pane-toggle={tool.id} key={tool.id} aria-label={asPanel ? "Toggle side panel" : `Toggle ${tool.label}`} title={asPanel ? "Side panel" : tool.label} aria-pressed={visible.has(tool.id) && (!compact || focused === tool.id)} disabled={tool.id === "browser" && busy} onClick={() => toggle(tool.id)}><Icon aria-hidden /></IconButton>; });
         })()}
         {/* A running team is easy to lose track of: its tree gets a toggle for as long as it works or stays open. */}
-        {available.has("agents") && (runningTeam > 0 || visible.has("agents")) && <IconButton className="ghost" data-pane-toggle="agents" aria-label="Toggle Agents" title={runningTeam ? `Agents · ${runningTeam} running` : "Agents"} aria-pressed={visible.has("agents") && (!compact || focused === "agents")} onClick={() => toggle("agents")}><AgentsIcon aria-hidden /></IconButton>}
+        {available.has("agents") && (hasTeam || visible.has("agents")) && <IconButton className="ghost" data-pane-toggle="agents" aria-label="Toggle Agents" title={runningTeam ? `Agents · ${runningTeam} running` : "Agents"} aria-pressed={visible.has("agents") && (!compact || focused === "agents")} onClick={() => toggle("agents")}><AgentsIcon aria-hidden /></IconButton>}
         {/* With the browser on, its new tab is where tools open; without it, they stay in this menu. */}
         {!features.browser && <RowMenu label="View options" size="md" portal icon={<LayoutGrid size={14} aria-hidden />} actions={[
           ...quickTools.filter(tool => secondaryTools.has(tool.id) && available.has(tool.id) && !visible.has(tool.id)).map(tool => ({ label: tool.label, onClick: () => toggle(tool.id) })),

@@ -1200,7 +1200,7 @@
   font-size: max(11px, 0.97em);
 }
 
-.message .markdown .message-file-link {
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -1215,12 +1215,12 @@
   overflow: hidden;
 }
 
-.message .markdown .message-file-link:hover {
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link:hover {
   border-color: var(--border-strong);
   color: var(--text-stronger);
 }
 
-.message .markdown .message-file-link-name {
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-name {
   font-family: var(--code-font-family);
   font-weight: 520;
   font-size: max(11px, 0.88em);
@@ -1228,7 +1228,7 @@
   white-space: nowrap;
 }
 
-.message .markdown .message-file-link-line {
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-line {
   display: inline-flex;
   align-items: center;
   padding: 0 5px;
@@ -1241,7 +1241,7 @@
   letter-spacing: 0.02em;
 }
 
-.message .markdown .message-file-link-path {
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-path {
   font-size: max(11px, 0.62em);
   line-height: 1.2;
   color: var(--text-faint);
@@ -1511,10 +1511,10 @@
 .message :is(.markdown-codeblock, .markdown-codeblock-single) .token:is(.operator, .entity, .url, .variable) { color: var(--syn-op); }
 .message :is(.markdown-codeblock, .markdown-codeblock-single) .token:is(.atrule, .attr-value, .keyword) { color: var(--syn-keyword); }
 .message :is(.markdown-codeblock, .markdown-codeblock-single) .token:is(.function, .class-name) { color: var(--syn-fn); }
-.message .markdown .message-file-link { gap: 0; padding: 1px 7px; border-radius: 6px; align-items: baseline; }
-.message .markdown .message-file-link-path { font-family: var(--code-font-family); font-size: max(11px, 0.88em); color: var(--text-subtle); max-width: 24ch; }
-.message .markdown .message-file-link-line { margin-left: 6px; }
-.message .markdown .message-file-link-path::after { content: "/"; }
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link { gap: 0; padding: 1px 7px; border-radius: 6px; align-items: baseline; }
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-path { font-family: var(--code-font-family); font-size: max(11px, 0.88em); color: var(--text-subtle); max-width: 24ch; }
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-line { margin-left: 6px; }
+:is(.message .markdown, .tool-inline-output.markdown) .message-file-link-path::after { content: "/"; }
 /* One line has no layout to preserve: wrap it instead of cutting it off at the column edge. */
 .message .markdown-codeblock-single { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* GFM task lists: the checkbox is the marker (no bullet in front of it), drawn in the app's own colours. */

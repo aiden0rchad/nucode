@@ -895,6 +895,24 @@ describe("threadItems", () => {
     }
   });
 
+  it("lists each agent once and says in plain words which ones the turn's limit refused", () => {
+    const refused = "Error: Subagent max per turn (3) reached across the command tree; the last agent is kept for a major to verify the work";
+    const item = buildConversationItem({
+      type: "collabAgentToolCall", id: "call-2", tool: "spawnAgent", status: "failed",
+      senderThreadId: "thread-a", receiverThreadIds: ["call-2:agent:0", "call-2:agent:1"],
+      prompt: "Read the name\nRead the version",
+      error: { message: `researcher: demo-ui\nresearcher: ${refused}` },
+      agentsStates: {
+        "call-2:agent:0": { status: "completed", agent: "researcher", model: "cloud/small", message: "demo-ui" },
+        "call-2:agent:1": { status: "errored", agent: "researcher", model: "cloud/small", message: refused },
+      },
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.output).toBe("Read the name\nRead the version\n\nResearcher 1: completed · small\ndemo-ui\nResearcher 2: not started, the last of this turn's 3 agents is kept for the QA check");
+    }
+  });
+
   it("captures rich collab metadata from receiver_agents and agent_statuses", () => {
     const item = buildConversationItem({
       type: "collabToolCall",

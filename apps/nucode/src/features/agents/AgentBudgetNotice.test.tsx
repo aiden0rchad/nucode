@@ -6,17 +6,20 @@ import type { AgentNode, AgentPolicy, AppSettings, ConversationItem } from "@/ty
 import { FeatureSettings } from "@settings/features";
 import { defaultAgentPolicy, setAgentMode } from "@settings/registry";
 import { ComposerPolicyProvider } from "@/features/composer/components/ComposerPolicy";
-import { AgentBudgetNotice, agentBudgetShortfall, agentErrorText, recommendedPerTurn } from "./AgentBudgetNotice";
+import { AgentBudgetNotice, agentBudgetShortfall, recommendedPerTurn } from "./AgentBudgetNotice";
+import { agentErrorText } from "./agents";
 
 afterEach(cleanup);
 const node = (id: string, error?: string, children: AgentNode[] = []): AgentNode => ({ id, agent: "enlisted", status: error ? "failed" : "completed", errorMessage: error, children });
-const refused = "Error: Subagent max per turn (8) reached across the command tree; the last agent is kept for a major to verify the work";
+const full = "Error: Subagent max per turn (8) reached across the command tree";
+const refused = `${full}; the last agent is kept for a major to verify the work`;
 const user = (id: string): ConversationItem => ({ id, kind: "message", role: "user", text: "Build it" });
 const spawn = (id: string, agentsTree: AgentNode[]): ConversationItem => ({ id, kind: "tool", toolType: "collabToolCall", title: "Collab: spawnAgent", detail: "", status: "completed", agentsTree });
 const ranOut = [user("u1"), spawn("s1", [node("colonel", undefined, [node("a"), node("b", refused), node("c", refused)])])];
 
 it("finds the agents the latest turn could not start, and only the latest turn's", () => {
-  expect(agentBudgetShortfall(ranOut)).toEqual({ limit: 8, refused: 2 });
+  expect(agentBudgetShortfall(ranOut)).toEqual({ limit: 8, refused: 2, kept: true });
+  expect(agentBudgetShortfall([user("u1"), spawn("s1", [node("a", full)])])).toEqual({ limit: 8, refused: 1, kept: false });
   expect(agentBudgetShortfall([...ranOut, user("u2"), spawn("s2", [node("d")])])).toBeNull();
   expect(agentBudgetShortfall([user("u1"), spawn("s1", [node("a", "429 Too many requests")])])).toBeNull();
 });
@@ -26,7 +29,8 @@ it("recommends room for what was refused, a fix and a second check, up to the mo
   expect(recommendedPerTurn(8, 5)).toBe(15);
   expect(recommendedPerTurn(12, 1)).toBe(18);
   expect(recommendedPerTurn(30, 4)).toBe(32);
-  expect(agentErrorText(refused)).toBe("Not started: this turn had already used its 8 agents.");
+  expect(agentErrorText(full)).toBe("Not started: this turn had already used its 8 agents.");
+  expect(agentErrorText(refused)).toBe("Not started: the last of this turn's 8 agents is kept for the QA check.");
   expect(agentErrorText("Model is not allowed")).toBe("Model is not allowed");
 });
 
@@ -43,7 +47,7 @@ function Team({ save, perTurn = 8 }: { save: (policy: AgentPolicy) => Promise<vo
 it("raises the limit for the team in one click and then says what to do next", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<Team save={save} />);
-  expect(screen.getByText(/started all 8 agents it is allowed, and 2 more were not started/)).toBeTruthy();
+  expect(screen.getByText(/may start 8 agents and keeps the last one for the QA check, so 2 more were not started/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Allow 12 per turn" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   expect(save.mock.calls[0][0].subagents.maxPerTurn).toBe(12);
@@ -54,7 +58,7 @@ it("raises the limit for the team in one click and then says what to do next", a
 it("shows nothing when the turn had enough agents, and no button without a team to change", () => {
   const { container } = render(<AgentBudgetNotice items={[user("u1"), spawn("s1", [node("a")])]} />);
   expect(container.textContent).toBe("");
-  render(<AgentBudgetNotice items={ranOut} />);
-  expect(screen.getByText(/12 per turn leaves room/)).toBeTruthy();
+  render(<AgentBudgetNotice items={[user("u1"), spawn("s1", [node("a", full)])]} />);
+  expect(screen.getByText(/started all 8 agents it is allowed, and 1 more was not started\. 12 per turn leaves room/)).toBeTruthy();
   expect(screen.queryByRole("button")).toBeNull();
 });

@@ -30,6 +30,16 @@ describe("Agents panel", () => {
     expect(screen.getByText("Visible review notice")).toBeTruthy();
     expect(screen.queryByText("Internal policy instructions")).toBeNull();
   });
+  it("says an agent the turn's limit refused was not started, and previews reports without Markdown marks", () => {
+    render(view([item([
+      { ...node, status: "completed", endedAt: Date.now(), lastMessage: "The `name` field is **demo-ui**." },
+      { ...node, id: "call:agent:1", status: "failed", startedAt: undefined, usage: { input: 0, output: 0, cost: null }, errorMessage: "Error: Subagent max per turn (3) reached across the command tree; the last agent is kept for a major to verify the work" },
+    ])]));
+    expect(screen.getByText("The name field is demo-ui.")).toBeTruthy();
+    expect(screen.getByText("not started")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("Not started: the last of this turn's 3 agents is kept for the QA check.");
+    expect(screen.queryByText(/elapsed unavailable/)).toBeNull();
+  });
   it("retries a failed read without starting an agent", async () => {
     vi.mocked(getSubagentTranscript).mockRejectedValueOnce(new Error("Read interrupted"))
       .mockResolvedValue({ messages: [{ role: "assistant", content: "Recovered result" }], truncated: false });

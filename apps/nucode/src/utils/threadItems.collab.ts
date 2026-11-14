@@ -5,6 +5,7 @@ import type {
   ThreadSummary,
 } from "../types";
 import { asString, normalizeStringList } from "./threadItems.shared";
+import { agentRefusal } from "../features/agents/agents";
 
 function buildCollabAgentRef(
   threadIdValue: unknown,
@@ -217,7 +218,7 @@ function formatCollabAgentStatuses(value: CollabAgentStatus[]) {
     return "";
   }
   return value
-    .map((entry) => `${formatCollabAgentLabel(entry)}: ${entry.status}${entry.model ? ` · ${subagentNumber(entry.threadId) !== null ? entry.model.slice(entry.model.indexOf("/") + 1) : entry.model}` : ""}${entry.usage ? ` · ${entry.usage.input} in / ${entry.usage.output} out · $${entry.usage.cost.toFixed(4)}` : ""}${entry.message ? `\n${entry.message}` : ""}`)
+    .map((entry) => agentRefusal(entry.message) ? `${formatCollabAgentLabel(entry)}: not started, ${agentRefusal(entry.message)!.reason}` : `${formatCollabAgentLabel(entry)}: ${entry.status}${entry.model ? ` · ${subagentNumber(entry.threadId) !== null ? entry.model.slice(entry.model.indexOf("/") + 1) : entry.model}` : ""}${entry.usage ? ` · ${entry.usage.input} in / ${entry.usage.output} out · $${entry.usage.cost.toFixed(4)}` : ""}${entry.message ? `\n${entry.message}` : ""}`)
     .join("\n");
 }
 
@@ -384,7 +385,8 @@ export function parseCollabToolCallItem(
     title: tool ? `Collab: ${tool}` : "Collab tool call",
     detail: buildCollabDetail(sender ?? undefined, receiverAgents, collabStatuses),
     status,
-    output: [error, buildCollabOutput(prompt, collabStatuses)].filter(Boolean).join("\n\n"),
+    // Each agent's own entry already carries what the call's error would repeat.
+    output: [collabStatuses.some((entry) => entry.message) ? "" : error, buildCollabOutput(prompt, collabStatuses)].filter(Boolean).join("\n\n"),
     collabSender: sender ?? undefined,
     collabReceiver: primaryReceiver ?? undefined,
     collabReceivers: receiverAgents.length > 0 ? receiverAgents : undefined,

@@ -10,8 +10,7 @@ import { formatDurationMs } from "@/features/messages/utils/messageRenderUtils";
 import { formatK } from "@/features/threads/hooks/contextCommands";
 import { PanelShell } from "@/features/layout/components/PanelShell";
 import type { PanelTabId } from "@/features/layout/components/PanelTabs";
-import { agentGroups, AgentsContext, runningAgents } from "./agents";
-import { agentErrorText } from "./AgentBudgetNotice";
+import { agentErrorText, agentGroups, agentRefusal, AgentsContext, runningAgents } from "./agents";
 import "./agents.css";
 
 export function transcriptItems(messages: Record<string, unknown>[]): ConversationItem[] {
@@ -31,6 +30,9 @@ export function transcriptItems(messages: Record<string, unknown>[]): Conversati
     ];
   });
 }
+
+/** A two-line preview reads better without the Markdown marks an agent writes its report in. */
+const plain = (text: string) => text.replace(/\*\*|__|`/g, "").replace(/^#+\s+/gm, "");
 
 export function AgentsPanel({ onSelect }: { onSelect: (tab: PanelTabId) => void }) {
   return <PanelShell filePanelMode="agents" onFilePanelModeChange={onSelect}><AgentActivity /></PanelShell>;
@@ -76,11 +78,11 @@ export function AgentActivity({ loadTranscript = getSubagentTranscript }: { load
     <button className="agent-node" aria-label={`View ${node.agent || "agent"} transcript, ${node.status}`} onClick={() => setSelection({ node, workspaceId, threadId })}>
       <span className={`agent-status ${node.status}`} aria-label={node.status} />
       <span><strong>{node.agent || "Agent"}</strong> <small title={formatModelRef(settings, node.model).title}>{node.model ? formatModelRef(settings, node.model).name : ""}</small>
-        <span className="agent-detail">{node.status} · {node.startedAt && (node.endedAt != null || node.status === "running") ? formatDurationMs(Math.max(0, (node.endedAt ?? now) - node.startedAt)) : "elapsed unavailable"}</span>
-        <span className="agent-detail">{node.usage ? `${formatK((node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0))} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span>
-        {node.task && <span className="agent-detail agent-preview" title={node.task}>{node.task}</span>}
-        {node.lastMessage && <span className="agent-detail agent-preview" title={node.lastMessage}>{node.lastMessage}</span>}
-        {node.status === "failed" && node.errorMessage && <span role="alert">{agentErrorText(node.errorMessage)}</span>}
+        {agentRefusal(node.errorMessage) ? <span className="agent-detail">not started</span> : <><span className="agent-detail">{node.status} · {node.startedAt && (node.endedAt != null || node.status === "running") ? formatDurationMs(Math.max(0, (node.endedAt ?? now) - node.startedAt)) : "elapsed unavailable"}</span>
+        <span className="agent-detail">{node.usage ? `${formatK((node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0))} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span></>}
+        {node.task && <span className="agent-detail agent-preview" title={node.task}>{plain(node.task)}</span>}
+        {node.lastMessage && <span className="agent-detail agent-preview" title={node.lastMessage}>{plain(node.lastMessage)}</span>}
+        {node.status === "failed" && node.errorMessage && <span className="agent-detail agent-error" role="alert">{agentErrorText(node.errorMessage)}</span>}
       </span>
     </button>
     {!!node.children.length && <ul>{node.children.map(renderNode)}</ul>}

@@ -104,6 +104,20 @@ describe("messageRenderUtils", () => {
     expect(summary.label).toBe("spawn failed");
   });
 
+  it("says how many agents started when a spawn started only some of them", () => {
+    const summary = buildToolSummary(makeToolItem({
+      toolType: "collabToolCall",
+      title: "Collab: spawnAgent",
+      status: "failed",
+      collabStatuses: [
+        { threadId: "tool-1:agent:0", status: "completed" },
+        { threadId: "tool-1:agent:1", status: "completed" },
+        { threadId: "tool-1:agent:2", status: "errored" },
+      ],
+    }), "");
+    expect(summary.label).toBe("spawned 2 of 3");
+  });
+
   it.each([
     { role: undefined, expected: "thread-child" },
     { role: "reviewer", expected: "thread-child [reviewer]" },
