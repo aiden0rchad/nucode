@@ -3,6 +3,9 @@
 ## Unreleased
 
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
+- **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
+- **Sub-agents:** an expanded sub-agent row names each agent by role and number with its model, such as "Researcher 2: completed · Claude Haiku 5.5", instead of internal ids.
+- **Context size:** `/context-size` and `/autocompact` take effect at once when sent during a running turn instead of waiting in the queue. Settings → Providers has a Context window field for each model, and each model's options fold into one row.
 
 ## 0.8.2 — November 13, 2026
 
