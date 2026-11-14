@@ -28,8 +28,8 @@ globalThis.fetch = async (_url, options) => {
     const marker = messages.match(/QA_(PASS|MISSING|FAIL)_FIXTURE/)[0];
     let tool, args;
     if (!calls) {
-      tool = major || marker === 'QA_MISSING_FIXTURE' ? 'read' : 'subagent';
-      args = tool === 'read' ? { path: 'answer.txt' } : { agent: 'major', task: marker, acceptanceCriteria: ['answer.txt contains 42'] };
+      tool = major ? 'read' : marker === 'QA_MISSING_FIXTURE' ? 'bash' : 'subagent';
+      args = tool === 'read' ? { path: 'answer.txt' } : tool === 'bash' ? { command: 'cat answer.txt', timeout: 20 } : { agent: 'major', task: marker, acceptanceCriteria: ['answer.txt contains 42'] };
     } else if (major && calls === 1) {
       if (!messages.includes('Verification evidence: E1')) throw new Error('QA evidence hook did not run');
       tool = 'report_verification';

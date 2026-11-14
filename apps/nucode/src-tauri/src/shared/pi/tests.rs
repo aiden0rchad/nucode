@@ -481,6 +481,21 @@ fn subagent_validation_failure_keeps_error_and_single_agent_with_empty_modes() {
 }
 
 #[test]
+fn a_review_is_reported_on_the_turn_without_failing_it() {
+    for (status, passed) in [("unverified", false), ("verified", true)] {
+        let mut t = Translator::new("test", "/workspace");
+        t.apply(&json!({"type":"agent_start"}));
+        let events = t.apply(&json!({"type":"nucode_verification","record":{"status":status,"message":"QA note","reports":[{"checks":[{"criterion":"tests pass","passed":passed,"note":"Ran the suite"}]}]}}));
+        let item = events.iter().find(|e| e["method"] == "item/completed").unwrap()["params"]["item"].clone();
+        assert_eq!(item["review"], json!({"status":status,"message":"QA note","checks":[{"criterion":"tests pass","passed":passed,"note":"Ran the suite"}]}));
+        assert!(item["text"].as_str().unwrap().contains(if passed { "- Pass: tests pass" } else { "- Not confirmed: tests pass" }));
+        t.apply(&json!({"type":"agent_settled"}));
+        assert_eq!(t.turns[0]["status"], "completed", "{status}");
+        assert!(t.turns[0]["error"].is_null(), "{status}");
+    }
+}
+
+#[test]
 fn late_subagent_progress_cannot_restart_a_finished_tool_or_turn() {
     for aborted in [false, true] {
         let mut t = Translator::new("test", "/workspace");
@@ -2232,7 +2247,7 @@ fn execution_limit_replay_keeps_the_reason_on_its_own_turn() {
 }
 
 #[tokio::test]
-async fn real_pi_and_omp_verification_gates_completion_and_survives_reload() {
+async fn real_pi_and_omp_verification_reports_on_completion_and_survives_reload() {
     use tokio::io::AsyncBufReadExt;
     if !Path::new(env!("CARGO_MANIFEST_DIR")).join("../engines/omp/node_modules/.bin/bun").exists() { return; }
     let mut server = tokio::process::Command::new("node").arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/omp_fetch.mjs")).arg("--serve").stdout(std::process::Stdio::piped()).kill_on_drop(true).spawn().unwrap();
@@ -2246,7 +2261,7 @@ async fn real_pi_and_omp_verification_gates_completion_and_survives_reload() {
         let policy = serde_json::from_value(json!({"subagents":{"mode":"chain-of-command","roles":[{"name":"major","description":"QA","toolAccess":"read-only","instructions":""}]}})).unwrap();
         engine.configure("workspace", vec![provider], policy).await;
         let mut events = engine.events();
-        for (marker, expected) in [("QA_MISSING_FIXTURE", "failed"), ("QA_PASS_FIXTURE", "completed"), ("QA_FAIL_FIXTURE", "failed")] {
+        for (marker, expected) in [("QA_MISSING_FIXTURE", "unverified"), ("QA_PASS_FIXTURE", "verified"), ("QA_FAIL_FIXTURE", "unverified")] {
             let start = engine.request("workspace", "thread/start", json!({"model":"local/stub"})).await.unwrap();
             let id = start["result"]["thread"]["id"].as_str().unwrap();
             engine.request("workspace", "turn/start", json!({"threadId":id,"input":[{"type":"text","text":marker}],"accessMode":"full-access"})).await.unwrap();
@@ -2254,9 +2269,9 @@ async fn real_pi_and_omp_verification_gates_completion_and_survives_reload() {
             tokio::time::timeout(Duration::from_secs(45), async {
                 loop {
                     let event = events.recv().await.unwrap();
-                    if event["method"] == "item/completed" && event["params"]["item"]["text"].as_str().is_some_and(|text| text.contains("Chain of Command verification")) { verification = true; }
+                    if event["method"] == "item/completed" && event["params"]["item"]["review"]["status"] == expected { verification = true; }
                     if event["method"] == "turn/completed" {
-                        assert_eq!(event["params"]["turn"]["status"], expected, "{profile} {marker}: {event}");
+                        assert_eq!(event["params"]["turn"]["status"], "completed", "{profile} {marker}: {event}");
                         assert!(verification, "QA status must arrive before turn completion: {profile} {marker} {event}");
                         break;
                     }
@@ -2264,8 +2279,8 @@ async fn real_pi_and_omp_verification_gates_completion_and_survives_reload() {
             }).await.unwrap();
             let file = engine.sessions.lock().await[id].file.clone();
             let (_, restored) = read_session(&file, &[]).unwrap();
-            assert_eq!(restored.turns.last().unwrap()["status"], expected, "reloaded {marker}");
-            assert!(json!(restored.turns).to_string().contains("Chain of Command verification"));
+            assert_eq!(restored.turns.last().unwrap()["status"], "completed", "reloaded {marker}");
+            assert!(json!(restored.turns).to_string().contains(&format!("Chain of Command verification: {expected}")), "reloaded {marker}");
         }
         engine.shutdown().await.unwrap();
         std::fs::remove_dir_all(dir).unwrap();

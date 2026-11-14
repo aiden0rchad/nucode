@@ -115,7 +115,8 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
       if (depth > 10) return;
       for (const result of results) {
         const messages = result.messages ?? [];
-        if (commandRank(result.agent, policy().roles) === "enlisted") implementationEnded = Math.max(implementationEnded, result.endedAt ?? Date.now());
+        // A role that can only read cannot have changed anything that needs a review.
+        if (commandRank(result.agent, policy().roles) === "enlisted" && policy().roles.find(role => role.name === result.agent)?.toolAccess !== "read-only") implementationEnded = Math.max(implementationEnded, result.endedAt ?? Date.now());
         if (commandRank(result.agent, policy().roles) === "major") {
           const message = messages.filter((message: any) => message.role === "toolResult" && (message.toolName === "report_verification" || message.details?.xdev?.tool === "report_verification") && !message.isError).at(-1);
           const report = message?.details?.nucodeVerification ?? message?.details?.xdev?.inner?.nucodeVerification;
@@ -150,6 +151,8 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
     if (!root || !enabled() || !worked || interrupted) return;
     // A retry may repair a failed criterion; retain the latest verdict for each.
     const all = [...reports.values()].flat(), latest = new Map<string, Verification>();
+    // Reading, searching and research change nothing, so such a turn ends without a review status.
+    if (!lastChangeAt && !all.length) return;
     for (const report of all) for (const check of report.checks) latest.set(check.criterion, report);
     const checked = all.map(report => ({ ...report, checks: report.checks.filter(check => latest.get(check.criterion) === report) })).filter(report => report.checks.length);
     const problem = verificationProblem(checked);

@@ -73,7 +73,13 @@ test("root completion requires QA; retries repair verdicts, edits invalidate QA,
   const qa = (value = report, id = "qa") => f.emit("tool_execution_end", { toolName: "subagent", toolCallId: id, result: { details: { results: [result(value)] } } });
   await f.emit("agent_start"); await f.emit("agent_end"); assert.equal(f.records.length, 0, "no-tools replies need no QA");
   await f.emit("tool_execution_end", { toolName: "read", result: {} }); await f.emit("agent_end");
-  assert.equal(f.records.at(-1).status, "unverified");
+  assert.equal(f.records.length, 0, "reading changes nothing, so it needs no QA");
+  f.current.roles = [{ name: "researcher", description: "", toolAccess: "read-only", instructions: "", commandRank: "enlisted" }];
+  await f.emit("tool_execution_end", { toolName: "subagent", toolCallId: "research", result: { details: { results: [{ agent: "researcher", status: "completed", endedAt: 5, messages: [] }] } } }); await f.emit("agent_end");
+  assert.equal(f.records.length, 0, "agents that can only read change nothing either");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "unverified", "a command may have changed something, so it needs QA");
+  await f.emit("agent_start");
   await qa({ ...report, checks: [{ ...checks[0], passed: false }] }); await f.emit("agent_end");
   assert.equal(f.records.at(-1).status, "unverified");
   await qa(report, "retry"); await f.emit("agent_end"); assert.equal(f.records.at(-1).status, "verified");
@@ -92,7 +98,7 @@ test("root completion requires QA; retries repair verdicts, edits invalidate QA,
   assert.equal(f.records.length, count, "do not overwrite cancellation");
   await f.emit("agent_start");
   await f.emit("message_end", { message: { role: "assistant", stopReason: "error" } });
-  await f.emit("tool_execution_end", { toolName: "read", result: {} });
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} });
   await f.emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
   await f.emit("agent_end");
   assert.equal(f.records.length, count + 1, "a recovered transient error must not bypass verification");

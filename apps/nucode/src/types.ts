@@ -145,6 +145,9 @@ export type AgentMessageMetadata = Partial<Pick<
   "phase" | "memoryCitation" | "delivery" | "questions"
 >>;
 
+/** What a team's QA concluded about a finished turn: every check with its verdict, and why the turn counts as reviewed or not. */
+export type TurnReview = { status: "verified" | "unverified"; message: string; checks: { criterion: string; passed: boolean; note?: string }[] };
+
 export type ConversationItem =
   | (AgentMessageMetadata & {
       id: string;
@@ -153,6 +156,7 @@ export type ConversationItem =
       text: string;
       images?: string[];
       isError?: boolean;
+      review?: TurnReview;
       retryMessage?: { text: string; images?: string[] } | null;
     })
   | {

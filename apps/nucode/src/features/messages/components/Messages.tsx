@@ -28,6 +28,7 @@ import {
 } from "./MessageRows";
 import { useMessagesViewState } from "./useMessagesViewState";
 import { isTurnError, TurnErrorCard } from "./TurnErrorCard";
+import { ReviewCard, reviewFollowUp } from "./ReviewCard";
 import { AgentBudgetNotice } from "@/features/agents/AgentBudgetNotice";
 
 type MessagesProps = {
@@ -187,6 +188,11 @@ export const Messages = memo(function Messages({
 
   const renderItem = (item: ConversationItem) => {
     if (item.kind === "message") {
+      if (item.role === "assistant" && item.review) {
+        const review = item.review;
+        return <ReviewCard key={item.id} review={review} disabled={isThinking || isLoadingMessages}
+          onFollowUp={item === latestItem && onRetryMessage ? () => onRetryMessage(reviewFollowUp(review), []) : undefined} />;
+      }
       if (isTurnError(item)) {
         const isLatest = item === latestItem;
         const user = items.find(candidate => candidate.id === lastUserId);

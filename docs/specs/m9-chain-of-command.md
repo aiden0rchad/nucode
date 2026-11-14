@@ -152,8 +152,10 @@ and reporting, or between reporting and root completion, invalidate that evidenc
 Later implementation or root commands/edits require a fresh review; review running
 in parallel with implementation does not qualify. A subsequent check can replace
 an earlier failed verdict for the same criterion. Missing, malformed, failed, or
-stale QA leaves the turn failed with an explicit “Verification incomplete” message.
-Cancellation keeps its interrupted status. The summary is persisted outside model
+stale QA is reported on the finished turn as a review that names each check QA could
+not confirm; the turn itself completes, because the work and the answer stand. A turn
+that only read, searched or used read-only roles changed nothing and gets no review
+status. Cancellation keeps its interrupted status. The summary is persisted outside model
 context and uses the same status when the conversation is reopened.
 
 This gate establishes that QA used tools and recorded verdicts against unchanged

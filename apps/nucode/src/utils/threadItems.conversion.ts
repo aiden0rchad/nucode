@@ -1,4 +1,4 @@
-import type { ConversationItem } from "../types";
+import type { ConversationItem, TurnReview } from "../types";
 import { parseCollabToolCallItem } from "./threadItems.collab";
 import { asNumber, asString, normalizeVirtualFileChange } from "./threadItems.shared";
 import type { ThreadItem } from "@protocol/v2/ThreadItem";
@@ -55,10 +55,12 @@ export function buildConversationItem(
   }
   if (type === "agentMessage") {
     const message = item as Partial<Extract<ThreadItem, { type: "agentMessage" }>>;
+    const review = item.review as TurnReview | undefined;
     return {
       id, kind: "message", role: "assistant", text: asString(message.text),
       phase: message.phase, memoryCitation: message.memoryCitation,
       delivery: message.delivery, questions: message.questions,
+      ...(review && (review.status === "verified" || review.status === "unverified") && Array.isArray(review.checks) ? { review } : {}),
     };
   }
   if (type === "userMessage") {

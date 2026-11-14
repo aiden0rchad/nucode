@@ -40,7 +40,9 @@ The command hierarchy keeps canonical core ranks. Children cannot promote themse
 
 ## What verification means
 
-Chain of Command gates a successful result on actual reviewer evidence. A parent's statement that a reviewer approved the work is not interchangeable with a completed reviewer's transcript and outcome.
+Chain of Command reports a result as reviewed only on actual reviewer evidence. A parent's statement that a reviewer approved the work is not interchangeable with a completed reviewer's transcript and outcome.
+
+A turn that changed something ends with a review card. **Review passed** means QA confirmed every check with its own tool runs and the reviewed files have not changed since. Otherwise the card names each check QA could not confirm, or says that no review covered the last change, and offers one follow-up that asks the team to close it. The turn still completes: an unconfirmed check is a note on finished work, not a failed turn. Turns that only read, search or research get no review card.
 
 This improves the evidence available to you. It does not establish that a reviewer is independent in every practical sense, that a model cannot miss a bug, or that the result is correct. Review tests and important changes yourself.
 

@@ -115,7 +115,7 @@ export function commandInstructions(role: string, roles: Role[] = []): string {
     enlisted: "You are an enlisted implementation agent. Complete only the bounded assigned task, preserve unrelated work, and run relevant checks. Return concise artifact paths, changes, evidence and blockers. You cannot delegate.",
   };
   const rank = role === "commander" ? role : commandRank(role, roles);
-  return (rank && instructions[rank] ? (role !== rank ? `Your role is ${role}, with ${rank} rank. ` : "") + instructions[rank] + (rank === "commander" || rank === "colonel" ? " Pass explicit acceptanceCriteria to each major. The last agent a turn may start is kept for a major, so spend it on the final check. Run QA after implementation and before your final response; later commands or edits require another review. Text-only claims do not satisfy verification." : "") : "Unknown Chain of Command role. Delegation is blocked.");
+  return (rank && instructions[rank] ? (role !== rank ? `Your role is ${role}, with ${rank} rank. ` : "") + instructions[rank] + (rank === "commander" || rank === "colonel" ? " Pass explicit acceptanceCriteria to each major, each one checkable from the current files and commands rather than a claim about earlier steps. The last agent a turn may start is kept for a major, so spend it on the final check. Run QA after implementation and before your final response; later commands or edits require another review. Text-only claims do not satisfy verification." : "") : "Unknown Chain of Command role. Delegation is blocked.");
 }
 // Atomic directory creation shares a finite budget across independent child processes.
 // The last place is kept for a major, so a team that spends its turn building and fixing can still verify.

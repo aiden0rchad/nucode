@@ -56,6 +56,13 @@
 
 .turn-error-heading > svg { flex-shrink: 0; color: var(--status-warning, #d5a65a); }
 .turn-error-card > p { margin: 8px 0 0; }
+.review-card.is-verified .turn-error-heading > svg { color: var(--status-success, #4b9f75); }
+.review-card ul { margin: 8px 0 0; padding-left: 18px; }
+.review-card li + li { margin-top: 6px; }
+.review-open strong { display: block; color: var(--text-strong); font-weight: 560; }
+.review-open span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.review-card details { margin-top: 10px; }
+.review-card summary { cursor: pointer; color: var(--text-strong); }
 .turn-error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .turn-error-actions > button {
   display: inline-flex;
