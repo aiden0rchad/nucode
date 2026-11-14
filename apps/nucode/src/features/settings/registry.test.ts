@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import type { ProviderEntry } from "@/types";
-import { codexReady, commandRolePresets, defaultAgentPolicy, formatModelRef, isCommandRole, policyError, providerSlug, setAgentMode } from "./registry";
+import type { ProviderEntry, ReasoningCapability } from "@/types";
+import { codexReady, commandRolePresets, defaultAgentPolicy, formatModelRef, isCommandRole, policyError, providerSlug, roleEffortOptions, setAgentMode } from "./registry";
 
 const provider: ProviderEntry = { id: "setup-old-id", name: "LiteLLM", kind: "openai-compatible", apiStyle: "responses", enabled: true, auth: { type: "none" }, models: [{ id: "org/opus", displayName: "Claude Opus 5.5", enabled: true }] };
 it("switches command modes without discarding custom roles or model choices", () => {
@@ -54,4 +54,19 @@ it("makes readable, unique provider slugs without changing existing IDs", () => 
 it("requires an enabled Codex-compatible provider and model", () => {
   expect(codexReady({ providers: [provider] })).toBe(true);
   for (const p of [{ ...provider, enabled: false }, { ...provider, models: [] }, { ...provider, apiStyle: "chat-completions" as const }]) expect(codexReady({ providers: [p] })).toBe(false);
+});
+it("validates role reasoning effort and offers the levels the role model supports", () => {
+  const policy = structuredClone(setAgentMode(defaultAgentPolicy, "chain-of-command"));
+  const role = policy.subagents.roles[0];
+  role.reasoningEffort = "extreme";
+  expect(policyError(policy, [])).toMatch(/Role reasoning effort must be/);
+  role.reasoningEffort = "high";
+  expect(policyError(policy, [])).toBeNull();
+  const reasoning: ReasoningCapability = { supported: true, levels: ["low", "high"], default: "high", control: "effort", source: "api", detectedAt: 1 };
+  const providers: ProviderEntry[] = [{ ...provider, models: [{ id: "think", enabled: true, reasoning }, { id: "plain", enabled: true, reasoning: { ...reasoning, supported: false, levels: [] } }] }];
+  const base = { name: "r", description: "", toolAccess: "full" as const, instructions: "" };
+  expect(roleEffortOptions(providers, { ...base, model: { providerId: provider.id, modelId: "think" } })).toEqual(["low", "high"]);
+  expect(roleEffortOptions(providers, { ...base, model: { providerId: provider.id, modelId: "plain" } })).toEqual([]);
+  expect(roleEffortOptions(providers, { ...base, model: null })).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  expect(roleEffortOptions(providers, { ...base, model: { providerId: provider.id, modelId: "think" }, reasoningEffort: "max" })).toEqual(["low", "high", "max"]);
 });

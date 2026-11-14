@@ -1774,6 +1774,8 @@ pub(crate) struct AgentRole {
     pub tool_access: ToolAccess,
     pub instructions: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command_rank: Option<CommandRank>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1814,6 +1816,7 @@ impl Default for SubagentPolicy {
                 tool_access,
                 model: None,
                 instructions: String::new(),
+                reasoning_effort: None,
                 command_rank: None,
             })
             .collect(),

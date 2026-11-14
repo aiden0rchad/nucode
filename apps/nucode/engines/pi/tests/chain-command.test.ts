@@ -79,6 +79,11 @@ test("nested subprocesses share one turn budget, reset it, route models and fail
   const qa = await tool.execute("qa", { agent: "major", task: "review", model: "cloud/strong", cwd, tasks: [], chain: [] }, undefined, undefined, ctx);
   assert.equal(qa.isError, false);
   assert.deepEqual(JSON.parse(qa.details.results[0].messages[0].content[0].text), { role: "major", provider: "nucode-cloud", model: "strong", thinking: "off" });
+  thinking = "low";
+  writeFileSync(join(home, "nucode/policy.json"), JSON.stringify({ ...policy, roles: policy.roles.map(r => r.name === "major" ? { ...r, reasoningEffort: "high" } : r) }));
+  const effort = await tool.execute("effort", { tasks: [{ agent: "major", task: "review" }, { agent: "enlisted", task: "work" }], chain: [] }, undefined, undefined, ctx);
+  assert.deepEqual(effort.details.results.map((r: any) => JSON.parse(r.messages[0].content[0].text).thinking), ["high", "low"]);
+  writeFileSync(join(home, "nucode/policy.json"), JSON.stringify(policy));
   const nullable = await tool.execute("nullable", { agent: null, task: null, model: null, cwd: null, tasks: [{ agent: "major", task: "review", model: null, cwd: null }], chain: [] }, undefined, undefined, ctx);
   assert.equal(nullable.isError, false);
   assert.equal(nullable.details.mode, "parallel");

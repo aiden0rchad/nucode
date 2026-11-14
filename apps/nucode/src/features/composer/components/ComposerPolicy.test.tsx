@@ -57,6 +57,27 @@ it("toggles real policy, exposes configuration only when enabled, and preserves 
   await waitFor(() => expect(screen.queryByRole("button", { name: "Configure Chain of Command" })).toBeNull());
   expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ subagents: expect.objectContaining({ enabled: false, roles: expect.arrayContaining([expect.objectContaining({ name: "enlisted", model: { providerId: "local", modelId: "small" } })]) }) }));
 });
+it("stores a per-role reasoning effort and clears it with the empty option", async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<Picker save={save} />);
+  fireEvent.click(screen.getByRole("button", { name: "Commander · Low" }));
+  const toggle = screen.getByRole("button", { name: "Chain of Command" });
+  fireEvent.click(toggle);
+  await waitFor(() => expect(toggle.getAttribute("aria-pressed")).toBe("true"));
+  const configure = async (value: string) => {
+    fireEvent.click(screen.getByRole("button", { name: "Configure Chain of Command" }));
+    const editor = screen.getByRole("dialog", { name: "Configure Chain of Command" });
+    fireEvent.change(await within(editor).findByLabelText("Colonel effort"), { target: { value } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  };
+  const colonel = () => save.mock.lastCall![0].subagents.roles.find((role: { name: string }) => role.name === "colonel");
+  await configure("high");
+  expect(colonel().reasoningEffort).toBe("high");
+  fireEvent.click(screen.getByRole("button", { name: "Commander · Low" }));
+  await configure("");
+  expect(colonel().reasoningEffort).toBeNull();
+});
 it("keeps role drafts across keyboard navigation, validates limits, and discards cancelled edits", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<Picker save={save} />);

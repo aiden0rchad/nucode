@@ -8,7 +8,7 @@ import { ExecutionLimits } from "./ExecutionLimits";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AppSettings, ProviderEntry, ProviderKind, ProviderAuth, AgentPolicy, WorkspaceInfo, WorkspaceSettings } from "@/types";
 import { providerSetApiKey, providerHasApiKey, providerDeleteApiKey, providerTestAndFetch } from "@services/tauri";
-import { commandRoles, commandRoleTitle, defaultAgentPolicy, isCommandRole, mergePolicy, modelKey, modelRef, policyError, providerEngines, setAgentMode } from "../../registry";
+import { commandRoles, commandRoleTitle, defaultAgentPolicy, isCommandRole, mergePolicy, modelKey, modelRef, policyError, providerEngines, roleEffortOptions, setAgentMode } from "../../registry";
 
 type Props = { appSettings: AppSettings; onUpdateAppSettings: (s: AppSettings) => Promise<void> };
 const kinds: ProviderKind[] = ["openai", "anthropic", "google", "openrouter", "groq", "mistral", "xai", "deepseek", "zai", "ollama", "lmstudio", "openai-compatible"];
@@ -173,6 +173,7 @@ export function AgentPolicyEditor({ policy, providers, onChange, tab, scope, eng
           <SettingsFieldRow title="Name"><SettingsTextField identifier readOnly={chain} value={role.name} onChange={e => change({ name: e.target.value })} /></SettingsFieldRow>
           <SettingsFieldRow title="Description"><SettingsTextField value={role.description} onChange={e => change({ description: e.target.value })} /></SettingsFieldRow>
           {modelSelect(chain ? `${commandRoleTitle(role.name)} model` : "Role model", modelKey(role.model), v => change({ model: modelRef(v) }))}
+          <SettingsFieldRow title="Effort" subtitle="Reasoning effort for this role. Same as parent uses the delegating agent's level."><SettingsSelect aria-label="Role effort" value={role.reasoningEffort ?? ""} disabled={!roleEffortOptions(providers, role).length && !role.reasoningEffort} onChange={e => change({ reasoningEffort: e.target.value || null })}><option value="">Same as parent</option>{roleEffortOptions(providers, role).map(level => <option key={level} value={level}>{level === "xhigh" ? "Extra high" : level[0].toUpperCase() + level.slice(1)}</option>)}</SettingsSelect></SettingsFieldRow>
           <SettingsFieldRow title="Tool access"><SettingsSelect value={role.toolAccess} onChange={e => change({ toolAccess: e.target.value as "read-only" | "full" })}><option value="read-only">Read only</option><option value="full">Full</option></SettingsSelect></SettingsFieldRow>
           <SettingsFieldRow stacked title="Instructions"><SettingsTextArea value={role.instructions} onChange={e => change({ instructions: e.target.value })} /></SettingsFieldRow>
         </SettingsGroup>;

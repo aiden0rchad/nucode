@@ -115,7 +115,7 @@ export default function (pi: ExtensionAPI) {
           if (!cli) throw new Error("Missing managed pi CLI");
           const args = [...process.execArgv, cli, "--mode", "json", "-p", "--no-session", ...(process.env.NUCODE_OMP === "1" ? ["--no-lsp", "--no-pty", "--no-title", "--no-skills", "--no-rules"] : ["--no-approve"]), "--no-extensions", "-e", join(home, "extensions/nucode-gate.ts"), "-e", join(home, "extensions/nucode-subagents.ts"), "--provider", provider, "--model", modelId];
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
-          if (thinking) args.push("--thinking", thinking);
+          const effort = role.reasoningEffort || thinking; if (effort) args.push("--thinking", effort);
           if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
           if (role.instructions) args.push("--append-system-prompt", role.instructions);
           args.push(`Task: ${r.task}`);

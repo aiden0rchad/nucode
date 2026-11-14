@@ -34,6 +34,8 @@ Assign a provider/model to a role when you want an explicit choice. Model resolu
 
 Only enabled registry models are eligible, and configured model allowlists still apply. In Chain of Command, a child request cannot override the model assigned to its role. Selecting a local or cheaper model must be explicit; inheritance does not promise lower cost.
 
+Each role can also have its own reasoning effort. A role without one uses the effort of the agent that delegates to it. If the role's model does not support the chosen level, the nearest level it does support is used instead.
+
 The command hierarchy keeps canonical core ranks. Children cannot promote themselves to commander. Named specialist roles can participate under the allowed hierarchy; legacy custom roles without a rank remain outside that tree.
 
 ## What verification means

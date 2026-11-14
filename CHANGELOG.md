@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
+
 ## 0.8.2 — November 13, 2026
 
 - **Settings:** every Settings page has a new layout: named groups, plain labels with one line of help, collapsed rows that show their current value, and a Save changes button on the pages that stage edits. Server, Browser, Models & Agents, Shortcuts and Projects were reorganized around what you are trying to do.

@@ -196,6 +196,9 @@ pub(crate) fn validate(providers: &[ProviderEntry], policy: &AgentPolicy) -> Res
         {
             return Err(format!("Role {} model is not in allowed models", role.name));
         }
+        if role.reasoning_effort.as_deref().is_some_and(|e| !super::reasoning::LEVELS.contains(&e)) {
+            return Err(format!("Role {} reasoning effort is not a known level", role.name));
+        }
     }
     if s.default_model
         .as_ref()
@@ -1131,6 +1134,20 @@ mod tests {
         let mut invalid = serde_json::to_value(&restored.subagents.roles[3]).unwrap();
         invalid["commandRank"] = json!("commander");
         assert!(serde_json::from_value::<AgentRole>(invalid).is_err());
+    }
+    #[test]
+    fn role_reasoning_effort_round_trips_validates_and_stays_absent() {
+        let mut policy = AgentPolicy::default();
+        assert!(serde_json::to_value(&policy).unwrap()["subagents"]["roles"][0].get("reasoningEffort").is_none());
+        policy.subagents.roles[0].reasoning_effort = Some("high".into());
+        assert!(validate(&[], &policy).is_ok());
+        let saved = serde_json::to_value(&policy).unwrap();
+        assert_eq!(saved["subagents"]["roles"][0]["reasoningEffort"], "high");
+        let restored: AgentPolicy = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored.subagents.roles[0].reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(restored.subagents.roles[1].reasoning_effort, None);
+        policy.subagents.roles[0].reasoning_effort = Some("extreme".into());
+        assert!(validate(&[], &policy).unwrap_err().contains("reasoning effort is not a known level"));
     }
     #[test]
     fn catalog_flags_only_the_policy_default_model() {

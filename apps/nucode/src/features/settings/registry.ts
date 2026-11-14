@@ -56,6 +56,12 @@ export function providerEngines(p: ProviderEntry) {
   if (p.kind === "anthropic" || p.anthropicCompatible) engines.push("claude");
   return engines;
 }
+export const reasoningLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+export function roleEffortOptions(providers: ProviderEntry[], role: AgentRole): string[] {
+  const cap = role.model ? providers.find(p => p.id === role.model!.providerId)?.models.find(m => m.id === role.model!.modelId)?.reasoning : null;
+  const levels = !role.model ? ["low", "medium", "high", "xhigh", "max"] : cap?.supported ? cap.levels : [];
+  return role.reasoningEffort && !levels.includes(role.reasoningEffort) ? [...levels, role.reasoningEffort] : levels;
+}
 export function policyError(p: AgentPolicy, providers: ProviderEntry[]): string | null {
   const s = p.subagents;
   if (!Number.isInteger(s.maxRunMinutes ?? 0) || (s.maxRunMinutes ?? 0) < 0 || (s.maxRunMinutes ?? 0) > 1440 || !Number.isSafeInteger(s.dailyTokenLimit ?? 0) || (s.dailyTokenLimit ?? 0) < 0 || (s.dailyTokenLimit ?? 0) > 1_000_000_000) return "Execution limits: 0–1440 minutes and 0–1,000,000,000 daily tokens. Zero disables a limit.";
@@ -65,6 +71,7 @@ export function policyError(p: AgentPolicy, providers: ProviderEntry[]): string 
     if (commandRoles.some(role => !s.roles.some(r => r.name === role.name))) return "Chain of Command requires colonel, major and enlisted roles.";
   }
   if (!Number.isInteger(s.maxConcurrent) || s.maxConcurrent < 1 || s.maxConcurrent > 16 || !Number.isInteger(s.maxPerTurn) || s.maxPerTurn < 1 || s.maxPerTurn > 32 || !Number.isInteger(s.maxDepth) || s.maxDepth < 1 || s.maxDepth > 3) return "Limits: concurrent 1–16, per turn 1–32, depth 1–3.";
+  if (s.roles.some(r => r.reasoningEffort && !reasoningLevels.includes(r.reasoningEffort))) return "Role reasoning effort must be off, minimal, low, medium, high, xhigh or max.";
   const enabled = new Set(providers.filter(p => p.enabled).flatMap(p => p.models.filter(m => m.enabled).map(m => p.id + "/" + m.id)));
   for (const m of [p.defaultModel, s.defaultModel, ...s.allowedModels, ...s.roles.map(r => r.model)]) {
     if (m && !enabled.has(modelKey(m))) return "Enable provider and model " + formatModelRef({ providers }, m).title;

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { BookOpen, ChevronRight, Code2, GitBranch, Palette, Plus, Search, Server, ShieldCheck, Star, Wrench, X } from "lucide-react";
 import type { AgentPolicy, AgentRole, ProviderEntry } from "@/types";
-import { commandRolePresets, commandRoleTitle, isCommandRole, modelKey, modelRef } from "@settings/registry";
+import { commandRolePresets, commandRoleTitle, isCommandRole, modelKey, modelRef, roleEffortOptions } from "@settings/registry";
 import { SettingsButton, SettingsFieldRow, SettingsNumberStepper, SettingsSegmented, SettingsSelect, SettingsTextArea, SettingsTextField } from "@/features/design-system/components/settings/SettingsPrimitives";
 import { ExecutionLimits } from "@settings/components/sections/ExecutionLimits";
 
@@ -43,6 +43,8 @@ export default function CommandPolicyEditor({ policy, providers, tab, onChange, 
   const changeRole = (name: string, patch: Partial<typeof sub.roles[number]>) => change({ roles: sub.roles.map(role => role.name === name ? { ...role, ...patch } : role) });
   const options = models.map(model => <option key={model.value} value={model.value}>{model.label}</option>);
   const modelSelect = (label: string, value: string, select: (value: string) => void) => <SettingsSelect aria-label={label} value={value} onChange={event => select(event.target.value)}><option value="">Inherit</option>{options}</SettingsSelect>;
+  const effortLabel = (level: string) => level === "xhigh" ? "Extra high" : level[0].toUpperCase() + level.slice(1);
+  const effortSelect = (label: string, role: AgentRole) => { const levels = roleEffortOptions(providers, role); return <SettingsSelect aria-label={label} value={role.reasoningEffort ?? ""} disabled={!levels.length && !role.reasoningEffort} onChange={event => changeRole(role.name, { reasoningEffort: event.target.value || null })}><option value="">Same as commander</option>{levels.map(level => <option key={level} value={level}>{effortLabel(level)}</option>)}</SettingsSelect>; };
   const addRole = (preset: AgentRole) => {
     let name = preset.name;
     for (let n = 2; sub.roles.some(role => role.name === name); n++) name = `${preset.name}-${n}`;
@@ -73,7 +75,7 @@ export default function CommandPolicyEditor({ policy, providers, tab, onChange, 
         return <div key={role.name} className="command-role-card" data-rank={name} data-role={role.name}>
           <span className="command-rank-icon"><Icon size={18} aria-hidden /></span>
           <div className="command-role-copy"><h3>{title}{" "}<span>{job}</span></h3></div>
-          <div className="command-role-model">{modelSelect(`${title} model`, modelKey(role.model), value => changeRole(role.name, { model: modelRef(value) }))}
+          <div className="command-role-model">{modelSelect(`${title} model`, modelKey(role.model), value => changeRole(role.name, { model: modelRef(value) }))}{effortSelect(`${title} effort`, role)}
             {removable && <SettingsButton className="command-remove-role" aria-label={`Remove ${title}`} title={`Remove ${title}`} onClick={() => { focusRole.current = "add"; change({ roles: sub.roles.filter(r => r.name !== role.name) }); if (selectedRole === role.name) setSelectedRole("colonel"); }}><X size={14} aria-hidden /></SettingsButton>}
           </div>
         </div>;
@@ -108,6 +110,7 @@ export default function CommandPolicyEditor({ policy, providers, tab, onChange, 
       <div className="command-role-fields">
         <SettingsFieldRow title="Description" className="command-wide-field"><SettingsTextField value={role.description} onChange={event => changeRole(role.name, { description: event.target.value })} /></SettingsFieldRow>
         <SettingsFieldRow title={`${rank.title} model`}>{modelSelect(`${rank.title} model`, modelKey(role.model), value => changeRole(role.name, { model: modelRef(value) }))}</SettingsFieldRow>
+        <SettingsFieldRow title="Effort">{effortSelect(`${rank.title} effort`, role)}</SettingsFieldRow>
         <SettingsFieldRow title="Tool access"><SettingsSelect value={role.toolAccess} onChange={event => changeRole(role.name, { toolAccess: event.target.value as "read-only" | "full" })}><option value="read-only">Read only</option><option value="full">Full</option></SettingsSelect></SettingsFieldRow>
         <SettingsFieldRow title="Instructions" className="command-wide-field"><SettingsTextArea rows={3} placeholder="Add guidance, constraints, or a definition of done…" value={role.instructions} onChange={event => changeRole(role.name, { instructions: event.target.value })} /></SettingsFieldRow>
       </div>

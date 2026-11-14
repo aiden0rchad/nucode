@@ -121,6 +121,10 @@ fn policy_value(registry: &[ProviderEntry], policy: &AgentPolicy) -> Result<Valu
         .zip(&policy.subagents.roles)
     {
         v["model"] = json!(role.model.as_ref().map(&key));
+        if let (Some(effort), Some(m)) = (role.reasoning_effort.as_deref(), role.model.as_ref()) {
+            let cap = registry.iter().filter(|p| p.id == m.provider_id).flat_map(|p| &p.models).find(|x| x.id == m.model_id).and_then(|x| x.reasoning.as_ref());
+            if let Some(cap) = cap { v["reasoningEffort"] = json!(crate::shared::reasoning::clamp(cap, Some(effort))); }
+        }
     }
     let mut models = serde_json::Map::new();
     for p in registry.iter().filter(|p| p.enabled) {
@@ -354,4 +358,25 @@ pub(super) fn credentials(registry: &[ProviderEntry], keys: &dyn KeyStore, requi
         }
     }
     Ok(env)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn role_effort_is_clamped_to_the_role_model_and_absent_when_unset() {
+        let registry: Vec<ProviderEntry> = vec![serde_json::from_value(json!({"id":"local","name":"Local","kind":"openai-compatible","auth":{"type":"apiKey"},"enabled":true,"baseUrl":"http://localhost:1234/v1","models":[{"id":"large","enabled":true,"reasoning":{"supported":true,"levels":["low","high","max"],"default":"high","control":"effort","source":"api","detectedAt":0}}]})).unwrap()];
+        let mut policy = AgentPolicy::default();
+        let roles = &mut policy.subagents.roles;
+        roles[0].model = Some(ModelRef { provider_id: "local".into(), model_id: "large".into() });
+        roles[0].reasoning_effort = Some("medium".into());
+        roles[1].reasoning_effort = Some("medium".into());
+        let value = policy_value(&registry, &policy).unwrap();
+        let cap = registry[0].models[0].reasoning.as_ref().unwrap();
+        let expected = crate::shared::reasoning::clamp(cap, Some("medium"));
+        assert!(matches!(expected.as_deref(), Some("low" | "high")));
+        assert_eq!(value["roles"][0]["reasoningEffort"], json!(expected));
+        assert_eq!(value["roles"][1]["reasoningEffort"], "medium");
+        assert!(value["roles"][2].get("reasoningEffort").is_none());
+    }
 }

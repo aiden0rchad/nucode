@@ -169,6 +169,14 @@ describe("provider registry settings", () => {
     expect(screen.getByRole("alert").textContent).toContain("must be in allowed models");
     expect((screen.getByText("Save changes") as HTMLButtonElement).disabled).toBe(true);
   });
+  it("changes a role's reasoning effort", () => {
+    const save = vi.fn();
+    render(<SettingsAgentPolicySection appSettings={{ providers: [provider], agentPolicy: structuredClone(defaultAgentPolicy) } as AppSettings} onUpdateAppSettings={save} />);
+    fireEvent.change(screen.getAllByLabelText("Role effort")[0], { target: { value: "high" } });
+    expect((screen.getAllByLabelText("Role effort")[0] as HTMLSelectElement).value).toBe("high");
+    fireEvent.click(screen.getByText("Save changes"));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ agentPolicy: expect.objectContaining({ subagents: expect.objectContaining({ roles: expect.arrayContaining([expect.objectContaining({ reasoningEffort: "high" })]) }) }) }));
+  });
   it("shows engine enforcement and the merged workspace policy", () => {
     const workspace = { id: "ws", name: "Project", path: "/project", connected: true, settings: { sidebarCollapsed: false, agentPolicy: { subagents: { maxConcurrent: 2 } } } };
     render(<SettingsAgentPolicySection workspace={workspace} appSettings={{ agentPolicy: defaultAgentPolicy } as AppSettings} onUpdateAppSettings={vi.fn()} />);
