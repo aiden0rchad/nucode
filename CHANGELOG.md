@@ -5,7 +5,7 @@
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
 - **Agents view:** while sub-agents are running, the title bar shows an Agents toggle that opens the live tree of the team, with each agent's model, time and token use. Before, that view could only be opened from the browser pane's new tab. Run times read as minutes and seconds, and token counts as thousands or millions.
-- **Sub-agents:** an expanded sub-agent row names each agent by role and number with its model, such as "Researcher 2: completed · Claude Haiku 5.5", instead of internal ids.
+- **Sub-agents:** an expanded sub-agent row names each agent by role and number with its model, such as "Researcher 2: completed · Claude Haiku 5.5", instead of internal ids. The task and the agent's report read as formatted text instead of a raw code block.
 - **Context size:** `/context-size` and `/autocompact` take effect at once when sent during a running turn instead of waiting in the queue. Settings → Providers has a Context window field for each model, and each model's options fold into one row.
 - **Project team:** saving a team for a project from the composer no longer copies the app's default engine and model onto the project, so the project keeps following the app when those change.
 - **Agent tools:** `npm` and `npx` work in agent commands. They failed with a missing-module error, so agents fell back to whatever Node was installed on the Mac.

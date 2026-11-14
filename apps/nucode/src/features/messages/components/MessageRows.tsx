@@ -837,8 +837,8 @@ export const ToolRow = memo(function ToolRow({
         {showToolOutput && summary.output && !isCommand && !computerRun && (
           <Markdown
             value={summary.output}
-            className="tool-inline-output markdown"
-            codeBlock={item.toolType !== "plan"}
+            className={`tool-inline-output markdown${item.toolType === "collabToolCall" ? " tool-inline-prose" : ""}`}
+            codeBlock={item.toolType !== "plan" && item.toolType !== "collabToolCall"}
             showFilePath={showMessageFilePath}
             workspacePath={workspacePath}
             onOpenFileLink={onOpenFileLink}

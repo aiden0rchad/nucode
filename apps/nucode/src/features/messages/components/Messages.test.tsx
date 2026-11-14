@@ -131,6 +131,21 @@ describe("Messages", () => {
     expect(screen.queryByText("file edited")).toBeNull();
   });
 
+  it("shows a sub-agent's task and report as formatted text instead of a code block", () => {
+    const items: ConversationItem[] = [{
+      id: "call_done", kind: "tool", toolType: "collabToolCall", title: "Collab: spawnAgent", detail: "", status: "completed",
+      output: "Check that `npm test` passes\n\nscout 1: completed\n**All 12 tests pass.**",
+      collabReceivers: [{ threadId: "call_done:agent:0" }],
+      agentsTree: [{ id: "call_done:agent:0", agent: "scout", status: "completed", children: [] }],
+    }];
+    render(<Messages items={items} threadId="thread" workspaceId="workspace" isThinking={false} openTargets={[]} selectedOpenAppId="" />);
+    fireEvent.click(screen.getByRole("button", { name: /scout/i }));
+    const output = document.querySelector(".tool-inline-output");
+    expect(output?.querySelector("pre")).toBeNull();
+    expect(output?.querySelector("code")?.textContent).toBe("npm test");
+    expect(output?.querySelector("strong")?.textContent).toBe("All 12 tests pass.");
+  });
+
   it("renders a failed spawn with readable synthetic receiver labels", () => {
     const items: ConversationItem[] = [{
       id: "call_failed", kind: "tool", toolType: "collabToolCall",

@@ -892,6 +892,15 @@
   color: var(--text-quiet);
 }
 
+/* A sub-agent's task and report are written as prose: formatted, with their own line breaks kept. */
+.tool-inline-prose {
+  font-size: 12px;
+}
+
+.tool-inline-prose p {
+  white-space: pre-wrap;
+}
+
 .tool-inline-actions {
   display: flex;
   justify-content: flex-end;
