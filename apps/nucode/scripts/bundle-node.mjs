@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,7 +35,12 @@ cpSync(node, join(dest, "bin/node"));
 chmodSync(join(dest, "bin/node"), 0o755);
 cpSync(npm, join(dest, "lib/node_modules/npm"), { recursive: true, dereference: true });
 cpSync(join(prefix, "LICENSE"), join(dest, "LICENSE"));
-for (const name of ["npm", "npx"]) symlinkSync(`../lib/node_modules/npm/bin/${name}-cli.js`, join(dest, "bin", name));
+// Not symlinks: the app bundle copies resources as plain files, and npm's entry script then looks for
+// its library beside bin/. A wrapper finds it from its own location wherever the bundle lands.
+for (const name of ["npm", "npx"]) {
+  writeFileSync(join(dest, "bin", name), `#!/bin/sh\nbin=$(cd "$(dirname "$0")" && pwd)\nexec "$bin/node" "$bin/../lib/node_modules/npm/bin/${name}-cli.js" "$@"\n`);
+  chmodSync(join(dest, "bin", name), 0o755);
+}
 writeFileSync(join(dest, "VERSION"), version + "\n");
 
 // uv downloads managed Python on first setup; no system Python is needed.

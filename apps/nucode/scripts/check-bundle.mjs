@@ -22,6 +22,8 @@ for (const path of ["node/bin/node", "node/bin/npm", "node/bin/npx", "node/lib/n
 const nodeVersion = execFileSync(join(resources, "node/bin/node"), ["--version"], { env: { PATH: "" }, encoding: "utf8" }).trim();
 assert.equal(nodeVersion, readFileSync(join(resources, "node/VERSION"), "utf8").trim());
 execFileSync(join(resources, "node/bin/node"), [join(resources, "node/lib/node_modules/npm/bin/npm-cli.js"), "--version"], { env: { PATH: "" } });
+// Agents call npm and npx by name from PATH, so the commands themselves have to start, not only the script behind them.
+for (const name of ["npm", "npx"]) execFileSync(join(resources, "node/bin", name), ["--version"], { env: { PATH: "/usr/bin:/bin" } });
 execFileSync(join(resources, "uv/uv"), ["--version"], { env: { PATH: "" } });
 for (const engine of ["pi", "omp", "claude-acp", "browser", "computer", "work"]) {
   for (const name of ["computer", "work"].includes(engine) ? ["pyproject.toml", "uv.lock"] : ["package.json", "package-lock.json"]) {
