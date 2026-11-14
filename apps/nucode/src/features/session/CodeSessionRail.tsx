@@ -6,6 +6,7 @@ import { formatK } from "@/features/threads/hooks/contextCommands";
 import type { ManagedTasksController } from "@/features/tasks/useManagedTasks";
 import { BackgroundTasks } from "@/features/tasks/BackgroundTasks";
 import { useSidePanel } from "@/features/panels/SidePanel";
+import { useFeatures } from "@settings/features";
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
 import { contextUsage } from "./useCodeSessionData";
@@ -122,6 +123,7 @@ function ContextReportView({ report, onCompact }: { report: ContextReport; onCom
 
 export function CodeSessionRail(props: CodeSessionRailProps) {
   const panel = useSidePanel();
+  const git = useFeatures().git;
   const [preferences, setPreferences] = useState(readPreferences);
   const reorderSection = useSidebarReorder((id, targetId, position) => setPreferences(current => {
     const section = current.order.find(section => section === id);
@@ -174,9 +176,9 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
     Environment: <>
       <div className="code-session-row"><span><Laptop aria-hidden /><span className="code-session-connection" data-connected={props.workspace.connected} role="img" aria-label={props.workspace.connected ? "Connected" : "Disconnected"} title={props.workspace.connected ? "Connected" : "Disconnected"} />{props.remote.mode === "remote" ? props.remote.host : "This computer"}</span><button className="code-session-link" onClick={() => setSaving(true)} title="Save this environment as a profile">Save as profile</button></div>
       <label className="code-session-field"><Folder size={14} aria-hidden /><select aria-label="Session folder" title={props.workspace.path} value={props.workspace.id} onChange={event => props.onSelectWorkspace(event.target.value)}>{props.workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></label>
-      <label className="code-session-field"><GitBranch size={14} aria-hidden /><select aria-label="Session branch" value={props.branch} disabled={!props.canCheckoutBranch || !props.branches.length} onChange={event => props.onCheckoutBranch(event.target.value)}>
+      {git && <label className="code-session-field"><GitBranch size={14} aria-hidden /><select aria-label="Session branch" value={props.branch} disabled={!props.canCheckoutBranch || !props.branches.length} onChange={event => props.onCheckoutBranch(event.target.value)}>
         {![...props.branches].some(branch => branch.name === props.branch) && <option value={props.branch}>{!props.branch || props.branch === "unknown" ? "No Git branch" : props.branch}</option>}{props.branches.map(branch => <option key={branch.name} value={branch.name}>{branch.name}</option>)}
-      </select></label>
+      </select></label>}
       
       {!!props.profiles.length && <details className="code-session-nested"><summary><Layers aria-hidden />Saved environments <span>{props.profiles.length}</span></summary>{props.profiles.map(profile => <div className="code-session-row" key={profile.id}>
         <button className="code-session-link" disabled={!profile.workspaceIds.some(id => props.workspaces.some(workspace => workspace.id === id))} onClick={() => props.onSelectEnvironment(profile)}>{profile.name}</button>

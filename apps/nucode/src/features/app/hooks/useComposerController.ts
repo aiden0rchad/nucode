@@ -10,6 +10,7 @@ import type {
 } from "../../../types";
 import { useComposerImages } from "../../composer/hooks/useComposerImages";
 import { useQueuedSend } from "../../threads/hooks/useQueuedSend";
+import { describeTurnError } from "../../messages/components/TurnErrorCard";
 
 export function useComposerController({
   activeThreadId,
@@ -83,6 +84,8 @@ export function useComposerController({
       const item = items[items.length - 1];
       if (item?.kind !== "message" || !item.isError || !item.retryMessage || restoredFailures.current.has(item)) continue;
       restoredFailures.current.add(item);
+      // A turn that ended with work to follow up on is not resent, so its request stays out of the composer.
+      if (describeTurnError(item.text).canRetry === false) continue;
       const text = item.retryMessage.text;
       setComposerDraftsByThread(previous => previous[threadId]?.trim()
         ? previous : { ...previous, [threadId]: text });

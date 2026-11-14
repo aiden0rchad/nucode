@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContextReport } from "@/types";
+import type { AppSettings, ContextReport } from "@/types";
+import { FeatureSettings } from "@settings/features";
 import { setupPointerEvents } from "@/test/pointerEvents";
 import { CodeSessionRail, type CodeSessionRailProps } from "./CodeSessionRail";
 const panel = vi.hoisted(() => ({ openTool: vi.fn(), openPage: vi.fn().mockResolvedValue(undefined) }));
@@ -163,4 +164,13 @@ it("keeps empty sections compact, opens new output, and remembers explicit discl
       expect(document.querySelector(".code-context-report")).toBeNull();
     });
   });
+});
+
+it("leaves the branch row out when Git is turned off, instead of saying there is no branch", () => {
+  const view = render(<CodeSessionRail {...props()} />);
+  expect(screen.getByRole("combobox", { name: "Session branch" })).toBeTruthy();
+  view.unmount();
+  render(<FeatureSettings.Provider value={{ features: { git: false } } as AppSettings}><CodeSessionRail {...props()} branch="" branches={[]} /></FeatureSettings.Provider>);
+  expect(screen.queryByRole("combobox", { name: "Session branch" })).toBeNull();
+  expect(screen.queryByText("No Git branch")).toBeNull();
 });

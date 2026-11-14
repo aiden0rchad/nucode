@@ -32,3 +32,11 @@ it("restores rejected text per thread without overwriting another draft", () => 
   rerender({ ...options, itemsByThread: { two: [failure("two-error", "Rejected again")] }, activeThreadId: "two" });
   expect(result.current.activeDraft).toBe("Rejected again");
 });
+
+it("leaves the composer empty after a turn that needs a follow-up instead of a resend", () => {
+  const { result, rerender } = renderHook(useComposerController, { initialProps: options });
+  const unverified: ConversationItem = { id: "one-error", kind: "message", role: "assistant", isError: true,
+    text: "Turn failed: Verification incomplete: no checks were submitted", retryMessage: { text: "Build the whole feature" } };
+  rerender({ ...options, itemsByThread: { one: [unverified] } });
+  expect(result.current.activeDraft).toBe("");
+});

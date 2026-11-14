@@ -9,6 +9,8 @@
 - **Context size:** `/context-size` and `/autocompact` take effect at once when sent during a running turn instead of waiting in the queue. Settings → Providers has a Context window field for each model, and each model's options fold into one row.
 - **Project team:** saving a team for a project from the composer no longer copies the app's default engine and model onto the project, so the project keeps following the app when those change.
 - **Agent tools:** `npm` and `npx` work in agent commands. They failed with a missing-module error, so agents fell back to whatever Node was installed on the Mac.
+- **Composer:** reopening a conversation whose last turn ended with "Review needs follow-up", "Agent stopped unexpectedly" or "Interrupted when nucode closed" no longer puts the whole earlier request back in the composer. Those turns ask for a follow-up, not a resend.
+- **Session panel:** with Git turned off in Settings → Features, the Environment section leaves the branch row out instead of saying "No Git branch" for a folder that has one.
 
 ## 0.8.2 — November 13, 2026
 
