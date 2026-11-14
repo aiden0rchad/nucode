@@ -9,7 +9,7 @@ import { SideChatPane, SideChatSplit } from "@/features/sidechats/SideChatPane";
 import { ComposerPolicyProvider } from "@/features/composer/components/ComposerPolicy";
 import { useConversationPolicy } from "@/features/composer/hooks/useConversationPolicy";
 import { useEngines } from "@settings/engines";
-import { defaultAgentPolicy, mergePolicy, modelKey } from "@/features/settings/registry";
+import { defaultAgentPolicy, mergePolicy, modelKey, projectPolicy as projectTeamOverride } from "@/features/settings/registry";
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import successSoundUrl from "@/assets/success-notification.mp3";
 import errorSoundUrl from "@/assets/error-notification.mp3";
@@ -2189,7 +2189,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     scopeKey={`${activeWorkspaceId}:${activeThreadId}:${parentEngine}`} scope={conversationTeam ? `This conversation · ${team.overridden ? "Custom team" : "Project team"}` : activeWorkspace ? `Project defaults · ${activeWorkspace.name}` : "App defaults"}
     onReset={conversationTeam && (team.overridden || team.error) ? () => team.change() : undefined} onChange={async agentPolicy => {
     if (conversationTeam) await team.change(agentPolicy);
-    else if (activeWorkspace) await updateWorkspaceSettings(activeWorkspace.id, { agentPolicy });
+    else if (activeWorkspace) await updateWorkspaceSettings(activeWorkspace.id, { agentPolicy: projectTeamOverride(agentPolicy, appSettings.agentPolicy ?? defaultAgentPolicy, activeWorkspace.settings.agentPolicy) });
     else setAppSettings(await updateAppSettings({ ...await getAppSettings(), agentPolicy }));
   }}><AgentsContext.Provider value={{ details: agentDetails, workspaceId: activeWorkspaceId, threadId: activeThreadId, itemsByThread,
     policy: team.policy.subagents }}>

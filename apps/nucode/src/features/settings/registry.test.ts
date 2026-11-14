@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { ProviderEntry, ReasoningCapability } from "@/types";
-import { codexReady, commandRolePresets, defaultAgentPolicy, formatModelRef, isCommandRole, policyError, providerSlug, roleEffortOptions, setAgentMode } from "./registry";
+import { codexReady, commandRolePresets, defaultAgentPolicy, formatModelRef, isCommandRole, policyError, projectPolicy, providerSlug, roleEffortOptions, setAgentMode } from "./registry";
 
 const provider: ProviderEntry = { id: "setup-old-id", name: "LiteLLM", kind: "openai-compatible", apiStyle: "responses", enabled: true, auth: { type: "none" }, models: [{ id: "org/opus", displayName: "Claude Opus 5.5", enabled: true }] };
 it("switches command modes without discarding custom roles or model choices", () => {
@@ -69,4 +69,12 @@ it("validates role reasoning effort and offers the levels the role model support
   expect(roleEffortOptions(providers, { ...base, model: { providerId: provider.id, modelId: "plain" } })).toEqual([]);
   expect(roleEffortOptions(providers, { ...base, model: null })).toEqual(["low", "medium", "high", "xhigh", "max"]);
   expect(roleEffortOptions(providers, { ...base, model: { providerId: provider.id, modelId: "think" }, reasoningEffort: "max" })).toEqual(["low", "high", "max"]);
+});
+
+it("saves a project team without pinning the app's engine and model on the project", () => {
+  const base = { ...defaultAgentPolicy, defaultEngine: "omp" as const, defaultModel: { providerId: "cloud", modelId: "strong" } };
+  const team = { ...base, subagents: { ...base.subagents, maxPerTurn: 12 } };
+  expect(projectPolicy(team, base, null)).toEqual({ subagents: team.subagents });
+  expect(projectPolicy({ ...team, defaultEngine: "pi" }, base, null)).toEqual({ subagents: team.subagents, defaultEngine: "pi" });
+  expect(projectPolicy(team, base, { defaultModel: base.defaultModel })).toEqual({ subagents: team.subagents, defaultModel: base.defaultModel });
 });

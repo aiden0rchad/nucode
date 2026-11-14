@@ -82,6 +82,13 @@ export function policyError(p: AgentPolicy, providers: ProviderEntry[]): string 
   return null;
 }
 
+// The team editor works on the merged policy. Saved for a project, only the team is the project's own:
+// its engine and model keep following the app unless the project already set them or the save changed them.
+export function projectPolicy(policy: AgentPolicy, base: AgentPolicy, own: WorkspaceSettings["agentPolicy"]): NonNullable<WorkspaceSettings["agentPolicy"]> {
+  return { subagents: policy.subagents,
+    ...(own?.defaultEngine != null || policy.defaultEngine !== base.defaultEngine ? { defaultEngine: policy.defaultEngine } : {}),
+    ...(own?.defaultModel != null || modelKey(policy.defaultModel) !== modelKey(base.defaultModel) ? { defaultModel: policy.defaultModel } : {}) };
+}
 export function mergePolicy(base: AgentPolicy, override: WorkspaceSettings["agentPolicy"]): AgentPolicy {
   // Rust serializes unset override fields as null; they mean inherit, not clear.
   const present = (value: object | null | undefined) => Object.fromEntries(Object.entries(value ?? {}).filter(([, field]) => field != null));
