@@ -78,7 +78,9 @@ Requests already in flight can finish after a token threshold is reached. Unknow
 
 ## Follow the actual agent work
 
-Open the **Agents** panel to inspect child status and transcripts. Use the tree to distinguish a running worker, a reviewer, a failed child, and completed work. A running agent's row shows its latest step and how many steps it has taken, and the delegation's row in the conversation shows the same, so a long run can be told from a stalled one. A nested child becoming idle does not prove the root has finished all verification.
+Open the **Agents** panel to inspect child status and transcripts. Use the tree to distinguish a running worker, a reviewer, a failed child, and completed work. A running agent's row shows its latest step and how many steps it has taken, and the delegation's row in the conversation shows the same, so a long run can be told from a stalled one.
+
+An agent can also go in circles: re-running the same few steps under new file names without getting anywhere. When an agent's last 36 steps all repeat steps it has already made three or more times, the next repeat is refused with a note saying so and asking it to finish from what it has. A child agent that has been told twice and continues loses its tools and must report what it has; the agent you talk to is only told, because you can see it and stop it. A nested child becoming idle does not prove the root has finished all verification.
 
 Changing an engine or policy does not retroactively rerun previous work. If a child fails, inspect its error and partial changes before asking the parent to continue.
 

@@ -9,6 +9,7 @@ import { Type } from "typebox";
 import { subagentCheckpoint } from "./lib/recovery.ts";
 import { acceptanceCriteria, registerVerification } from "./lib/verification.ts";
 import { registerExecutionLimits } from "./lib/executionLimits.ts";
+import { registerLoopGuard } from "./lib/loopGuard.ts";
 import { acquireSubagentSlot, adoptSubagentSlot, checkLimits, readPolicy, commandInstructions, commandRank, commandTargets, createSubagentBudget, inside, releaseSubagentProcessSlots, releaseSubagentSlot, reserveSubagent, resolveTask, type Policy } from "./lib/policy.ts";
 
 const optionalString = Type.Optional(Type.Union([Type.String(), Type.Null()]));
@@ -21,6 +22,7 @@ const output = (r: Result) => r.messages.filter(m => m.role === "assistant").at(
 
 export default function (pi: ExtensionAPI) {
   registerExecutionLimits(pi, readPolicy);
+  registerLoopGuard(pi);
   registerVerification(pi, readPolicy);
   let count = 0;
   let active = 0;
