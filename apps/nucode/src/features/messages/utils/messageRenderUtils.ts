@@ -170,6 +170,11 @@ function summarizeCollabReceiver(
   return `${label(receivers[0])} +${receivers.length - 1}`;
 }
 
+/** Who a delegation went to and, while it runs, what they are doing. */
+function collabTarget(item: Extract<ConversationItem, { kind: "tool" }>) {
+  return summarizeCollabReceiver(item) + (statusToneFromText(item.status) === "processing" ? collabNow(item) : "");
+}
+
 export function toolNameFromTitle(title: string) {
   if (!title.toLowerCase().startsWith("tool:")) {
     return "";
@@ -463,7 +468,7 @@ export function describeTool(item: Extract<ConversationItem, { kind: "tool" }>):
   if (item.toolType === "imageView") return { verb: "Viewed", target: basename(item.detail || "") || "image", category: "read" };
   if (item.toolType === "collabToolCall") {
     const label = stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status, item.collabStatuses);
-    return { verb: label.charAt(0).toUpperCase() + label.slice(1), target: summarizeCollabReceiver(item), category: "agent" };
+    return { verb: label.charAt(0).toUpperCase() + label.slice(1), target: collabTarget(item), category: "agent" };
   }
   if (item.toolType === "hook") return { verb: "Hook", target: item.title.replace(/^Hook:\s*/i, "").trim(), category: "other" };
   const name = (toolNameFromTitle(item.title) || item.title).trim();
@@ -575,7 +580,7 @@ export function buildToolSummary(
   if (item.toolType === "collabToolCall") {
     return {
       label: stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status, item.collabStatuses),
-      value: summarizeCollabReceiver(item) + (statusToneFromText(item.status) === "processing" ? collabNow(item) : ""),
+      value: collabTarget(item),
       detail: item.detail || "",
       output: item.output || "",
     };

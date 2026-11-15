@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationItem } from "../../../types";
-import { buildToolSummary, collapseChecklistPlans, statusToneFromText, stripTaskList } from "./messageRenderUtils";
+import { buildToolSummary, collapseChecklistPlans, describeTool, statusToneFromText, stripTaskList } from "./messageRenderUtils";
 
 function makeToolItem(
   overrides: Partial<Extract<ConversationItem, { kind: "tool" }>>,
@@ -137,6 +137,9 @@ describe("messageRenderUtils", () => {
       agentsTree: [{ id: "tool-1:agent:0", agent: "designer", status: "running", activity: "Viewing the alerts screen", steps: 12, children: [], ...extra }],
     });
     expect(buildToolSummary(running({}), "").value).toBe("designer · Viewing the alerts screen (step 12)");
+    // The conversation row shows this text, not the summary's.
+    expect(describeTool(running({})).target).toBe("designer · Viewing the alerts screen (step 12)");
+    expect(describeTool({ ...running({}), status: "completed" }).target).toBe("designer");
     expect(buildToolSummary(running({ children: [{ id: "c", agent: "scout", status: "running", activity: "Reading tokens.css", children: [] }] }), "").value)
       .toBe("designer · scout: Reading tokens.css");
     expect(buildToolSummary(running({ children: [{ id: "a", agent: "scout", status: "running", children: [] }, { id: "b", agent: "writer", status: "running", children: [] }] }), "").value)
