@@ -40,8 +40,10 @@ test("reports require all criteria, real successful evidence, safe paths and unc
   const retyped = [{ ...checks[0], criterion: " The build passes: run it   twice " }, { ...checks[0], criterion: "2" }];
   assert.deepEqual(verifyReport(retyped, [], evidence, long, cwd).checks.map(check => check.criterion), long);
   assert.throws(() => verifyReport([retyped[0], { ...checks[0], criterion: "1" }], [], evidence, long, cwd), /Check 2 repeats/);
-  assert.throws(() => verifyReport([retyped[0], { ...checks[0], criterion: "3" }], [], evidence, long, cwd), /Check 2 names no assigned criterion.*1 to 2/);
+  assert.throws(() => verifyReport([retyped[0], { ...checks[0], criterion: "3" }], [], evidence, long, cwd), /Check 2 names no assigned criterion[\s\S]*2\. tests pass/);
   assert.throws(() => verifyReport(checks, ["missing.ts"], evidence, ["tests pass"], cwd), /No such artifact/);
+  // Splitting the assigned criteria into more checks is refused with the list to report against.
+  assert.throws(() => verifyReport([...retyped, { ...checks[0], criterion: "extra" }], [], evidence, long, cwd), /each of the 2 assigned criteria \(3 given\)[\s\S]*1\. The build passes[\s\S]*2\. tests pass/);
   writeFileSync(join(cwd, "source.ts"), "changed");
   assert.match(verificationProblem([report])!, /changed/);
   rmSync(join(cwd, "source.ts"));

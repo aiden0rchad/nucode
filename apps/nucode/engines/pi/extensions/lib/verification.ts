@@ -37,7 +37,10 @@ export function treePrint(cwd: string): string | undefined {
 }
 
 export function verifyReport(checks: Check[], paths: string[], evidence: Map<string, Evidence>, criteria: string[], cwd: string): Verification {
-  if (!Array.isArray(checks) || !checks.length || checks.length > 20 || checks.length !== criteria.length || !Array.isArray(paths) || paths.length > 40 || paths.some(path => typeof path !== "string" || !path || path.length > 4096)) throw new Error("Report every assigned criterion exactly once (up to 20 criteria and 40 artifacts)");
+  // A reviewer that splits or merges criteria is told which ones it was given, so one retry can fix the report.
+  const assignedList = () => criteria.map((criterion, index) => `${index + 1}. ${criterion.length > 300 ? `${criterion.slice(0, 300)}…` : criterion}`).join("\n");
+  if (!Array.isArray(checks) || !checks.length || checks.length !== criteria.length) throw new Error(`Report one check for each of the ${criteria.length} assigned criteria (${Array.isArray(checks) ? checks.length : 0} given). Put extra findings in a check's note. Name each criterion by its text or its number:\n${assignedList()}`);
+  if (checks.length > 20 || !Array.isArray(paths) || paths.length > 40 || paths.some(path => typeof path !== "string" || !path || path.length > 4096)) throw new Error("A report holds up to 20 criteria and 40 artifact paths");
   // A reviewer retypes long criteria: line breaks and spacing may differ, and a number names one as well.
   const plain = (text: unknown) => typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
   const assigned = new Map(criteria.map(criterion => [plain(criterion), criterion]));
@@ -45,7 +48,7 @@ export function verifyReport(checks: Check[], paths: string[], evidence: Map<str
   checks = checks.map((check, index) => {
     const named = plain(check?.criterion);
     const criterion = assigned.get(named) ?? (/^\d{1,2}$/.test(named) ? criteria[Number(named) - 1] : undefined);
-    if (!criterion) throw new Error(`Check ${index + 1} names no assigned criterion. Copy each criterion exactly as assigned, or give its number (1 to ${criteria.length})`);
+    if (!criterion) throw new Error(`Check ${index + 1} names no assigned criterion. Copy each criterion exactly as assigned, or give its number:\n${assignedList()}`);
     if (covered.has(criterion)) throw new Error(`Check ${index + 1} repeats a criterion already reported`);
     covered.add(criterion);
     return { ...check, criterion };
@@ -126,7 +129,7 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
   if (!root && enabled() && major()) pi.registerTool({
     name: "report_verification", label: "Report verification",
     description: "QA majors only: record every assigned acceptance criterion with observed evidence IDs and reviewed artifact paths. Passing checks require successful tool evidence. Changed artifacts invalidate verification.",
-    parameters: Type.Object({ checks: Type.Array(Type.Object({ criterion: Type.String({ maxLength: 8000 }), passed: Type.Boolean(), evidence: Type.Array(Type.String(), { minItems: 1, maxItems: 40 }), note: Type.String({ minLength: 1, maxLength: 4000 }) }), { minItems: 1, maxItems: 20 }), artifacts: Type.Array(Type.String(), { maxItems: 40 }) }),
+    parameters: Type.Object({ checks: Type.Array(Type.Object({ criterion: Type.String({ maxLength: 8000 }), passed: Type.Boolean(), evidence: Type.Array(Type.String(), { minItems: 1, maxItems: 40 }), note: Type.String({ minLength: 1, maxLength: 4000 }) }), { minItems: 1, maxItems: 60 }), artifacts: Type.Array(Type.String(), { maxItems: 40 }) }),
     async execute(_id, input, _signal, _update, ctx) {
       if (!enabled() || !major()) throw new Error("Only a Chain of Command QA major can report verification");
       const verification = verifyReport(input.checks, input.artifacts, evidence, criteria, ctx.cwd);
