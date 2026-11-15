@@ -82,14 +82,23 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
   const enabled = () => !process.env.NUCODE_CHAT && !process.env.NUCODE_WORK && policy().enabled !== false && policy().mode === "chain-of-command";
   const major = () => !root && commandRank(role, policy().roles) === "major";
   const criteria: string[] = root || !enabled() || !major() ? [] : acceptanceCriteria({ task: "Verify the assigned task", acceptanceCriteria: JSON.parse(process.env.NUCODE_VERIFY_CRITERIA || "null") });
-  let worked = false, interrupted = false, lastChangeAt = 0, before: string | undefined;
+  let worked = false, interrupted = false, lastChangeAt = 0, before: string | undefined, seen: string | undefined;
+  // A prompt starts a turn. A run that starts without one resumed by itself (a background job finished) and is
+  // still the same turn, so what the turn has gathered stands. An engine that never announces prompts gets a new
+  // turn at every start.
+  let prompted = false, announces = false;
   const evidence = new Map<string, Evidence>();
   const reports = new Map<string, Verification[]>();
-  pi.on("agent_start", (_event, ctx) => { worked = false; interrupted = false; lastChangeAt = 0; evidence.clear(); reports.clear(); before = root && enabled() ? treePrint(ctx.cwd) : undefined; });
+  pi.on("agent_start", (_event, ctx) => {
+    interrupted = false;
+    if (prompted || !announces) { worked = false; lastChangeAt = 0; evidence.clear(); reports.clear(); before = seen = root && enabled() ? treePrint(ctx.cwd) : undefined; }
+    prompted = false;
+  });
   pi.on("message_end", event => {
     if (event.message.role === "assistant") interrupted = ["aborted", "error"].includes(event.message.stopReason);
   });
   pi.on("before_agent_start", () => {
+    prompted = announces = true;
     if (enabled() && major()) return { message: { customType: "nucode-verification-instructions", display: false, content: `Acceptance criteria: ${JSON.stringify(criteria)}. Independently check every criterion with tools. Tool results supply evidence IDs. Before finishing, call report_verification with every criterion verbatim, its verdict and evidence IDs, and the project artifact paths you checked. Report failed checks honestly; text alone is not verification.` } };
   });
   pi.on("tool_result", (event, ctx) => {
@@ -121,7 +130,11 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
     // omitted from the earlier artifact list. Read-only inspection is harmless.
     const results = (event.result.details as any)?.results ?? (event.result.details as any)?.xdev?.inner?.results;
     if (!Array.isArray(results)) {
-      if (!["read", "grep", "glob", "find", "ls"].includes(event.toolName)) { reports.clear(); lastChangeAt = Date.now(); }
+      if (["read", "grep", "glob", "find", "ls"].includes(event.toolName)) return;
+      // A command that left every file as it was (a status check, stopping a preview) does not undo a review.
+      const now = treePrint(ctx.cwd);
+      if (now !== undefined && now === seen) return;
+      seen = now; reports.clear(); lastChangeAt = Date.now();
       return;
     }
     const found: Verification[] = [];
@@ -162,6 +175,7 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
     }
     if (reviewed.some(started => started < lastChangeAt)) found.length = 0;
     reports.set(event.toolCallId, found);
+    seen = treePrint(ctx.cwd);
   });
   pi.on("agent_end", (_event, ctx) => {
     if (!root || !enabled() || !worked || interrupted) return;

@@ -51,14 +51,14 @@ test("major records observed tool results, rejects empty/failed evidence and sta
   const report = await tool.execute("report", { checks, artifacts: [] }, undefined, undefined, f.ctx);
   assert.equal(report.details.nucodeVerification.evidence[0].toolCallId, "check");
   writeFileSync(join(f.cwd, "code.ts"), "checked");
-  await f.emit("agent_start");
+  await f.emit("before_agent_start"); await f.emit("agent_start");
   await f.emit("tool_result", { toolName: "read", toolCallId: "file", input: { path: "code.ts" }, content: [{ type: "text", text: "checked" }] });
   const fileReport = await tool.execute("report", { checks, artifacts: [] }, undefined, undefined, f.ctx);
   assert.equal(fileReport.details.nucodeVerification.artifacts[0].path, join(f.cwd, "code.ts"), "reviewed files cannot be omitted");
   writeFileSync(join(f.cwd, "code.ts"), "changed");
   await assert.rejects(tool.execute("report", { checks, artifacts: [] }, undefined, undefined, f.ctx), /changed since QA read/);
   for (const [content, isError] of [[[], false], [[{ type: "text", text: "failed" }], true]] as const) {
-    await f.emit("agent_start");
+    await f.emit("before_agent_start"); await f.emit("agent_start");
     await f.emit("tool_result", { toolName: "bash", toolCallId: "check", content, isError });
     await assert.rejects(tool.execute("report", { checks, artifacts: [] }, undefined, undefined, f.ctx), /Failed tool/);
   }
@@ -124,6 +124,34 @@ test("a command that leaves the project's files as they were needs no QA; one th
   writeFileSync(join(f.cwd, "added.txt"), "new");
   await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
   assert.equal(f.records.length, 2, "a new file is a change too");
+});
+
+test("a review stands through commands that change nothing and through a run that resumes by itself", async t => {
+  const f = fixture(t);
+  execFileSync("git", ["init", "-q"], { cwd: f.cwd });
+  writeFileSync(join(f.cwd, "notes.txt"), "one");
+  const report = verifyReport(checks, [], evidence, ["tests pass"], f.cwd);
+  const qa = (id: string) => f.emit("tool_execution_end", { toolName: "subagent", toolCallId: id, result: { details: { results: [{ agent: "major", task: "review", acceptanceCriteria: ["tests pass"], status: "completed", startedAt: Date.now(), endedAt: Date.now(), messages: [{ role: "toolResult", toolName: "report_verification", details: { nucodeVerification: report } }] }] } } });
+  await f.emit("before_agent_start"); await f.emit("agent_start");
+  writeFileSync(join(f.cwd, "notes.txt"), "two, and longer");
+  await f.emit("tool_execution_end", { toolName: "edit", result: {} });
+  await qa("first");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} });
+  await f.emit("tool_execution_end", { toolName: "write", result: {} });
+  await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "verified", "a status check and stopping a service after QA change no file");
+  // The run stopped to wait for a background job and starts again without a prompt.
+  await f.emit("agent_start"); await f.emit("tool_execution_end", { toolName: "read", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "verified", "the resumed run keeps the turn's review");
+  await f.emit("agent_start");
+  writeFileSync(join(f.cwd, "notes.txt"), "three, longer again");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "unverified", "a change after QA still needs a fresh review");
+  await qa("second"); await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "verified");
+  const count = f.records.length;
+  await f.emit("before_agent_start"); await f.emit("agent_start"); await f.emit("agent_end");
+  assert.equal(f.records.length, count, "the next prompt starts a new turn with nothing to review");
 });
 
 test("nested OMP reports survive virtual transport; malformed and stale child reports fail closed", async t => {
