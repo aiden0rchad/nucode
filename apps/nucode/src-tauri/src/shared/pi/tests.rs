@@ -481,18 +481,37 @@ fn subagent_validation_failure_keeps_error_and_single_agent_with_empty_modes() {
 }
 
 #[test]
-fn a_review_is_reported_on_the_turn_without_failing_it() {
+fn a_review_is_reported_when_the_turn_settles_without_failing_it() {
+    let record = |status: &str, passed: bool| json!({"type":"nucode_verification","record":{"status":status,"message":"QA note","reports":[{"checks":[{"criterion":"tests pass","passed":passed,"note":"Ran the suite"}]}]}});
     for (status, passed) in [("unverified", false), ("verified", true)] {
         let mut t = Translator::new("test", "/workspace");
         t.apply(&json!({"type":"agent_start"}));
-        let events = t.apply(&json!({"type":"nucode_verification","record":{"status":status,"message":"QA note","reports":[{"checks":[{"criterion":"tests pass","passed":passed,"note":"Ran the suite"}]}]}}));
+        assert!(t.apply(&record(status, passed)).is_empty(), "a run can pause and resume, so nothing is shown before the turn settles");
+        let events = t.apply(&json!({"type":"agent_settled"}));
         let item = events.iter().find(|e| e["method"] == "item/completed").unwrap()["params"]["item"].clone();
         assert_eq!(item["review"], json!({"status":status,"message":"QA note","checks":[{"criterion":"tests pass","passed":passed,"note":"Ran the suite"}]}));
         assert!(item["text"].as_str().unwrap().contains(if passed { "- Pass: tests pass" } else { "- Not confirmed: tests pass" }));
-        t.apply(&json!({"type":"agent_settled"}));
         assert_eq!(t.turns[0]["status"], "completed", "{status}");
         assert!(t.turns[0]["error"].is_null(), "{status}");
     }
+    // A run that paused for a background job and then went on is judged by its last review.
+    let mut t = Translator::new("test", "/workspace");
+    t.apply(&json!({"type":"agent_start"}));
+    t.apply(&record("unverified", false));
+    t.apply(&json!({"type":"agent_start"}));
+    t.apply(&record("verified", true));
+    t.apply(&json!({"type":"agent_settled"}));
+    let reviews: Vec<_> = t.turns[0]["items"].as_array().unwrap().iter().filter(|i| i.get("review").is_some()).collect();
+    assert_eq!(reviews.len(), 1);
+    assert_eq!(reviews[0]["review"]["status"], "verified");
+    // A stopped turn shows no review, and the next turn does not inherit one.
+    let mut t = Translator::new("test", "/workspace");
+    t.apply(&json!({"type":"agent_start"}));
+    t.apply(&record("unverified", false));
+    t.apply(&json!({"type":"agent_settled","aborted":true}));
+    t.apply(&json!({"type":"agent_start"}));
+    t.apply(&json!({"type":"agent_settled"}));
+    assert!(t.turns.iter().all(|turn| turn["items"].as_array().unwrap().iter().all(|i| i.get("review").is_none())));
 }
 
 #[test]

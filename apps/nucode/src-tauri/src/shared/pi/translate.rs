@@ -52,6 +52,9 @@ pub(super) struct Translator {
     tools: HashMap<String, Value>,
     files: HashMap<String, String>,
     failure: Option<String>,
+    /// The latest review of the open turn, shown when the turn settles: a run can end and resume by itself
+    /// (a background job finishing), and a review reported at such a pause is not the turn's result.
+    review: Option<Value>,
     aborted: bool,
     compaction_only: bool,
     diff: String,
@@ -82,6 +85,7 @@ impl Translator {
             tools: HashMap::new(),
             files: HashMap::new(),
             failure: None,
+            review: None,
             aborted: false,
             compaction_only: false,
             diff: String::new(),
@@ -137,6 +141,7 @@ impl Translator {
         }
         self.active = true;
         self.failure = None;
+        self.review = None;
         self.aborted = false;
         self.diff.clear();
         let turn = json!({"id":format!("{}:turn:{}",self.thread,self.turns.len()+1),"rootTurnId":null,"items":[],"itemsView":"full","status":"inProgress","error":null,"startedAt":null,"completedAt":null,"durationMs":null});
@@ -604,10 +609,15 @@ impl Translator {
                         }
                     }
                     // The work and the answer stand whatever QA concluded, so an unconfirmed review is shown on the finished turn instead of failing it.
-                    self.item(json!({"type":"agentMessage","id":format!("{}:verification",self.turn_id()),"text":body,"review":{"status":status,"message":message,"checks":checks}}), true, &mut out);
+                    self.review = Some(json!({"type":"agentMessage","id":format!("{}:verification",self.turn_id()),"text":body,"review":{"status":status,"message":message,"checks":checks}}));
                 }
             },
-            "agent_settled"=>{if let Some(error)=m["errorMessage"].as_str().or(m["error"].as_str()){self.failure=Some(error.into());}self.settle(m["aborted"]==true || self.aborted,&mut out);},
+            "agent_settled"=>{
+                if let Some(error)=m["errorMessage"].as_str().or(m["error"].as_str()){self.failure=Some(error.into());}
+                let aborted = m["aborted"]==true || self.aborted;
+                if let Some(review) = self.review.take().filter(|_| self.active && !aborted) { self.item(review, true, &mut out); }
+                self.settle(aborted,&mut out);
+            },
             "message_start"=>{
                 if m["message"]["role"]=="assistant" {self.message_count+=1;self.message=format!("{}:message:{}",self.thread,m["message"]["timestamp"].as_u64().unwrap_or(self.message_count as u64));}
                 if m["message"]["role"]=="user" {let msg=&m["message"];let id=format!("{}:user:{}",self.thread,msg["timestamp"]);self.item(json!({"type":"userMessage","id":id,"clientId":null,"content":input(&msg["content"])}),false,&mut out);}
