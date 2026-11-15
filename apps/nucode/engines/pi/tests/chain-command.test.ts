@@ -285,8 +285,10 @@ test("a preset reaches child processes with its instructions, read-only tools an
   const researcher = { name: "researcher", description: "Research", commandRank: "enlisted", model: "cloud/mid", toolAccess: "read-only", instructions: "Cite exact files" };
   writeFileSync(join(home, "nucode/policy.json"), JSON.stringify({ ...policy, maxPerTurn: 1, roles: [...policy.roles, researcher] }));
   writeFileSync(cli, `import subagents from ${JSON.stringify(new URL("../extensions/nucode-subagents.ts", import.meta.url).href)};
+    import { readFileSync } from "node:fs";
     const args = process.argv.slice(2), events = {}; subagents({on(name, fn) {events[name] = fn;},registerTool() {}});
-    console.log(JSON.stringify({type:"message_end",message:{role:"assistant",content:[{type:"text",text:JSON.stringify({args,role:process.env.NUCODE_SUBAGENT_ROLE,access:process.env.NUCODE_TOOL_ACCESS,prompt:events.before_agent_start().message.content})}],stopReason:"stop"}}));`);
+    const settings = args.includes("--config") ? JSON.parse(readFileSync(args[args.indexOf("--config") + 1], "utf8")) : null;
+    console.log(JSON.stringify({type:"message_end",message:{role:"assistant",content:[{type:"text",text:JSON.stringify({args,settings,role:process.env.NUCODE_SUBAGENT_ROLE,access:process.env.NUCODE_TOOL_ACCESS,prompt:events.before_agent_start().message.content})}],stopReason:"stop"}}));`);
   let tool: any;
   subagents({ on: (name: string, fn: any) => { events[name] = fn; }, registerTool: (value: any) => { tool = value; } } as any);
   events.agent_start();
@@ -297,6 +299,7 @@ test("a preset reaches child processes with its instructions, read-only tools an
   const child = JSON.parse(result.details.results[0].messages[0].content[0].text);
   assert.equal(child.role, "researcher"); assert.equal(child.access, "read-only");
   assert.equal(child.args[child.args.indexOf("--tools") + 1], "read,grep,glob");
+  assert.deepEqual(child.settings, { async: { enabled: false } }, "a child runs its commands to completion rather than in the background");
   assert.equal(child.args[child.args.indexOf("--model") + 1], "mid");
   assert.equal(child.args[child.args.indexOf("--append-system-prompt") + 1], researcher.instructions);
   assert.match(child.prompt, /researcher, with enlisted rank/);

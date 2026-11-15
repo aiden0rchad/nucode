@@ -1,7 +1,7 @@
 // Derived from pi's examples/extensions/subagent (MIT, Copyright Mario Zechner).
 // Keeps single/parallel/chain JSON streaming; roles come only from nucode policy.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -122,6 +122,13 @@ export default function (pi: ExtensionAPI) {
           const cli = process.env.NUCODE_PI_CLI ?? process.argv[1];
           if (!cli) throw new Error("Missing managed pi CLI");
           const args = [...process.execArgv, cli, "--mode", "json", "-p", "--session-dir", sessions = mkdtempSync(join(tmpdir(), "nucode-agent-")), ...(process.env.NUCODE_OMP === "1" ? ["--no-lsp", "--no-pty", "--no-title", "--no-skills", "--no-rules"] : ["--no-approve"]), "--no-extensions", "-e", join(home, "extensions/nucode-gate.ts"), "-e", join(home, "extensions/nucode-subagents.ts"), "--provider", provider, "--model", modelId];
+          if (process.env.NUCODE_OMP === "1") {
+            // A one-shot child exits when its model stops, so a command it left running in the background
+            // would never report back ("waiting for bg_2" ends the agent). Run its commands to completion.
+            const settings = join(sessions, ".nucode-child.yml");
+            writeFileSync(settings, JSON.stringify({ async: { enabled: false } }));
+            args.push("--config", settings);
+          }
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
           const effort = role.reasoningEffort || thinking; if (effort) args.push("--thinking", effort);
           if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
