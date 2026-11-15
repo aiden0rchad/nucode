@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dropForeignReasoning } from "../extensions/lib/foreignReasoning.ts";
+import { dropForeignReasoning, dropStaleReasoning } from "../extensions/lib/foreignReasoning.ts";
 
 const target = { provider: "proxy", id: "Model B" };
 const user = { role: "user", content: "hello" };
@@ -36,4 +36,31 @@ test("changes nothing without reasoning, without a target, or for plain-string c
   assert.equal(dropForeignReasoning([user, plain], target), undefined);
   assert.equal(dropForeignReasoning([{ ...plain, content: [thinking] }], undefined), undefined);
   assert.equal(dropForeignReasoning([{ ...plain, content: "legacy text" }], target), undefined);
+});
+
+const think = { type: "thinking", thinking: "plan", thinkingSignature: "sig" };
+const turn = (timestamp: number, ...content: object[]) => ({ role: "assistant", timestamp, content });
+
+test("reasoning written before a summary took the place of older turns is dropped, later reasoning stays", () => {
+  const summary = { role: "compactionSummary", summary: "so far", timestamp: 50 };
+  const kept = turn(40, think, call), after = turn(60, think, call);
+  assert.deepEqual(dropStaleReasoning([summary, kept, after]), [summary, { ...kept, content: [call] }, after]);
+  // The engine can date the rewrite before the kept turns when their reasoning is still good.
+  assert.equal(dropStaleReasoning([{ ...summary, historyRewriteAt: 30 }, kept, after]), undefined);
+  // The same summary once the engine has turned it into a plain message.
+  assert.deepEqual(dropStaleReasoning([{ role: "user", content: "so far", historyRewriteAt: 50, timestamp: 50 }, kept]), [{ role: "user", content: "so far", historyRewriteAt: 50, timestamp: 50 }, { ...kept, content: [call] }]);
+});
+
+test("cutting down an old tool result drops the reasoning of the turns after it, not of the turns before", () => {
+  const before = turn(10, think, call), pruned = { role: "toolResult", toolCallId: "c1", content: [], prunedAt: 30, timestamp: 11 };
+  const between = turn(20, think, call), after = turn(40, think, call);
+  assert.deepEqual(dropStaleReasoning([before, pruned, between, after]), [before, pruned, { ...between, content: [call] }, after]);
+});
+
+test("a refusal of the whole history with nothing written drops the reasoning before it", () => {
+  const first = turn(10, think, call), refused = { role: "assistant", timestamp: 20, stopReason: "error", errorMessage: "incomplete: content_filter", content: [] };
+  assert.deepEqual(dropStaleReasoning([first, refused]), [{ ...first, content: [call] }, refused]);
+  // An answer cut off part-way is a different stop: the history was accepted.
+  assert.equal(dropStaleReasoning([first, { ...refused, content: [{ type: "text", text: "Half an" }] }]), undefined);
+  assert.equal(dropStaleReasoning([first, turn(20, think)]), undefined);
 });

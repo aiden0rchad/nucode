@@ -7,7 +7,7 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
-import { dropForeignReasoning } from "./lib/foreignReasoning.ts";
+import { dropForeignReasoning, dropStaleReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
@@ -19,10 +19,11 @@ export default function (pi: ExtensionAPI) {
     captured = { systemPrompt: Array.isArray(prompt) ? prompt.join("\n\n") : prompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
     if (prompt !== original) return { systemPrompt: prompt as any };
   });
-  // Before every model call: keep another model's reasoning out of the history (see dropForeignReasoning).
+  // Before every model call: keep reasoning the provider would reject out of the history (see lib/foreignReasoning.ts).
   pi.on("context", async (event: any, ctx: any) => {
     try {
-      const messages = dropForeignReasoning(event.messages, ctx.model);
+      const own = dropForeignReasoning(event.messages, ctx.model);
+      const messages = dropStaleReasoning(own ?? event.messages) ?? own;
       if (messages) return { messages };
     } catch {}
   });
