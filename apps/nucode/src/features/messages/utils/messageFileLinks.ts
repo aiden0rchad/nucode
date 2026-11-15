@@ -148,6 +148,11 @@ export function relativeDisplayPath(path: string, workspacePath?: string | null)
   if (relative === null) {
     return normalizedPath;
   }
+  // A climb all the way to the root ("../../../tmp/notes.md") says less than the path itself.
+  const climbs = relative.split("/").filter((segment) => segment === "..").length;
+  if (climbs > 0 && climbs >= normalizedWorkspace.split("/").filter(Boolean).length - (isWindowsAbsolutePath(normalizedWorkspace) ? 1 : 0)) {
+    return normalizedPath;
+  }
   if (relative.length === 0) {
     const segments = normalizedPath.split("/").filter(Boolean);
     return segments.length > 0 ? segments[segments.length - 1] : normalizedPath;

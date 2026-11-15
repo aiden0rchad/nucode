@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatFileLocation } from "../../../utils/fileLinks";
-import { resolveMessageFileHref } from "./messageFileLinks";
+import { relativeDisplayPath, resolveMessageFileHref } from "./messageFileLinks";
 
 function expectResolvedHref(url: string, expected: string | null) {
   const resolved = resolveMessageFileHref(url);
@@ -41,5 +41,17 @@ describe("resolveMessageFileHref", () => {
   it("keeps encoded #L-like filename endings intact for markdown hrefs", () => {
     expectResolvedHref("./report.md%23L12", "./report.md#L12");
     expectResolvedHref("./report.md%23L12C3", "./report.md#L12C3");
+  });
+});
+
+describe("relativeDisplayPath", () => {
+  it("shortens paths inside or near the project and shows far ones whole", () => {
+    expect(relativeDisplayPath("/work/app/src/main.ts", "/work/app")).toBe("src/main.ts");
+    expect(relativeDisplayPath("/work/app", "/work/app")).toBe("app");
+    expect(relativeDisplayPath("/tmp/notes/brief.md", "/work/app")).toBe("/tmp/notes/brief.md");
+    expect(relativeDisplayPath("/work/other/readme.md", "/work/app")).toBe("../other/readme.md");
+    expect(relativeDisplayPath("/tmp/notes/brief.md", "/home/me/work/app")).toBe("/tmp/notes/brief.md");
+    expect(relativeDisplayPath("C:/Temp/notes.md", "C:/Work/app")).toBe("C:/Temp/notes.md");
+    expect(relativeDisplayPath("C:/Work/other/a.md", "C:/Work/app")).toBe("../other/a.md");
   });
 });
