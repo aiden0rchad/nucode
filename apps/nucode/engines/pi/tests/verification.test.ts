@@ -35,6 +35,13 @@ test("reports require all criteria, real successful evidence, safe paths and unc
   assert.throws(() => verifyReport(checks, [], new Map([["E1", { ...evidence.get("E1")!, passed: false }]]), ["tests pass"], cwd), /Failed tool/);
   symlinkSync(tmpdir(), join(cwd, "outside"));
   assert.throws(() => verifyReport(checks, ["outside/secret"], evidence, ["tests pass"], cwd), /inside/);
+  // A retyped criterion still counts, and so does its number; the report keeps the assigned wording.
+  const long = ["The build passes:\n  run it twice", "tests pass"];
+  const retyped = [{ ...checks[0], criterion: " The build passes: run it   twice " }, { ...checks[0], criterion: "2" }];
+  assert.deepEqual(verifyReport(retyped, [], evidence, long, cwd).checks.map(check => check.criterion), long);
+  assert.throws(() => verifyReport([retyped[0], { ...checks[0], criterion: "1" }], [], evidence, long, cwd), /Check 2 repeats/);
+  assert.throws(() => verifyReport([retyped[0], { ...checks[0], criterion: "3" }], [], evidence, long, cwd), /Check 2 names no assigned criterion.*1 to 2/);
+  assert.throws(() => verifyReport(checks, ["missing.ts"], evidence, ["tests pass"], cwd), /No such artifact/);
   writeFileSync(join(cwd, "source.ts"), "changed");
   assert.match(verificationProblem([report])!, /changed/);
   rmSync(join(cwd, "source.ts"));

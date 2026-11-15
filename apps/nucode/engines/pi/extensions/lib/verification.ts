@@ -15,7 +15,8 @@ export function acceptanceCriteria(task: { task: string; acceptanceCriteria?: st
   return criteria;
 }
 const digest = (path: string) => {
-  const stat = statSync(path);
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat) throw new Error(`No such artifact: ${path}. Give paths relative to the task folder`);
   if (!stat.isFile() || stat.size > 16 * 1024 * 1024) throw new Error("Verification artifacts must be files no larger than 16 MiB");
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 };
@@ -37,10 +38,19 @@ export function treePrint(cwd: string): string | undefined {
 
 export function verifyReport(checks: Check[], paths: string[], evidence: Map<string, Evidence>, criteria: string[], cwd: string): Verification {
   if (!Array.isArray(checks) || !checks.length || checks.length > 20 || checks.length !== criteria.length || !Array.isArray(paths) || paths.length > 40 || paths.some(path => typeof path !== "string" || !path || path.length > 4096)) throw new Error("Report every assigned criterion exactly once (up to 20 criteria and 40 artifacts)");
+  // A reviewer retypes long criteria: line breaks and spacing may differ, and a number names one as well.
+  const plain = (text: unknown) => typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
+  const assigned = new Map(criteria.map(criterion => [plain(criterion), criterion]));
   const covered = new Set<string>();
+  checks = checks.map((check, index) => {
+    const named = plain(check?.criterion);
+    const criterion = assigned.get(named) ?? (/^\d{1,2}$/.test(named) ? criteria[Number(named) - 1] : undefined);
+    if (!criterion) throw new Error(`Check ${index + 1} names no assigned criterion. Copy each criterion exactly as assigned, or give its number (1 to ${criteria.length})`);
+    if (covered.has(criterion)) throw new Error(`Check ${index + 1} repeats a criterion already reported`);
+    covered.add(criterion);
+    return { ...check, criterion };
+  });
   for (const check of checks) {
-    if (!criteria.includes(check.criterion) || covered.has(check.criterion)) throw new Error("Unknown or repeated acceptance criterion");
-    covered.add(check.criterion);
     if (typeof check.passed !== "boolean" || typeof check.note !== "string" || !check.note.trim() || check.note.length > 4000 || !Array.isArray(check.evidence) || !check.evidence.length || check.evidence.length > 40 || check.evidence.some(id => !evidence.has(id))) throw new Error("Each check needs a verdict, note and observed evidence IDs from this QA run");
     for (const id of check.evidence) {
       const item = evidence.get(id)!;
@@ -53,7 +63,7 @@ export function verifyReport(checks: Check[], paths: string[], evidence: Map<str
   const reviewedPaths = [...new Set([...paths.map(path => resolve(cwd, path)), ...observed.map(item => item.path)])];
   if (reviewedPaths.length > 40) throw new Error("A QA report can review up to 40 artifacts");
   const artifacts = reviewedPaths.map(path => {
-    if (!inside(path, cwd)) throw new Error("Verification artifacts must stay inside the task folder");
+    if (!inside(path, cwd)) throw new Error(`Verification artifacts must stay inside the task folder. Leave out ${path} and name it in a note instead`);
     const hash = digest(path);
     if (observed.some(item => item.path === path && item.hash !== hash)) throw new Error("Artifact changed since QA read it; read and check it again");
     return { path, hash };
@@ -99,7 +109,7 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
   });
   pi.on("before_agent_start", () => {
     prompted = announces = true;
-    if (enabled() && major()) return { message: { customType: "nucode-verification-instructions", display: false, content: `Acceptance criteria: ${JSON.stringify(criteria)}. Independently check every criterion with tools. Tool results supply evidence IDs. Before finishing, call report_verification with every criterion verbatim, its verdict and evidence IDs, and the project artifact paths you checked. Report failed checks honestly; text alone is not verification.` } };
+    if (enabled() && major()) return { message: { customType: "nucode-verification-instructions", display: false, content: `Acceptance criteria: ${JSON.stringify(criteria)}. Independently check every criterion with tools. Tool results supply evidence IDs. Before finishing, call report_verification with every criterion verbatim (or its number), its verdict and evidence IDs, and the project artifact paths you checked. Report failed checks honestly; text alone is not verification.` } };
   });
   pi.on("tool_result", (event, ctx) => {
     if (!enabled() || !major() || ["report_verification", "subagent", "write", "edit"].includes(event.toolName)) return;
