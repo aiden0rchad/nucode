@@ -299,7 +299,7 @@ test("a preset reaches child processes with its instructions, read-only tools an
   const child = JSON.parse(result.details.results[0].messages[0].content[0].text);
   assert.equal(child.role, "researcher"); assert.equal(child.access, "read-only");
   assert.equal(child.args[child.args.indexOf("--tools") + 1], "read,grep,glob");
-  assert.deepEqual(child.settings, { async: { enabled: false } }, "a child runs its commands to completion rather than in the background");
+  assert.deepEqual(child.settings, { async: { enabled: false }, bash: { autoBackground: { enabled: false } }, eval: { autoBackground: { enabled: false } } }, "a child runs its commands to completion rather than in the background, even long ones");
   assert.equal(child.args[child.args.indexOf("--model") + 1], "mid");
   assert.equal(child.args[child.args.indexOf("--append-system-prompt") + 1], researcher.instructions);
   assert.match(child.prompt, /researcher, with enlisted rank/);

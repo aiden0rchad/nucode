@@ -25,6 +25,7 @@ const CUT_OFF = /content[_ ]filter/i, MAX_CONTINUES = 2;
 const CONTINUE = "Your last answer was cut off by the model provider before it finished, so none of it was kept. Everything before it is still here. Go on with the task from where you were. Write long results in smaller parts and save each part to its file before starting the next.";
 const output = (r: Result) => r.messages.filter(m => m.role === "assistant").at(-1)?.content?.filter(c => c.type === "text").map(c => c.text).join("\n") || r.stderr;
 
+const CHILD_SETTINGS = { async: { enabled: false }, bash: { autoBackground: { enabled: false } }, eval: { autoBackground: { enabled: false } } };
 export default function (pi: ExtensionAPI) {
   registerExecutionLimits(pi, readPolicy);
   registerLoopGuard(pi);
@@ -124,9 +125,10 @@ export default function (pi: ExtensionAPI) {
           const args = [...process.execArgv, cli, "--mode", "json", "-p", "--session-dir", sessions = mkdtempSync(join(tmpdir(), "nucode-agent-")), ...(process.env.NUCODE_OMP === "1" ? ["--no-lsp", "--no-pty", "--no-title", "--no-skills", "--no-rules"] : ["--no-approve"]), "--no-extensions", "-e", join(home, "extensions/nucode-gate.ts"), "-e", join(home, "extensions/nucode-subagents.ts"), "--provider", provider, "--model", modelId];
           if (process.env.NUCODE_OMP === "1") {
             // A one-shot child exits when its model stops, so a command it left running in the background
-            // would never report back ("waiting for bg_2" ends the agent). Run its commands to completion.
+            // would never report back ("waiting for bg_2" ends the agent). Run its commands to completion, including
+            // the long ones bash and eval would otherwise move to the background after a minute.
             const settings = join(sessions, ".nucode-child.yml");
-            writeFileSync(settings, JSON.stringify({ async: { enabled: false } }));
+            writeFileSync(settings, JSON.stringify(CHILD_SETTINGS));
             args.push("--config", settings);
           }
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
