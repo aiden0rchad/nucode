@@ -1,7 +1,8 @@
 // Derived from pi's examples/extensions/subagent (MIT, Copyright Mario Zechner).
 // Keeps single/parallel/chain JSON streaming; roles come only from nucode policy.
 import { execFileSync, spawn } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -18,6 +19,10 @@ const Task = Type.Object(taskFields);
 type TaskInput = { agent: string; task: string; model?: string | null; cwd?: string | null; acceptanceCriteria?: string[] | null };
 type Message = { role: string; toolCallId?: string; toolName?: string; content?: { type: string; text?: string }[]; stopReason?: string; errorMessage?: string; usage?: Record<string, any> };
 type Result = TaskInput & { exitCode: number; status: string; startedAt?: number; endedAt?: number; messages: Message[]; stderr: string; stopReason?: string; usage: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number | null; knownCost: number; costKnown: boolean; contextTokens: number; turns: number } };
+// A provider can cut an answer off part-way (a content filter stop). The work up to there is sound, so the agent
+// goes on from its saved session rather than failing with everything it did.
+const CUT_OFF = /content[_ ]filter/i, MAX_CONTINUES = 2;
+const CONTINUE = "Your last answer was cut off by the model provider before it finished, so none of it was kept. Everything before it is still here. Go on with the task from where you were. Write long results in smaller parts and save each part to its file before starting the next.";
 const output = (r: Result) => r.messages.filter(m => m.role === "assistant").at(-1)?.content?.filter(c => c.type === "text").map(c => c.text).join("\n") || r.stderr;
 
 export default function (pi: ExtensionAPI) {
@@ -85,6 +90,7 @@ export default function (pi: ExtensionAPI) {
         let acquired = false;
         let slot: string | undefined;
         let budget: string | undefined;
+        let sessions: string | undefined;
         try {
           checkLimits(policy, depth, count);
           const parentRole = depth === 0 ? "commander" : process.env.NUCODE_SUBAGENT_ROLE ?? "unknown";
@@ -115,14 +121,13 @@ export default function (pi: ExtensionAPI) {
           r.model = model; r.status = "running"; r.startedAt = Date.now(); update();
           const cli = process.env.NUCODE_PI_CLI ?? process.argv[1];
           if (!cli) throw new Error("Missing managed pi CLI");
-          const args = [...process.execArgv, cli, "--mode", "json", "-p", "--no-session", ...(process.env.NUCODE_OMP === "1" ? ["--no-lsp", "--no-pty", "--no-title", "--no-skills", "--no-rules"] : ["--no-approve"]), "--no-extensions", "-e", join(home, "extensions/nucode-gate.ts"), "-e", join(home, "extensions/nucode-subagents.ts"), "--provider", provider, "--model", modelId];
+          const args = [...process.execArgv, cli, "--mode", "json", "-p", "--session-dir", sessions = mkdtempSync(join(tmpdir(), "nucode-agent-")), ...(process.env.NUCODE_OMP === "1" ? ["--no-lsp", "--no-pty", "--no-title", "--no-skills", "--no-rules"] : ["--no-approve"]), "--no-extensions", "-e", join(home, "extensions/nucode-gate.ts"), "-e", join(home, "extensions/nucode-subagents.ts"), "--provider", provider, "--model", modelId];
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
           const effort = role.reasoningEffort || thinking; if (effort) args.push("--thinking", effort);
           if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
           if (role.instructions) args.push("--append-system-prompt", role.instructions);
-          args.push(`Task: ${r.task}`);
-          r.exitCode = await new Promise<number>((resolve, reject) => {
-            const child = spawn(process.execPath, args, { cwd, env: { ...process.env, NUCODE_SUBAGENT_DEPTH: String(depth + 1), NUCODE_SUBAGENT_ROLE: role.name, NUCODE_VERIFY_CRITERIA: JSON.stringify(r.acceptanceCriteria ?? [r.task]), NUCODE_SUBAGENT_BUDGET: budget, NUCODE_SUBAGENT_SLOT: slot, NUCODE_WORKSPACE: workspace, NUCODE_TOOL_ACCESS: toolAccess }, stdio: ["ignore", "pipe", "pipe"], detached: depth === 0 && process.platform !== "win32" });
+          const once = (prompt: string[]) => new Promise<number>((resolve, reject) => {
+            const child = spawn(process.execPath, [...args, ...prompt], { cwd, env: { ...process.env, NUCODE_SUBAGENT_DEPTH: String(depth + 1), NUCODE_SUBAGENT_ROLE: role.name, NUCODE_VERIFY_CRITERIA: JSON.stringify(r.acceptanceCriteria ?? [r.task]), NUCODE_SUBAGENT_BUDGET: budget, NUCODE_SUBAGENT_SLOT: slot, NUCODE_WORKSPACE: workspace, NUCODE_TOOL_ACCESS: toolAccess }, stdio: ["ignore", "pipe", "pipe"], detached: depth === 0 && process.platform !== "win32" });
             const releaseOwners = (owners: Iterable<number>) => {
               try { if (budget) for (const pid of owners) releaseSubagentProcessSlots(budget, pid); }
               catch (error) { r.stderr += `\nConcurrency cleanup failed: ${error}`; r.stopReason = "error"; }
@@ -216,12 +221,18 @@ export default function (pi: ExtensionAPI) {
             });
             if (signal?.aborted) abort();
           });
+          r.exitCode = await once([`Task: ${r.task}`]);
+          for (let attempt = 0; attempt < MAX_CONTINUES && !signal?.aborted && r.stopReason === "error" && CUT_OFF.test(r.stderr); attempt++) {
+            r.stderr = ""; r.stopReason = undefined;
+            r.exitCode = await once(["--continue", CONTINUE]);
+          }
           r.status = r.exitCode === 0 && !["error", "aborted"].includes(r.stopReason ?? "") && !signal?.aborted ? "completed" : "failed";
         } catch (e) {
           r.stderr = String(e); r.exitCode = 1; r.status = "failed";
         } finally {
           if (signal?.aborted) r.stopReason = "aborted";
           r.endedAt = Date.now();
+          if (sessions) try { rmSync(sessions, { recursive: true, force: true }); } catch { /* A leftover session in the temporary folder is harmless. */ }
           try { releaseSubagentSlot(slot); }
           catch (error) { r.stderr += `\nConcurrency cleanup failed: ${error}`; r.status = "failed"; r.exitCode = 1; }
           if (acquired) { active--; for (const wake of [...waiters]) wake(); }

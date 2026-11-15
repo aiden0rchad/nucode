@@ -271,7 +271,7 @@ test("subagents single, parallel, chain, concurrency, per-run limit, depth and a
   assert.match(result.details.results[3].stderr, /per turn/);
   const child = JSON.parse(result.details.results[0].messages[0].content[0].text);
   assert.equal(child.depth, "1"); assert.equal(child.access, "read-only");
-  assert.ok(child.args.includes("read,grep,find,ls")); assert.ok(child.args.includes("--no-session"));
+  assert.ok(child.args.includes("read,grep,find,ls")); assert.ok(child.args.includes("--session-dir") && !child.args.includes("--no-session"), "a child keeps a session so a cut-off run can go on");
   assert.equal(child.args[child.args.indexOf("--provider") + 1], "local");
   reset();
   const chain = await tool.execute("chain", { chain: [task, { ...task, task: "previous: {previous}" }] }, undefined, undefined, ctx);

@@ -232,6 +232,47 @@ test("specialists use their configured models and rank without adding delegation
   assert.throws(() => resolveTask({ ...specialists, models: {} }, { agent: "researcher" }), /not enabled/);
 });
 
+test("an agent cut off by a content filter goes on from its saved session, at most twice", async t => {
+  const root = mkdtempSync(join(tmpdir(), "nucode-cutoff-"));
+  const home = join(root, "agent"), cli = join(root, "fake-cli.mjs"), trace = join(root, "runs.jsonl");
+  mkdirSync(join(home, "nucode"), { recursive: true });
+  const variables = { PI_CODING_AGENT_DIR: home, NUCODE_WORKSPACE: root, NUCODE_PI_CLI: cli, NUCODE_SUBAGENT_DEPTH: "0", NUCODE_SUBAGENT_ROLE: "", NUCODE_SUBAGENT_BUDGET: "", NUCODE_TOOL_ACCESS: "full", NUCODE_OMP: "1", CUT_TRACE: trace, CUTS: "1" };
+  const previous = Object.fromEntries(Object.keys(variables).map(key => [key, process.env[key]]));
+  Object.assign(process.env, variables);
+  const events: Record<string, (...args: any[]) => any> = {};
+  t.after(() => { events.agent_end?.(); for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value; rmSync(root, { recursive: true, force: true }); });
+  writeFileSync(join(home, "nucode/policy.json"), JSON.stringify({ ...policy, maxPerTurn: 4 }));
+  // Stands in for the engine: each run notes its arguments, and the first CUTS runs end in a content filter stop.
+  writeFileSync(cli, `import { appendFileSync, readFileSync, existsSync } from "node:fs";
+    const args = process.argv.slice(2), trace = process.env.CUT_TRACE;
+    const runs = existsSync(trace) ? readFileSync(trace, "utf8").trim().split("\\n").length : 0;
+    appendFileSync(trace, JSON.stringify({ sessions: args[args.indexOf("--session-dir") + 1], resumed: args.includes("--continue"), prompt: args.at(-1) }) + "\\n");
+    const cut = runs < Number(process.env.CUTS);
+    console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: cut ? "Writing the pl" : "Plan written" }], stopReason: cut ? "error" : "stop", ...(cut ? { errorMessage: "incomplete: content_filter" } : {}), usage: { input: 5, output: 2 } } }));
+    process.exit(cut ? 1 : 0);`);
+  let tool: any;
+  subagents({ on: (name: string, fn: any) => { events[name] = fn; }, registerTool: (value: any) => { tool = value; } } as any);
+  events.agent_start();
+  const ctx = { cwd: root, model: { provider: "nucode-cloud", id: "strong" } };
+  const runs = () => readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const recovered = await tool.execute("plan", { agent: "enlisted", task: "Write the plan" }, undefined, undefined, ctx);
+  assert.equal(recovered.isError, false);
+  const node = recovered.details.results[0];
+  assert.equal(node.status, "completed"); assert.equal(node.stderr, ""); assert.equal(node.usage.turns, 2);
+  assert.deepEqual(node.messages.map((message: any) => message.content[0].text), ["Writing the pl", "Plan written"], "the cut-off answer stays in the agent's transcript");
+  const [first, second] = runs();
+  assert.equal(first.prompt, "Task: Write the plan"); assert.equal(first.resumed, false);
+  assert.equal(second.resumed, true); assert.match(second.prompt, /cut off by the model provider/);
+  assert.equal(second.sessions, first.sessions, "the second run continues the first run's session");
+  assert.ok(!existsSync(first.sessions), "the saved session is removed when the agent ends");
+  // A filter that keeps firing ends the agent after two continuations, with the reason.
+  writeFileSync(trace, ""); process.env.CUTS = "9";
+  const stuck = await tool.execute("again", { agent: "enlisted", task: "Write the plan" }, undefined, undefined, ctx);
+  assert.equal(stuck.details.results[0].status, "failed");
+  assert.match(stuck.details.results[0].stderr, /content_filter/);
+  assert.equal(readFileSync(trace, "utf8").trim().split("\n").length, 3);
+});
+
 test("a preset reaches child processes with its instructions, read-only tools and shared budget", async t => {
   const root = mkdtempSync(join(tmpdir(), "nucode-specialist-"));
   const home = join(root, "agent"), cli = join(root, "fake-cli.mjs");
