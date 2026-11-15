@@ -40,6 +40,13 @@ describe("Agents panel", () => {
     expect(screen.getByRole("alert").textContent).toBe("Not started: the last of this turn's 3 agents is kept for the QA check.");
     expect(screen.queryByText(/elapsed unavailable/)).toBeNull();
   });
+  it("shows a running agent's latest step and step count, and drops them when it finishes", () => {
+    const { rerender } = render(view([item([{ ...node, activity: "Viewing the alerts screen", steps: 12 }])]));
+    expect(screen.getByText("Viewing the alerts screen · step 12")).toBeTruthy();
+    rerender(view([item([{ ...node, status: "completed", endedAt: Date.now(), activity: "Viewing the alerts screen", steps: 12 }])]));
+    expect(screen.queryByText(/step 12/)).toBeNull();
+  });
+
   it("retries a failed read without starting an agent", async () => {
     vi.mocked(getSubagentTranscript).mockRejectedValueOnce(new Error("Read interrupted"))
       .mockResolvedValue({ messages: [{ role: "assistant", content: "Recovered result" }], truncated: false });

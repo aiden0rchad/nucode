@@ -515,6 +515,28 @@ fn a_review_is_reported_when_the_turn_settles_without_failing_it() {
 }
 
 #[test]
+fn a_running_agent_reports_its_latest_step_and_step_count() {
+    let call = |name: &str, arguments: Value| json!({"role":"assistant","content":[{"type":"text","text":"Looking"},{"type":"toolCall","name":name,"arguments":arguments}]});
+    let node = |messages: Vec<Value>, extra: Value| {
+        let mut result = json!({"agent":"designer","status":"running","messages":messages});
+        for (key, value) in extra.as_object().unwrap() { result[key] = value.clone(); }
+        agents::tree("call", &[result], &Value::Null, false, Some(1), &mut Default::default())[0].clone()
+    };
+    // The engine's own note wins; without one the tool and its target stand in.
+    let noted = node(vec![call("read", json!({"path":"shots/a.png","i":"Viewing the alerts screen"}))], json!({"usage":{"turns":7}}));
+    assert_eq!(noted["activity"], "Viewing the alerts screen");
+    assert_eq!(noted["steps"], 7);
+    let plain = node(vec![call("bash", json!({"command":"npm test\necho done"})), json!({"role":"toolResult","content":[]}), json!({"role":"assistant","content":[{"type":"text","text":"Thinking it over"}]})], json!({}));
+    assert_eq!(plain["activity"], "bash npm test", "the latest tool call, not a later remark");
+    assert_eq!(plain["steps"], 2);
+    let long = node(vec![call("read", json!({"path":"x".repeat(400)}))], json!({}));
+    assert_eq!(long["activity"].as_str().unwrap().chars().count(), 120);
+    // A finished agent shows its report, not a step.
+    let done = node(vec![call("read", json!({"path":"a"}))], json!({"status":"completed"}));
+    assert_eq!(done["activity"], "");
+}
+
+#[test]
 fn late_subagent_progress_cannot_restart_a_finished_tool_or_turn() {
     for aborted in [false, true] {
         let mut t = Translator::new("test", "/workspace");

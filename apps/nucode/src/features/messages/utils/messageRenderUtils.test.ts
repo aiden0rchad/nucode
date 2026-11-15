@@ -131,6 +131,19 @@ describe("messageRenderUtils", () => {
     expect(summary.label).toBe("spawned");
   });
 
+  it("says what a working agent is doing while its delegation runs", () => {
+    const running = (extra: object) => makeToolItem({
+      toolType: "collabToolCall", title: "Collab: spawnAgent", status: "inProgress",
+      agentsTree: [{ id: "tool-1:agent:0", agent: "designer", status: "running", activity: "Viewing the alerts screen", steps: 12, children: [], ...extra }],
+    });
+    expect(buildToolSummary(running({}), "").value).toBe("designer · Viewing the alerts screen (step 12)");
+    expect(buildToolSummary(running({ children: [{ id: "c", agent: "scout", status: "running", activity: "Reading tokens.css", children: [] }] }), "").value)
+      .toBe("designer · scout: Reading tokens.css");
+    expect(buildToolSummary(running({ children: [{ id: "a", agent: "scout", status: "running", children: [] }, { id: "b", agent: "writer", status: "running", children: [] }] }), "").value)
+      .toBe("designer · 2 working");
+    expect(buildToolSummary({ ...running({}), status: "completed" }, "").value).toBe("designer");
+  });
+
   it("keeps the in-progress spawn label", () => {
     expect(buildToolSummary(makeToolItem({
       toolType: "collabToolCall", title: "Collab: spawnAgent", status: "inProgress",

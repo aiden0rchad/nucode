@@ -21,6 +21,21 @@ pub(super) fn checkpoint(file: &std::path::Path, call: &str) -> Option<Value> {
     Some(json!({"role":"nucodeSubagentResult","crashed":true,"toolCallId":call,"result":result}))
 }
 
+/// What an agent's latest tool call is doing, in a few words: the engine's own note where it gives one,
+/// else the tool and what it was pointed at.
+fn step(call: &Value) -> String {
+    let args = &call["arguments"];
+    let note = call["intent"].as_str().or(args["i"].as_str()).map(str::trim).filter(|s| !s.is_empty());
+    let label = match note {
+        Some(note) => note.to_string(),
+        None => {
+            let target = ["path", "file_path", "command", "query", "pattern", "url", "agent"].iter().find_map(|key| args[*key].as_str()).unwrap_or("");
+            format!("{} {}", call["name"].as_str().unwrap_or("tool"), target.lines().next().unwrap_or(""))
+        }
+    };
+    label.trim().chars().take(120).collect()
+}
+
 pub(super) fn results(details: &Value) -> Option<&Vec<Value>> {
     let details = if details["xdev"]["tool"] == "subagent" { &details["xdev"]["inner"] } else { details };
     details["results"].as_array()
@@ -77,6 +92,10 @@ pub(super) fn tree(
         }
         let last = messages.iter().rev().find(|m| m["role"] == "assistant")
             .map(|m|text(&m["content"])).unwrap_or_default();
+        // A working agent mostly calls tools and says nothing, so its row would stand still for minutes.
+        let activity = if status == "running" { messages.iter().rev().filter(|m| m["role"] == "assistant")
+            .find_map(|m| m["content"].as_array()?.iter().rev().find(|p| p["type"] == "toolCall")).map(step).unwrap_or_default() } else { String::new() };
+        let steps = r["usage"]["turns"].as_u64().unwrap_or(messages.iter().filter(|m| m["role"] == "assistant").count() as u64);
         transcripts.insert(id.clone(), capped(messages.into_iter().map(|mut m| {
             // Nested transcripts belong to their own nodes; do not duplicate them.
             for path in ["/details", "/details/xdev/inner"] {
@@ -96,7 +115,7 @@ pub(super) fn tree(
         json!({"id":id,"agent":r["agent"],"model":r["model"],"task":r["task"],"status":status,
             "startedAt":if status == "pending" || (r["endedAt"].is_number() && r["startedAt"].is_null()) {Value::Null} else {json!(r["startedAt"].as_i64().or(old["startedAt"].as_i64()).or(now))},
             "endedAt":if matches!(status,"running"|"pending") {Value::Null} else {json!(ended)},
-            "usage":usage,"lastMessage":last.chars().take(300).collect::<String>(),
+            "usage":usage,"lastMessage":last.chars().take(300).collect::<String>(),"activity":activity,"steps":steps,
             "errorMessage":r["stderr"].as_str().filter(|s|!s.is_empty()).or(r["errorMessage"].as_str()),"children":nested})
     }).collect::<Vec<_>>())
 }

@@ -129,6 +129,20 @@ function summarizeCollabLabel(title: string, status?: string, agents: { status: 
   return "sub-agent";
 }
 
+/** What the agents of a delegation are doing right now, so its row does not stand still while they work. */
+function collabNow(item: Extract<ConversationItem, { kind: "tool" }>) {
+  const nodes = [...(item.agentsTree ?? [])];
+  for (let i = 0; i < nodes.length; i++) nodes.push(...(nodes[i].children ?? []));
+  const running = nodes.filter((node) => node.status === "running");
+  // With children at work the parent is only waiting on them.
+  const working = running.filter((node) => !node.children?.some((child) => child.status === "running"));
+  if (working.length === 1 && working[0].activity) {
+    const who = running.length > 1 ? `${working[0].agent || "agent"}: ` : "";
+    return ` · ${who}${working[0].activity}${working[0].steps ? ` (step ${working[0].steps})` : ""}`;
+  }
+  return working.length > 1 ? ` · ${working.length} working` : "";
+}
+
 function summarizeCollabReceiver(
   item: Extract<ConversationItem, { kind: "tool" }>,
 ) {
@@ -561,7 +575,7 @@ export function buildToolSummary(
   if (item.toolType === "collabToolCall") {
     return {
       label: stoppedDelegation(item) ? "stopped" : summarizeCollabLabel(item.title, item.status, item.collabStatuses),
-      value: summarizeCollabReceiver(item),
+      value: summarizeCollabReceiver(item) + (statusToneFromText(item.status) === "processing" ? collabNow(item) : ""),
       detail: item.detail || "",
       output: item.output || "",
     };

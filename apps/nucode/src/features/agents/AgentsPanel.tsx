@@ -80,6 +80,7 @@ export function AgentActivity({ loadTranscript = getSubagentTranscript }: { load
       <span><strong>{node.agent || "Agent"}</strong> <small title={formatModelRef(settings, node.model).title}>{node.model ? formatModelRef(settings, node.model).name : ""}</small>
         {agentRefusal(node.errorMessage) ? <span className="agent-detail">not started</span> : <><span className="agent-detail">{node.status} · {node.startedAt && (node.endedAt != null || node.status === "running") ? formatDurationMs(Math.max(0, (node.endedAt ?? now) - node.startedAt)) : "elapsed unavailable"}</span>
         <span className="agent-detail">{node.usage ? `${formatK((node.usage.input ?? 0) + (node.usage.output ?? 0) + (node.usage.cacheRead ?? 0) + (node.usage.cacheWrite ?? 0))} tokens · ${node.usage.cost == null ? "cost unavailable" : `$${node.usage.cost.toFixed(4)}`}` : "Usage unavailable"}</span></>}
+        {node.status === "running" && (node.activity || !!node.steps) && <span className="agent-detail agent-now" title={node.activity}>{[node.activity, node.steps ? `step ${node.steps}` : ""].filter(Boolean).join(" · ")}</span>}
         {node.task && <span className="agent-detail agent-preview" title={node.task}>{plain(node.task)}</span>}
         {node.lastMessage && <span className="agent-detail agent-preview" title={node.lastMessage}>{plain(node.lastMessage)}</span>}
         {node.status === "failed" && node.errorMessage && <span className="agent-detail agent-error" role="alert">{agentErrorText(node.errorMessage)}</span>}

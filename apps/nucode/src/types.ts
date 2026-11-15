@@ -128,6 +128,9 @@ export type AgentNode = {
   endedAt?: number | null;
   usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: number | null } | null;
   lastMessage?: string;
+  /** What a running agent's latest step is doing, and how many steps it has taken. */
+  activity?: string;
+  steps?: number;
   errorMessage?: string | null;
   children: AgentNode[];
 };
