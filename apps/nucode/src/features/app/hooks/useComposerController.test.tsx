@@ -5,6 +5,8 @@ import type { ConversationItem } from "@/types";
 import { useComposerController } from "./useComposerController";
 
 vi.mock("@/services/tauri", () => ({ pickImageFiles: vi.fn() }));
+const toasts = vi.hoisted(() => ({ pushErrorToast: vi.fn() }));
+vi.mock("@/services/toasts", () => toasts);
 
 const options: Parameters<typeof useComposerController>[0] = {
   activeThreadId: "one", activeTurnId: null, activeWorkspaceId: "workspace", activeWorkspace: null,
@@ -39,4 +41,12 @@ it("leaves the composer empty after a turn that needs a follow-up instead of a r
     text: "Turn failed: Verification incomplete: no checks were submitted", retryMessage: { text: "Build the whole feature" } };
   rerender({ ...options, itemsByThread: { one: [unverified] } });
   expect(result.current.activeDraft).toBe("");
+});
+
+it("says why a message could not be sent and puts it back in the composer", async () => {
+  const sendUserMessage = vi.fn().mockRejectedValue("The engine could not start");
+  const { result } = renderHook(useComposerController, { initialProps: { ...options, activeThreadId: null, sendUserMessage } });
+  await act(() => result.current.handleSend("Plan the overhaul", []));
+  expect(toasts.pushErrorToast).toHaveBeenCalledWith({ title: "Message not sent", message: "The engine could not start" });
+  expect(result.current.prefillDraft).toMatchObject({ text: "Plan the overhaul" });
 });

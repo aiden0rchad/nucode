@@ -11,6 +11,7 @@ import type {
 import { useComposerImages } from "../../composer/hooks/useComposerImages";
 import { useQueuedSend } from "../../threads/hooks/useQueuedSend";
 import { describeTurnError } from "../../messages/components/TurnErrorCard";
+import { pushErrorToast } from "../../../services/toasts";
 
 export function useComposerController({
   activeThreadId,
@@ -109,7 +110,7 @@ export function useComposerController({
 
   const {
     activeQueue,
-    handleSend,
+    handleSend: sendQueued,
     queueMessage,
     removeQueuedMessage,
     steerQueuedMessage,
@@ -156,6 +157,22 @@ export function useComposerController({
       }));
     },
     [activeThreadId],
+  );
+
+  // A send can fail before any conversation exists (the engine would not start), so there is nowhere in the
+  // transcript to show why. Say what went wrong and put the request back, so it is not lost.
+  const handleSend = useCallback(
+    async (...args: Parameters<typeof sendQueued>) => {
+      try {
+        await sendQueued(...args);
+      } catch (error) {
+        const [text, images] = args;
+        const reason = typeof error === "string" ? error : error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? error);
+        pushErrorToast({ title: "Message not sent", message: reason });
+        setPrefillDraft({ id: `unsent-${Date.now()}`, text, images: images?.length ? images : undefined, createdAt: Date.now() });
+      }
+    },
+    [sendQueued],
   );
 
   const handleSendPrompt = useCallback(

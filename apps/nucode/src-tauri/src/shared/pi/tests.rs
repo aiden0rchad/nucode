@@ -2677,6 +2677,27 @@ fn response_style_library_is_written_next_to_the_gate() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 #[test]
+fn every_extension_file_in_the_source_tree_is_written_for_the_engine() {
+    // The engine loads the extensions from a per-project copy. A file left out of that copy breaks the import of
+    // the extension that needs it, and no thread can start.
+    let dir = temp();
+    config::prepare(&dir, &[], None, &Default::default()).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../engines/pi/extensions");
+    let mut checked = 0;
+    for folder in ["", "lib"] {
+        for entry in std::fs::read_dir(source.join(folder)).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|ext| ext == "ts") {
+                let name = Path::new(folder).join(path.file_name().unwrap());
+                assert_eq!(std::fs::read(dir.join("extensions").join(&name)).ok(), Some(std::fs::read(&path).unwrap()), "{} is not copied for the engine", name.display());
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 10);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
 fn auto_compact_defaults_for_old_settings_and_validates_range() {
     let settings: crate::types::AppSettings = serde_json::from_value(json!({})).unwrap();
     assert_eq!(settings.auto_compact, crate::types::AutoCompact { enabled: true, percent: None });

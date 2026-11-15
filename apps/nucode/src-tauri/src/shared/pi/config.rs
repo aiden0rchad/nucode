@@ -318,6 +318,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/foreignReasoning.ts"),
         ),
         (
+            "lib/loopGuard.ts",
+            include_str!("../../../../engines/pi/extensions/lib/loopGuard.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),
