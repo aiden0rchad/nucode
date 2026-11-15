@@ -998,12 +998,20 @@ impl PiEngine {
         }
         if method == "thread/resume" {
             let mut thread = s.thread.clone();
+            let usage;
             let mode = if let Some(p) = s.process.as_ref().filter(|p| p.alive.load(Ordering::SeqCst)) {
                 let t = p.translator.lock().await;
                 thread["turns"] = json!(t.turns);
+                usage = t.usage_event(None);
                 t.access_mode.clone()
             } else {
-                thread["turns"] = json!(read_session(&s.file, &registry)?.1.turns);
+                let stored = read_session(&s.file, &registry)?.1;
+                let window = registry.iter()
+                    .find(|p| thread["modelProvider"] == p.id.as_str())
+                    .and_then(|p| p.models.iter().find(|m| thread["model"] == m.id.as_str()))
+                    .and_then(|m| m.context_window);
+                usage = stored.usage_event(window);
+                thread["turns"] = json!(stored.turns);
                 let home = self.data.as_ref().ok_or("Pi runtime is not configured")?
                     .join(if self.chat { "chats/agent".into() } else { format!("{}/agent", self.profile.id()) })
                     .join(if self.chat { id } else { workspace });
@@ -1014,6 +1022,8 @@ impl PiEngine {
                 };
                 access["accessMode"].as_str().unwrap_or("ask").to_owned()
             };
+            // The window keeps context usage in memory only; tell a newly opened one where the thread stands.
+            if let Some(event) = usage { self.emit(workspace, event); }
             return Ok(json!({"result":thread_response(thread, true, &mode)}));
         }
         if matches!(

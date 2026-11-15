@@ -1835,17 +1835,25 @@ async fn stored_pi_and_omp_resume_without_credentials_and_spawn_only_when_sendin
         let mut engine = PiEngine::new(dir.clone(), "workspace".into(), dir.to_string_lossy().into(), None, Arc::new(|_, _| {}));
         engine.profile.definition = crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), profile).unwrap().0;
         engine.keys = Arc::new(OfflineKeys);
-        let providers: Vec<ProviderEntry> = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+        let providers: Vec<ProviderEntry> = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true,"contextWindow":200000}]}])).unwrap();
         engine.configure("workspace", providers, AgentPolicy::default()).await;
         let sessions = engine.directory("workspace").unwrap();
         std::fs::create_dir_all(&sessions).unwrap();
         let file = sessions.join("stored.jsonl");
         let entries = [json!({"type":"session","version":3,"id":"stored","engine":profile,"cwd":dir,"modelProvider":"first","model":"fake"}),
             json!({"type":"message","id":"u","parentId":null,"message":{"role":"user","timestamp":1,"content":"Saved question"}}),
-            json!({"type":"message","id":"a","parentId":"u","message":{"role":"assistant","timestamp":2,"content":[{"type":"text","text":"Saved answer"}],"stopReason":"stop"}})];
+            json!({"type":"message","id":"a","parentId":"u","message":{"role":"assistant","timestamp":2,"content":[{"type":"text","text":"Saved answer"}],"stopReason":"stop","usage":{"input":900,"cacheRead":4000,"output":100,"totalTokens":5000}}})];
         std::fs::write(&file, entries.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n").unwrap();
         config::write_access(&dir.join(format!("{profile}/agent/workspace")), "stored", Some("read-only")).unwrap();
+        let mut events = engine.events.subscribe();
         let resumed = engine.request("workspace", "thread/resume", json!({"threadId":"stored"})).await.unwrap();
+        // A window opened after a restart learns where the thread's context stands without a new turn.
+        let usage = events.try_recv().unwrap();
+        assert_eq!(usage["method"], "thread/tokenUsage/updated");
+        assert_eq!(usage["params"]["threadId"], "stored");
+        assert_eq!(usage["params"]["tokenUsage"]["last"]["totalTokens"], 5000);
+        assert_eq!(usage["params"]["tokenUsage"]["last"]["cachedInputTokens"], 4000);
+        assert_eq!(usage["params"]["tokenUsage"]["modelContextWindow"], 200000);
         assert_eq!(resumed["result"]["thread"]["engine"], profile);
         assert_eq!(resumed["result"]["thread"]["turns"][0]["items"][1]["text"], "Saved answer");
         assert_eq!(resumed["result"]["sandbox"]["type"], "readOnly");

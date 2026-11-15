@@ -42,6 +42,8 @@ pub(super) struct Translator {
     pub connectors: HashMap<String, String>,
     pub access_mode: String,
     pub total: Value,
+    /// Usage of the conversation's own latest answer that reported any, for a window opened later.
+    latest_usage: Value,
     pub cost: f64,
     unknown_costs: std::collections::HashSet<String>,
     pub queue: Value,
@@ -75,6 +77,7 @@ impl Translator {
             connectors: HashMap::new(),
             access_mode: "ask".into(),
             total: json!({"totalTokens":0,"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0}),
+            latest_usage: Value::Null,
             cost: 0.0,
             unknown_costs: Default::default(),
             queue: json!({}),
@@ -202,7 +205,7 @@ impl Translator {
         let id = format!("{}:{index}", self.message);
         self.find(&id).unwrap_or_else(||if thinking {json!({"type":"reasoning","id":id,"summary":[],"content":[""]})}else{json!({"type":"agentMessage","id":id,"text":"","phase":null,"memoryCitation":null,"delivery":null,"questions":null})})
     }
-    fn usage(&mut self, u: &Value, source: &str, out: &mut Vec<Value>) {
+    fn usage(&mut self, u: &Value, source: &str, out: &mut Vec<Value>) -> Value {
         let mut last = json!({});
         for (pi, canonical) in [
             ("totalTokens", "totalTokens"),
@@ -226,6 +229,14 @@ impl Translator {
         self.total["knownCost"] = json!(self.cost);
         last["cost"] = json!(cost);
         out.push(self.event("thread/tokenUsage/updated",json!({"turnId":self.turn_id(),"tokenUsage":{"last":last,"total":self.total,"modelContextWindow":self.model["contextWindow"]}})));
+        last
+    }
+    /// The conversation's latest usage as the event a live turn sends. The window keeps usage in memory only, so
+    /// one opened after a restart has nothing to show until the next turn unless it is told again.
+    /// `window` is the model's context window when the engine is not running to say it.
+    pub fn usage_event(&self, window: Option<u64>) -> Option<Value> {
+        let window = if self.model["contextWindow"].is_null() { json!(window) } else { self.model["contextWindow"].clone() };
+        (!self.latest_usage.is_null()).then(|| self.event("thread/tokenUsage/updated", json!({"turnId":null,"tokenUsage":{"last":self.latest_usage,"total":self.total,"modelContextWindow":window}})))
     }
     fn message_end(&mut self, m: &Value, out: &mut Vec<Value>) {
         match m["role"].as_str() {
@@ -270,7 +281,9 @@ impl Translator {
                 if m["stopReason"] == "aborted" {
                     self.aborted = true;
                 }
-                self.usage(&m["usage"], &self.message.clone(), out);
+                let last = self.usage(&m["usage"], &self.message.clone(), out);
+                // A stopped or failed answer reports no tokens; the figure before it still stands.
+                if last["totalTokens"].as_u64().unwrap_or(0) > 0 { self.latest_usage = last; }
             }
             _ => (),
         }
@@ -448,7 +461,7 @@ impl Translator {
                     delta["cost"] = json!(usage["cost"].as_f64().map(|cost| (cost - old["cost"].as_f64().unwrap_or(0.0)).max(0.0)));
                     delta["knownCost"] = json!((usage["knownCost"].as_f64().unwrap_or(0.0) - old["knownCost"].as_f64().unwrap_or(0.0)).max(0.0));
                     if delta["totalTokens"] != 0 || delta["knownCost"].as_f64().unwrap_or(0.0) > 0.0 || usage["cost"].is_number() != old["cost"].is_number() {
-                        self.usage(&delta, &agent_id, out);
+                        let _ = self.usage(&delta, &agent_id, out);
                     }
                     item["agentsStates"][&agent_id] = json!({"status":status,"message":message.chars().take(300).collect::<String>(),"agent":r["agent"],"task":r["task"],"model":r["model"],"usage":r["usage"]});
                 }
