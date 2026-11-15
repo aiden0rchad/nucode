@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { acceptanceCriteria, registerVerification, verificationProblem, verifyReport } from "../extensions/lib/verification.ts";
+import { execFileSync } from "node:child_process";
+import { acceptanceCriteria, registerVerification, treePrint, verificationProblem, verifyReport } from "../extensions/lib/verification.ts";
 import type { Policy } from "../extensions/lib/policy.ts";
 
 const policy: Policy = { enabled: true, mode: "chain-of-command", roles: [], maxConcurrent: 2, maxDepth: 2, maxPerTurn: 8, allowedModels: [] };
@@ -105,6 +106,24 @@ test("root completion requires QA; retries repair verdicts, edits invalidate QA,
   assert.equal(f.records.at(-1).status, "unverified");
   await f.emit("agent_start"); process.env.NUCODE_CHAT = "1"; await qa(); await f.emit("agent_end");
   assert.equal(f.records.length, count + 1);
+});
+
+test("a command that leaves the project's files as they were needs no QA; one that changes a file does", async t => {
+  const f = fixture(t);
+  execFileSync("git", ["init", "-q"], { cwd: f.cwd });
+  writeFileSync(join(f.cwd, "notes.txt"), "one");
+  assert.equal(treePrint(f.cwd), treePrint(f.cwd));
+  await f.emit("agent_start");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.length, 0, "the command changed nothing");
+  await f.emit("agent_start");
+  writeFileSync(join(f.cwd, "notes.txt"), "two, and longer");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.at(-1).status, "unverified", "the command changed a file");
+  await f.emit("agent_start");
+  writeFileSync(join(f.cwd, "added.txt"), "new");
+  await f.emit("tool_execution_end", { toolName: "bash", result: {} }); await f.emit("agent_end");
+  assert.equal(f.records.length, 2, "a new file is a change too");
 });
 
 test("nested OMP reports survive virtual transport; malformed and stale child reports fail closed", async t => {

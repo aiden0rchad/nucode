@@ -155,7 +155,8 @@ an earlier failed verdict for the same criterion. Missing, malformed, failed, or
 stale QA is reported on the finished turn as a review that names each check QA could
 not confirm; the turn itself completes, because the work and the answer stand. A turn
 that only read, searched or used read-only roles changed nothing and gets no review
-status. Cancellation keeps its interrupted status. The summary is persisted outside model
+status; in a Git repository the same holds for a turn whose commands left the commit and
+every changed or untracked file as they were. Cancellation keeps its interrupted status. The summary is persisted outside model
 context and uses the same status when the conversation is reopened.
 
 This gate establishes that QA used tools and recorded verdicts against unchanged

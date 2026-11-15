@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,6 +19,21 @@ const digest = (path: string) => {
   if (!stat.isFile() || stat.size > 16 * 1024 * 1024) throw new Error("Verification artifacts must be files no larger than 16 MiB");
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 };
+
+// The project's files as git sees them: the commit, and every changed or untracked path with its size and time.
+// Two equal prints mean a turn left the files as it found them. Undefined means that cannot be told here.
+export function treePrint(cwd: string): string | undefined {
+  const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", timeout: 5000, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+  try {
+    const root = git("rev-parse", "--show-toplevel").trim();
+    let head = "";
+    try { head = git("rev-parse", "HEAD"); } catch { /* A repository without a commit yet. */ }
+    const entries = git("status", "--porcelain=v1", "-z", "--untracked-files=all").split("\0").filter(Boolean).map(entry => {
+      try { const stat = statSync(resolve(root, entry.slice(3))); return `${entry}:${stat.size}:${stat.mtimeMs}`; } catch { return entry; }
+    });
+    return createHash("sha256").update([head, ...entries].join("\n")).digest("hex");
+  } catch { return undefined; }
+}
 
 export function verifyReport(checks: Check[], paths: string[], evidence: Map<string, Evidence>, criteria: string[], cwd: string): Verification {
   if (!Array.isArray(checks) || !checks.length || checks.length > 20 || checks.length !== criteria.length || !Array.isArray(paths) || paths.length > 40 || paths.some(path => typeof path !== "string" || !path || path.length > 4096)) throw new Error("Report every assigned criterion exactly once (up to 20 criteria and 40 artifacts)");
@@ -66,10 +82,10 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
   const enabled = () => !process.env.NUCODE_CHAT && !process.env.NUCODE_WORK && policy().enabled !== false && policy().mode === "chain-of-command";
   const major = () => !root && commandRank(role, policy().roles) === "major";
   const criteria: string[] = root || !enabled() || !major() ? [] : acceptanceCriteria({ task: "Verify the assigned task", acceptanceCriteria: JSON.parse(process.env.NUCODE_VERIFY_CRITERIA || "null") });
-  let worked = false, interrupted = false, lastChangeAt = 0;
+  let worked = false, interrupted = false, lastChangeAt = 0, before: string | undefined;
   const evidence = new Map<string, Evidence>();
   const reports = new Map<string, Verification[]>();
-  pi.on("agent_start", () => { worked = false; interrupted = false; lastChangeAt = 0; evidence.clear(); reports.clear(); });
+  pi.on("agent_start", (_event, ctx) => { worked = false; interrupted = false; lastChangeAt = 0; evidence.clear(); reports.clear(); before = root && enabled() ? treePrint(ctx.cwd) : undefined; });
   pi.on("message_end", event => {
     if (event.message.role === "assistant") interrupted = ["aborted", "error"].includes(event.message.stopReason);
   });
@@ -151,8 +167,9 @@ export function registerVerification(pi: ExtensionAPI, policy: () => Policy) {
     if (!root || !enabled() || !worked || interrupted) return;
     // A retry may repair a failed criterion; retain the latest verdict for each.
     const all = [...reports.values()].flat(), latest = new Map<string, Verification>();
-    // Reading, searching and research change nothing, so such a turn ends without a review status.
-    if (!lastChangeAt && !all.length) return;
+    // Reading, searching and research change nothing, and neither does a command that leaves every file as it was,
+    // so such a turn ends without a review status.
+    if (!all.length && (!lastChangeAt || (before !== undefined && treePrint(ctx.cwd) === before))) return;
     for (const report of all) for (const check of report.checks) latest.set(check.criterion, report);
     const checked = all.map(report => ({ ...report, checks: report.checks.filter(check => latest.get(check.criterion) === report) })).filter(report => report.checks.length);
     const problem = verificationProblem(checked);
