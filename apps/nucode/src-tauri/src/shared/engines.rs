@@ -372,7 +372,11 @@ impl WorkspaceSession {
         if method == "thread/list" {
             if let Ok(response) = &mut result {
                 if let Some(rows) = response.pointer_mut("/result/data").and_then(Value::as_array_mut) {
+                    // A stored thread names its provider through the provider list, so an engine asked for its
+                    // threads before any other request must have that list first.
+                    let (providers, policy) = self.configuration_for(workspace);
                     for (id, backend) in self.extra_pi.lock().await.iter() {
+                        backend.configure(workspace, providers.clone(), policy.clone()).await;
                         let page = backend.request(workspace, method, json!({})).await?;
                         for mut row in page["result"]["data"].as_array().into_iter().flatten().cloned() { row["engine"] = json!(id); rows.push(row); }
                     }

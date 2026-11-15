@@ -1005,10 +1005,12 @@ impl PiEngine {
                 usage = t.usage_event(None);
                 t.access_mode.clone()
             } else {
-                let stored = read_session(&s.file, &registry)?.1;
+                // The listed thread may have been read before the provider list was known and name its provider
+                // the engine's way, so the model is taken from this reading and matched under either name.
+                let (read, stored) = read_session(&s.file, &registry)?;
                 let window = registry.iter()
-                    .find(|p| thread["modelProvider"] == p.id.as_str())
-                    .and_then(|p| p.models.iter().find(|m| thread["model"] == m.id.as_str()))
+                    .find(|p| read["modelProvider"] == p.id.as_str() || read["modelProvider"] == config::provider_id(p, &registry).as_str())
+                    .and_then(|p| p.models.iter().find(|m| read["model"] == m.id.as_str()))
                     .and_then(|m| m.context_window);
                 usage = stored.usage_event(window);
                 thread["turns"] = json!(stored.turns);
