@@ -89,8 +89,26 @@ export default function (pi: ExtensionAPI) {
         && typeof input.file === "string" && /^[\w ./-]+$/.test(input.file) && input.file.trim()
         && inside(resolve(ctx.cwd, input.file), ctx.cwd) && !protectedPath(resolve(ctx.cwd, input.file), home)) return;
       if (access.accessMode === "read-only" || process.env.NUCODE_SUBAGENT_DEPTH || !ctx.hasUI) return { block: true, reason: "Native tool requires interactive approval" };
+      // With full access the shell already runs unasked, so one answer may cover eval for the rest of the conversation.
+      const file = join(home, "nucode/threads", `${session}.json`);
+      const forSession = (a: Access) => event.toolName === "eval" && a.accessMode === "full-access";
+      const allowed = (a: Access) => forSession(a) && a.sessionAllow.some(rule => rule.tool === "eval" && !rule.command && !rule.path);
+      if (allowed(access)) return;
       const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, tool: event.toolName, command: `${event.toolName}\n${JSON.stringify(input, null, 2)}`, cwd: ctx.cwd });
-      if (await ctx.ui.select(title, ["Allow", "Block"]) !== "Allow") return { block: true, reason: "Native tool denied" };
+      const answer = await ctx.ui.select(title, forSession(access) ? ["Allow", "Allow for session", "Block"] : ["Allow", "Block"]);
+      if (answer === "Allow for session") {
+        // The access mode may have changed while the dialog was open.
+        const now = JSON.parse(readFileSync(file, "utf8")) as Access;
+        if (!forSession(now)) return { block: true, reason: "Thread access changed while awaiting approval" };
+        if (!allowed(now)) {
+          now.sessionAllow.push({ tool: "eval" });
+          const temp = `${file}.${process.pid}.tmp`;
+          writeFileSync(temp, JSON.stringify(now));
+          renameSync(temp, file);
+        }
+        return;
+      }
+      if (answer !== "Allow") return { block: true, reason: "Native tool denied" };
       return;
     }
     // OMP dispatches this write through the inner MCP tool's tool_call hook.

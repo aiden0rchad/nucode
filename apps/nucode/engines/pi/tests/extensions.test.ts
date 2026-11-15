@@ -76,6 +76,18 @@ test("OMP Full access allows scoped LSP queries while retaining native mutation 
     });
     assert.equal(result.block, true);
   }
+  // With full access one answer may cover eval for the rest of the conversation; no other tool or mode gets that choice.
+  const offered: string[][] = [];
+  const evalCall = (answer: string) => handler({ toolName: "eval", toolCallId: "eval", input: { code: "1" } }, { ...ctx, ui: { select: async (_title: string, options: string[]) => { offered.push(options); return answer; } } });
+  assert.equal(await evalCall("Allow for session"), undefined);
+  assert.equal(await evalCall("Block"), undefined);
+  assert.deepEqual(offered, [["Allow", "Allow for session", "Block"]]);
+  assert.deepEqual(JSON.parse(readFileSync(join(home, "nucode/threads/lsp.json"), "utf8")).sessionAllow, [{ tool: "eval" }]);
+  assert.equal((await handler({ toolName: "debug", toolCallId: "debug", input: {} }, { ...ctx, ui: { select: async (_title: string, options: string[]) => { offered.push(options); return "Block"; } } })).block, true);
+  writeFileSync(join(home, "nucode/threads/lsp.json"), JSON.stringify({ accessMode: "ask", sessionAllow: [{ tool: "eval" }] }));
+  assert.equal((await evalCall("Block")).block, true);
+  assert.deepEqual(offered.slice(1), [["Allow", "Block"], ["Allow", "Block"]]);
+  setMode("full-access");
   symlinkSync(root, join(cwd, "lsp-outside"));
   for (const file of ["../outside.js", "/etc/hosts", "lsp-outside/file.js", ".env", ".git/config", home, "~/file.js", "@/etc/hosts", ":/etc/hosts", "file:///etc/hosts", "src/\u00a0../file.js"]) {
     assert.equal((await call({ action: "references", file })).block, true, file);

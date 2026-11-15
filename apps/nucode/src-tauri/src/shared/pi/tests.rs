@@ -1173,6 +1173,10 @@ async fn native_tool_gate_approvals_are_decisions_instead_of_user_questions() {
         p.receive(request).await;
         p.answer(&format!("pi:fake-thread:{tool}"), json!({"decision":"decline"})).await.unwrap();
     }
+    let request = json!({"type":"extension_ui_request","id":"eval","method":"select","title":format!("nucode:approval:{}",json!({"toolCallId":"eval","tool":"eval","command":"eval","cwd":"/workspace"})),"options":["Allow","Allow for session","Block"]});
+    let mapped = translate::ui_request(&request, "fake-thread", "turn");
+    assert_eq!(mapped["params"]["availableDecisions"], json!(["accept", "acceptForSession", "decline", "cancel"]));
+    assert_eq!(translate::ui_response(&request, &json!({"decision":"acceptForSession"}))["value"], "Allow for session");
     assert!(!events.lock().unwrap().iter().any(|e| e["method"] == "item/tool/requestUserInput"));
     p.shutdown().await.unwrap();
     std::fs::remove_dir_all(dir).unwrap();
