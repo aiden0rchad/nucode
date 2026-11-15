@@ -1534,13 +1534,23 @@ fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Trans
                 }
             }
             Some("model_change") => {
-                let pi = entry["provider"].as_str().unwrap_or("");
-                thread["modelProvider"] = json!(registry
-                    .iter()
-                    .find(|p| config::provider_id(p, registry) == pi)
-                    .map(|p| p.id.as_str())
-                    .unwrap_or(pi));
-                thread["model"] = entry["modelId"].clone();
+                // pi records the provider and the model apart; omp records one "provider/model" string, and
+                // also the models of its other roles, which are not the conversation's own.
+                let named = match entry["provider"].as_str() {
+                    Some(provider) => Some((provider, entry["modelId"].clone())),
+                    None if matches!(entry["role"].as_str(), None | Some("default")) => entry["model"].as_str()
+                        .and_then(|model| model.split_once('/'))
+                        .map(|(provider, model)| (provider, json!(model))),
+                    None => None,
+                };
+                if let Some((pi, model)) = named {
+                    thread["modelProvider"] = json!(registry
+                        .iter()
+                        .find(|p| config::provider_id(p, registry) == pi)
+                        .map(|p| p.id.as_str())
+                        .unwrap_or(pi));
+                    thread["model"] = model;
+                }
             }
             Some("session_info") => thread["name"] = entry["name"].clone(),
             Some("compaction") => messages.push(json!({"role":"nucodeCompaction","result":entry})),

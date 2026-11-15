@@ -1841,7 +1841,10 @@ async fn stored_pi_and_omp_resume_without_credentials_and_spawn_only_when_sendin
         std::fs::create_dir_all(&sessions).unwrap();
         let file = sessions.join("stored.jsonl");
         let entries = [json!({"type":"session","version":3,"id":"stored","engine":profile,"cwd":dir,"modelProvider":"first","model":"fake"}),
-            json!({"type":"message","id":"u","parentId":null,"message":{"role":"user","timestamp":1,"content":"Saved question"}}),
+            // omp's record of the conversation's model, and of another role's model that must not replace it.
+            json!({"type":"model_change","id":"m","parentId":null,"model":"nucode-first/fake","role":"default"}),
+            json!({"type":"model_change","id":"m2","parentId":"m","model":"nucode-first/other","role":"smol"}),
+            json!({"type":"message","id":"u","parentId":"m2","message":{"role":"user","timestamp":1,"content":"Saved question"}}),
             json!({"type":"message","id":"a","parentId":"u","message":{"role":"assistant","timestamp":2,"content":[{"type":"text","text":"Saved answer"}],"stopReason":"stop","usage":{"input":900,"cacheRead":4000,"output":100,"totalTokens":5000}}})];
         std::fs::write(&file, entries.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n").unwrap();
         config::write_access(&dir.join(format!("{profile}/agent/workspace")), "stored", Some("read-only")).unwrap();
@@ -1854,6 +1857,8 @@ async fn stored_pi_and_omp_resume_without_credentials_and_spawn_only_when_sendin
         assert_eq!(usage["params"]["tokenUsage"]["last"]["totalTokens"], 5000);
         assert_eq!(usage["params"]["tokenUsage"]["last"]["cachedInputTokens"], 4000);
         assert_eq!(usage["params"]["tokenUsage"]["modelContextWindow"], 200000);
+        assert_eq!(resumed["result"]["modelProvider"], "first");
+        assert_eq!(resumed["result"]["model"], "fake");
         assert_eq!(resumed["result"]["thread"]["engine"], profile);
         assert_eq!(resumed["result"]["thread"]["turns"][0]["items"][1]["text"], "Saved answer");
         assert_eq!(resumed["result"]["sandbox"]["type"], "readOnly");
