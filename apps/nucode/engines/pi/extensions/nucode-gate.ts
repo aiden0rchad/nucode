@@ -7,7 +7,7 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
-import { dropArchivedReasoning, dropForeignReasoning } from "./lib/foreignReasoning.ts";
+import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
@@ -28,6 +28,14 @@ export default function (pi: ExtensionAPI) {
         if (next) { messages = next; changed = true; }
       }
       if (changed) return { messages };
+    } catch {}
+  });
+  // Before older turns are archived: keep reasoning out of the archive, which is sent with every later request.
+  pi.on("session_before_compact", async (event: any) => {
+    try {
+      const turns = event.preparation;
+      turns.messagesToSummarize = withoutReasoning(turns.messagesToSummarize);
+      turns.turnPrefixMessages = withoutReasoning(turns.turnPrefixMessages);
     } catch {}
   });
   const reportContext = async (_event: unknown, ctx: any) => {

@@ -31,6 +31,20 @@ export function dropForeignReasoning<T extends Message>(messages: T[], target: T
   return changed ? kept : undefined;
 }
 
+/**
+ * The same messages without the model's reasoning blocks, for turns omp is about to archive.
+ *
+ * A long archive is sent partly as pictures of its text, and reasoning shown in a picture is refused like reasoning
+ * quoted as text. It cannot be taken out of a picture afterwards, so it must not get into the archive at all.
+ */
+export function withoutReasoning<T extends Message>(messages: T[]): T[] {
+  return messages.map(message => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+    const content = (message.content as Block[]).filter(block => !REASONING.has(block?.type ?? ""));
+    return content.length === message.content.length ? message : { ...message, content };
+  });
+}
+
 // omp writes archived turns as text, one section per speaker, each opened by a label at the start of a line. A line
 // break is "\n" or the block glyph omp stores in its place. Tool output sits between the marks below, and a label
 // inside it is output, not a section.
@@ -59,9 +73,10 @@ export function withoutArchivedReasoning(text: string): string {
 type Archive = Message & { summary?: unknown; blocks?: unknown };
 
 /**
- * Removes the model's reasoning from the archive omp keeps of older turns.
+ * Removes the model's reasoning from the text of an archive omp already keeps of older turns (one written before
+ * `withoutReasoning` was applied to the turns going into it).
  *
- * When a history grows too long omp replaces its older turns with a text archive of them, reasoning included, and
+ * When a history grows too long omp replaces its older turns with an archive of them, reasoning included, and
  * sends that archive with every later request. Claude models refuse a request that quotes reasoning back to them:
  * the provider answers with nothing, a proxy reports a content filter stop, and every retry fails the same way, so a
  * long agent run dies at the moment its history is first shortened. omp leaves the reasoning out for model names it

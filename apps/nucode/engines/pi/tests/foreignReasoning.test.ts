@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dropArchivedReasoning, dropForeignReasoning, withoutArchivedReasoning } from "../extensions/lib/foreignReasoning.ts";
+import { dropArchivedReasoning, dropForeignReasoning, withoutArchivedReasoning, withoutReasoning } from "../extensions/lib/foreignReasoning.ts";
 
 const target = { provider: "proxy", id: "Model B" };
 const user = { role: "user", content: "hello" };
@@ -60,4 +60,13 @@ test("an archive message is cleaned in its lead-in and its text blocks; other me
   const out = dropArchivedReasoning([summary, sent, plain]);
   assert.deepEqual(out, [{ ...summary, blocks: [{ type: "text", text: withoutArchivedReasoning(archive) }, image] }, { ...sent, content: [{ type: "text", text: withoutArchivedReasoning(archive) }] }, plain]);
   assert.equal(dropArchivedReasoning([plain, turn(7, think)]), undefined);
+});
+
+test("takes reasoning out of the turns about to be archived and leaves the rest as it was", () => {
+  const turn = { role: "assistant", content: [thinking, text, call] };
+  const plain = { role: "assistant", content: [text] };
+  const out = withoutReasoning([user, turn, result, plain]);
+  assert.deepEqual(out[1], { role: "assistant", content: [text, call] });
+  assert.deepEqual([out[0], out[2], out[3]], [user, result, plain]);
+  assert.equal(turn.content.length, 3);
 });
