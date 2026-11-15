@@ -7,7 +7,7 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
-import { dropForeignReasoning, dropStaleReasoning } from "./lib/foreignReasoning.ts";
+import { dropArchivedReasoning, dropForeignReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
@@ -22,9 +22,12 @@ export default function (pi: ExtensionAPI) {
   // Before every model call: keep reasoning the provider would reject out of the history (see lib/foreignReasoning.ts).
   pi.on("context", async (event: any, ctx: any) => {
     try {
-      const own = dropForeignReasoning(event.messages, ctx.model);
-      const messages = dropStaleReasoning(own ?? event.messages) ?? own;
-      if (messages) return { messages };
+      let messages = event.messages, changed = false;
+      for (const drop of [(m: any[]) => dropForeignReasoning(m, ctx.model), dropArchivedReasoning]) {
+        const next = drop(messages);
+        if (next) { messages = next; changed = true; }
+      }
+      if (changed) return { messages };
     } catch {}
   });
   const reportContext = async (_event: unknown, ctx: any) => {

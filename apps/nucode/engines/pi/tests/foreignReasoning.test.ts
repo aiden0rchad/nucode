@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dropForeignReasoning, dropStaleReasoning } from "../extensions/lib/foreignReasoning.ts";
+import { dropArchivedReasoning, dropForeignReasoning, withoutArchivedReasoning } from "../extensions/lib/foreignReasoning.ts";
 
 const target = { provider: "proxy", id: "Model B" };
 const user = { role: "user", content: "hello" };
@@ -41,26 +41,23 @@ test("changes nothing without reasoning, without a target, or for plain-string c
 const think = { type: "thinking", thinking: "plan", thinkingSignature: "sig" };
 const turn = (timestamp: number, ...content: object[]) => ({ role: "assistant", timestamp, content });
 
-test("reasoning written before a summary took the place of older turns is dropped, later reasoning stays", () => {
-  const summary = { role: "compactionSummary", summary: "so far", timestamp: 50 };
-  const kept = turn(40, think, call), after = turn(60, think, call);
-  assert.deepEqual(dropStaleReasoning([summary, kept, after]), [summary, { ...kept, content: [call] }, after]);
-  // The engine can date the rewrite before the kept turns when their reasoning is still good.
-  assert.equal(dropStaleReasoning([{ ...summary, historyRewriteAt: 30 }, kept, after]), undefined);
-  // The same summary once the engine has turned it into a plain message.
-  assert.deepEqual(dropStaleReasoning([{ role: "user", content: "so far", historyRewriteAt: 50, timestamp: 50 }, kept]), [{ role: "user", content: "so far", historyRewriteAt: 50, timestamp: 50 }, { ...kept, content: [call] }]);
+const archive = "¶user:read the file\n¶think:PLAN: read it.\n\nThen sum up.\n¶call:read(path=\"a.txt\")\n<out>\n1:¶think:not a label\n¶ai:nor this\n</out>\n¶ai:Done.\n¶think:Last thought.";
+
+test("the model's reasoning is taken out of the archive of older turns", () => {
+  const clean = "¶user:read the file\n¶call:read(path=\"a.txt\")\n<out>\n1:¶think:not a label\n¶ai:nor this\n</out>\n¶ai:Done.";
+  assert.equal(withoutArchivedReasoning(archive), clean);
+  assert.equal(withoutArchivedReasoning(clean), clean);
+  // The form omp stores: a block glyph for each line break, control marks around tool output.
+  const stored = archive.replaceAll("\n", "\u2588").replace("<out>", "<out>\u000e").replace("</out>", "\u000f</out>");
+  assert.equal(withoutArchivedReasoning(stored), clean.replaceAll("\n", "\u2588").replace("<out>", "<out>\u000e").replace("</out>", "\u000f</out>"));
 });
 
-test("cutting down an old tool result drops the reasoning of the turns after it, not of the turns before", () => {
-  const before = turn(10, think, call), pruned = { role: "toolResult", toolCallId: "c1", content: [], prunedAt: 30, timestamp: 11 };
-  const between = turn(20, think, call), after = turn(40, think, call);
-  assert.deepEqual(dropStaleReasoning([before, pruned, between, after]), [before, pruned, { ...between, content: [call] }, after]);
-});
-
-test("a refusal of the whole history with nothing written drops the reasoning before it", () => {
-  const first = turn(10, think, call), refused = { role: "assistant", timestamp: 20, stopReason: "error", errorMessage: "incomplete: content_filter", content: [] };
-  assert.deepEqual(dropStaleReasoning([first, refused]), [{ ...first, content: [call] }, refused]);
-  // An answer cut off part-way is a different stop: the history was accepted.
-  assert.equal(dropStaleReasoning([first, { ...refused, content: [{ type: "text", text: "Half an" }] }]), undefined);
-  assert.equal(dropStaleReasoning([first, turn(20, think)]), undefined);
+test("an archive message is cleaned in its lead-in and its text blocks; other messages are left alone", () => {
+  const image = { type: "image", data: "x", mimeType: "image/png" };
+  const summary = { role: "compactionSummary", summary: "Resume prior conversation.", blocks: [{ type: "text", text: archive }, image], timestamp: 5 };
+  const sent = { role: "user", content: [{ type: "text", text: archive }], historyRewriteAt: 5, timestamp: 5 };
+  const plain = { role: "user", content: [{ type: "text", text: archive }], timestamp: 6 };
+  const out = dropArchivedReasoning([summary, sent, plain]);
+  assert.deepEqual(out, [{ ...summary, blocks: [{ type: "text", text: withoutArchivedReasoning(archive) }, image] }, { ...sent, content: [{ type: "text", text: withoutArchivedReasoning(archive) }] }, plain]);
+  assert.equal(dropArchivedReasoning([plain, turn(7, think)]), undefined);
 });
