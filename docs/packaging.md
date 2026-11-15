@@ -91,6 +91,15 @@ An explicit `NUCODE_SIGNING_IDENTITY` overrides it. An empty local file fails
 signing. This preference applies only to the development signer; release signing
 still uses the explicit environment configuration above.
 
+A build from `release-macos.sh` that you install on your own Mac can be signed
+again the same way before its first launch:
+`bash scripts/sign-dev.sh /path/to/nucode.app`. macOS saves a Keychain approval
+for the signing team when the signature has one, and for the exact build when it
+has none. So a `nucode Dev` build asks about the provider key again after every
+rebuild, and a team-signed build asks once. Sign only your installed copy this
+way: the signature carries the name on the certificate, so the app and DMG you
+give to others keep the release signature.
+
 After switching signing identities, an existing provider key may need one macOS
 approval. Choose **Always Allow** on nucode's Keychain prompt to save access;
 **Allow** authorizes only that read ([Apple's explanation](https://support.apple.com/en-ie/guide/keychain-access/kyca1243/mac)).
