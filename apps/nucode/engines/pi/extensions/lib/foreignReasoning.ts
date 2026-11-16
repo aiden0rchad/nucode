@@ -50,9 +50,18 @@ export function withoutReasoning<T extends Message>(messages: T[]): T[] {
 // inside it is output, not a section.
 const SECTION = /(?<=^|[\n\u2588])(?=¶(?:user|think|ai|call):)/;
 const OUTPUT_MARKS: [string, string][] = [["\u000e", "\u000f"], ["<out>", "</out>"]];
+// The archive's own key to its labels, e.g. "- `¶user:`, `¶think:`, `¶ai:`, `¶call:`: user, assistant reasoning, ...".
+const LEGEND_THINK = /^(- [^\n]*)`¶think:`, ([^\n]*?)assistant reasoning, /m;
 
-/** Archive text without its `¶think:` sections: each label line and the lines after it, up to the next label. */
+/**
+ * Archive text without its `¶think:` sections (each label line and the lines after it, up to the next label), and
+ * without the `¶think:` entry in the archive's key to its labels. Claude refuses an archive whose key announces the
+ * assistant's reasoning once another message follows it, such as a finished background job's result
+ * ("claude refusal (reasoning_extraction)"), even when no reasoning is left in it.
+ */
 export function withoutArchivedReasoning(text: string): string {
+  if (!text.includes("¶think:")) return text;
+  text = text.replace(LEGEND_THINK, "$1$2");
   if (!text.includes("¶think:")) return text;
   const sections: string[] = [];
   let inOutput = false;

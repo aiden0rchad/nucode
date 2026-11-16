@@ -52,6 +52,15 @@ test("the model's reasoning is taken out of the archive of older turns", () => {
   assert.equal(withoutArchivedReasoning(stored), clean.replaceAll("\n", "\u2588").replace("<out>", "<out>\u000e").replace("</out>", "\u000f</out>"));
 });
 
+test("the archive's key to its labels no longer announces reasoning", () => {
+  const legend = "Archived transcript scopes:\n- `¶user:`, `¶think:`, `¶ai:`, `¶call:`: user, assistant reasoning, assistant reply, tool call.\n- Unprefixed following lines: current scope.\n\nHISTORY\n";
+  const cleaned = withoutArchivedReasoning(legend + archive);
+  assert.ok(cleaned.startsWith("Archived transcript scopes:\n- `¶user:`, `¶ai:`, `¶call:`: user, assistant reply, tool call.\n- Unprefixed following lines: current scope.\n"));
+  assert.ok(!/¶think:(?!not a label)/.test(cleaned), "no reasoning label or section is left, only tool output that quotes one");
+  assert.ok(cleaned.endsWith(withoutArchivedReasoning(archive)));
+  assert.equal(withoutArchivedReasoning(cleaned), cleaned);
+});
+
 test("an archive message is cleaned in its lead-in and its text blocks; other messages are left alone", () => {
   const image = { type: "image", data: "x", mimeType: "image/png" };
   const summary = { role: "compactionSummary", summary: "Resume prior conversation.", blocks: [{ type: "text", text: archive }, image], timestamp: 5 };
