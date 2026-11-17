@@ -59,6 +59,36 @@ export function safeReadOnlyCommand(command: string): string {
   const [_, sub, ...args] = command.trim().split(/\s+/);
   return ["git", "--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false", sub, ...(["diff", "log"].includes(sub) ? ["--no-ext-diff", "--no-textconv"] : []), ...args].join(" ");
 }
+// macOS Seatbelt profile for read-only children. Commands run (tests, scripts, git) but may write only to
+// their own scratch folder, cannot resolve or reach hosts beyond this machine, cannot change preferences and
+// cannot use the clipboard. Two limits remain and are documented: Seatbelt cannot stop Apple Events here (macOS
+// still asks the user before one app automates another), and a service already listening on localhost runs
+// outside the sandbox. The programs that drive other apps or the keychain are not allowed to start.
+const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
+const seatbeltString = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+export function readOnlyProfile(scratch: string): string {
+  return [
+    "(version 1)", "(allow default)",
+    "(deny file-write*)",
+    `(allow file-write* (subpath ${seatbeltString(scratch)}) (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+    // A "local ip" filter on outbound traffic matches any destination, so outbound is matched by remote address
+    // only. Without the mDNSResponder socket, names other than those in /etc/hosts do not resolve.
+    "(deny network*)",
+    '(allow network-bind network-inbound (local ip "localhost:*"))',
+    '(allow network-outbound (remote ip "localhost:*"))',
+    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents"))',
+    '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/open") (literal "/usr/bin/automator") (literal "/usr/bin/shortcuts") (literal "/usr/bin/security") (literal "/usr/bin/pbcopy") (literal "/usr/bin/pbpaste"))',
+  ].join(" ");
+}
+export function readOnlySandbox(): boolean {
+  return process.platform === "darwin" && existsSync(SANDBOX_EXEC);
+}
+export function sandboxedCommand(command: string, scratch: string): string {
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  const env = [`TMPDIR=${quote(scratch + "/")}`, "PYTHONDONTWRITEBYTECODE=1", "PYTHONPYCACHEPREFIX=" + quote(scratch + "/pycache")];
+  const unset = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"].map(name => `-u ${name}`).join(" ");
+  return `/usr/bin/env ${unset} ${env.join(" ")} ${SANDBOX_EXEC} -p ${quote(readOnlyProfile(scratch))} /bin/bash -c ${quote(command)}`;
+}
 // Work file boundaries also apply to children. Full access authorizes shell
 // execution; the shared protected-path and child restrictions still apply.
 export function workDecision(access: Access, call: Call, interactive: boolean, child = false): "allow" | "ask" | "block" | undefined {
@@ -176,16 +206,34 @@ export function releaseSubagentProcessSlots(directory: string, pid: number): voi
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
   for (const name of names) if (/^slot-\d+-(\d+)-/.exec(name)?.[1] === String(pid)) releaseSubagentSlot(resolve(directory, name));
 }
+// The model ids a subagent may use, as the subagent tool accepts them.
+export function modelChoices(policy: Policy): string[] {
+  const enabled = Object.keys(policy.models ?? {});
+  return policy.allowedModels.length ? policy.allowedModels.filter(m => !policy.models || enabled.includes(m)) : enabled;
+}
+// Models see their own provider's registry id (nucode-<provider>/<name>) and display names, so accept
+// those for the policy id: an exact registry id, or a display name that matches exactly one model.
+export function canonicalModel(policy: Policy, model: string): string {
+  const models = policy.models;
+  model = model.trim();
+  if (!models || models[model]) return model;
+  const byActual = Object.keys(models).find(id => models[id] === model);
+  if (byActual) return byActual;
+  const byName = Object.keys(models).filter(id => id.slice(id.indexOf("/") + 1) === model);
+  return byName.length === 1 ? byName[0] : model;
+}
 export function resolveTask(policy: Policy, task: { agent: string; model?: string | null }, parent?: string, parentRole = "commander") {
   if (policy.mode === "chain-of-command" && !commandTargets(parentRole, policy.roles).includes(task.agent)) throw new Error(`${parentRole} cannot delegate to ${task.agent} in Chain of Command mode`);
   const role = policy.roles.find(r => r.name === task.agent);
   if (!role) throw new Error(`Unknown role ${task.agent}. Available: ${policy.roles.map(r => r.name).join(", ")}`);
   const configured = role.model || policy.defaultModel || parent;
-  if (policy.mode === "chain-of-command" && task.model && task.model !== configured) throw new Error(`Chain of Command uses the configured ${task.agent} model (${configured ?? "not set"}); change it in agent policy`);
-  const model = task.model || configured;
-  if (!model || !/^[^/]+\/.+$/.test(model)) throw new Error("Select a provider/model for the subagent");
+  const requested = task.model ? canonicalModel(policy, task.model) : undefined;
+  if (policy.mode === "chain-of-command" && requested && requested !== configured) throw new Error(`Chain of Command uses the configured ${task.agent} model (${configured ?? "not set"}); change it in agent policy`);
+  const model = requested || configured;
+  const choices = () => { const list = modelChoices(policy); return list.length ? ` Use one of: ${list.join(", ")}` : ""; };
+  if (!model || !/^[^/]+\/.+$/.test(model)) throw new Error(`Select a provider/model for the subagent.${choices()}`);
   if (policy.allowedModels.length && !policy.allowedModels.includes(model)) throw new Error(`Model ${model} is not allowed. Allowed models: ${policy.allowedModels.join(", ")}`);
-  if (policy.models && !policy.models[model]) throw new Error(`Model ${model} is not enabled in the provider registry`);
+  if (policy.models && !policy.models[model]) throw new Error(`Model ${model} is not enabled in the provider registry.${choices()}`);
   const actual = policy.models?.[model] ?? model;
   const slash = actual.indexOf("/");
   return { role, model, provider: actual.slice(0, slash), modelId: actual.slice(slash + 1) };

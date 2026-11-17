@@ -11,7 +11,7 @@ import { subagentCheckpoint } from "./lib/recovery.ts";
 import { acceptanceCriteria, registerVerification } from "./lib/verification.ts";
 import { registerExecutionLimits } from "./lib/executionLimits.ts";
 import { registerLoopGuard } from "./lib/loopGuard.ts";
-import { acquireSubagentSlot, adoptSubagentSlot, checkLimits, readPolicy, commandInstructions, commandRank, commandTargets, createSubagentBudget, inside, releaseSubagentProcessSlots, releaseSubagentSlot, reserveSubagent, resolveTask, type Policy } from "./lib/policy.ts";
+import { acquireSubagentSlot, adoptSubagentSlot, checkLimits, readPolicy, commandInstructions, commandRank, commandTargets, createSubagentBudget, inside, releaseSubagentProcessSlots, releaseSubagentSlot, reserveSubagent, resolveTask, modelChoices, readOnlySandbox, type Policy } from "./lib/policy.ts";
 
 const optionalString = Type.Optional(Type.Union([Type.String(), Type.Null()]));
 const taskFields = { agent: Type.String(), task: Type.String(), model: optionalString, cwd: optionalString, acceptanceCriteria: Type.Optional(Type.Union([Type.Array(Type.String(), { minItems: 1, maxItems: 20 }), Type.Null()])) };
@@ -61,13 +61,13 @@ export default function (pi: ExtensionAPI) {
     const role = Number(process.env.NUCODE_SUBAGENT_DEPTH ?? 0) === 0 ? "commander" : process.env.NUCODE_SUBAGENT_ROLE ?? "unknown";
     const chain = current.enabled !== false && current.mode === "chain-of-command";
     const targets = commandTargets(role, current.roles);
-    const visible = { ...current, models: undefined, ...(chain ? { roles: current.roles.filter(r => targets.includes(r.name)) } : {}) };
+    const visible = { ...current, models: chain ? undefined : modelChoices(current), ...(chain ? { roles: current.roles.filter(r => targets.includes(r.name)) } : {}) };
     return { message: { customType: "nucode-subagent-policy", display: false, content: `${chain ? commandInstructions(role, current.roles) + "\n" : ""}Subagent policy: ${JSON.stringify(visible)}` } };
   });
   pi.registerTool({
     name: "subagent",
     label: "Subagent",
-    description: "Delegate using nucode policy roles only (no user/project agent directories). Single: agent + task; parallel: tasks; chain: chain with {previous} substitution. Optional model per task is provider/model. Chain of Command fixes each role's model and shares turn and concurrency limits across the command tree; commanders and colonels delegate, majors verify, enlisted implement. Waiting coordinators lend their concurrency slot to workers and reclaim one before resuming. Custom delegation limits each delegator's immediate children. Children inherit thread access and are non-interactive: read-only stays read-only; in ask mode full roles may write only inside the workspace, bash only on the read-only allowlist. Protected paths require interactive approval and are blocked in children.",
+    description: "Delegate using nucode policy roles only (no user/project agent directories). Single: agent + task; parallel: tasks; chain: chain with {previous} substitution. Optional model per task is one id from the subagent policy's models list (provider/name); omit it to use the role's model. Chain of Command fixes each role's model and shares turn and concurrency limits across the command tree; commanders and colonels delegate, majors verify, enlisted implement. Waiting coordinators lend their concurrency slot to workers and reclaim one before resuming. Custom delegation limits each delegator's immediate children. Children inherit thread access and are non-interactive: read-only stays read-only (on macOS read-only roles get a sandboxed shell: tests and scripts run, but a command may write only to its own TMPDIR and cannot reach other hosts); in ask mode full roles may write only inside the workspace, bash only on the read-only allowlist. Protected paths require interactive approval and are blocked in children.",
     parameters: Type.Object({ agent: optionalString, task: optionalString, model: taskFields.model, cwd: taskFields.cwd, acceptanceCriteria: taskFields.acceptanceCriteria, tasks: Type.Optional(Type.Union([Type.Array(Task), Type.Null()])), chain: Type.Optional(Type.Union([Type.Array(Task), Type.Null()])) }),
     async execute(_id, params, signal, onUpdate, ctx) {
       const home = process.env.PI_CODING_AGENT_DIR!;
@@ -133,7 +133,7 @@ export default function (pi: ExtensionAPI) {
           }
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
           const effort = role.reasoningEffort || thinking; if (effort) args.push("--thinking", effort);
-          if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
+          if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (readOnlySandbox() ? ",bash" : "") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
           if (role.instructions) args.push("--append-system-prompt", role.instructions);
           const once = (prompt: string[]) => new Promise<number>((resolve, reject) => {
             const child = spawn(process.execPath, [...args, ...prompt], { cwd, env: { ...process.env, NUCODE_SUBAGENT_DEPTH: String(depth + 1), NUCODE_SUBAGENT_ROLE: role.name, NUCODE_VERIFY_CRITERIA: JSON.stringify(r.acceptanceCriteria ?? [r.task]), NUCODE_SUBAGENT_BUDGET: budget, NUCODE_SUBAGENT_SLOT: slot, NUCODE_WORKSPACE: workspace, NUCODE_TOOL_ACCESS: toolAccess }, stdio: ["ignore", "pipe", "pipe"], detached: depth === 0 && process.platform !== "win32" });

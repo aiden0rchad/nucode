@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireSubagentSlot, commandInstructions, commandTargets, createSubagentBudget, releaseSubagentSlot, resolveTask, readPolicy, type Policy } from "../extensions/lib/policy.ts";
+import { acquireSubagentSlot, commandInstructions, commandTargets, createSubagentBudget, releaseSubagentSlot, resolveTask, readPolicy, readOnlySandbox, type Policy } from "../extensions/lib/policy.ts";
 import subagents from "../extensions/nucode-subagents.ts";
 
 const policy: Policy = {
@@ -298,7 +298,7 @@ test("a preset reaches child processes with its instructions, read-only tools an
   assert.equal(result.isError, false);
   const child = JSON.parse(result.details.results[0].messages[0].content[0].text);
   assert.equal(child.role, "researcher"); assert.equal(child.access, "read-only");
-  assert.equal(child.args[child.args.indexOf("--tools") + 1], "read,grep,glob");
+  assert.equal(child.args[child.args.indexOf("--tools") + 1], "read,grep,glob" + (readOnlySandbox() ? ",bash" : ""));
   assert.deepEqual(child.settings, { async: { enabled: false }, bash: { autoBackground: { enabled: false } }, eval: { autoBackground: { enabled: false } } }, "a child runs its commands to completion rather than in the background, even long ones");
   assert.equal(child.args[child.args.indexOf("--model") + 1], "mid");
   assert.equal(child.args[child.args.indexOf("--append-system-prompt") + 1], researcher.instructions);
