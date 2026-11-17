@@ -133,7 +133,7 @@ export default function (pi: ExtensionAPI) {
           }
           const toolAccess = process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : role.toolAccess;
           const effort = role.reasoningEffort || thinking; if (effort) args.push("--thinking", effort);
-          if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (readOnlySandbox() ? ",bash" : "") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
+          if (toolAccess === "read-only") args.push("--tools", (process.env.NUCODE_OMP === "1" ? "read,grep,glob" : "read,grep,find,ls") + (readOnlySandbox() && process.env.NUCODE_WORK !== "1" ? ",bash" : "") + (policy.mode === "chain-of-command" && commandRank(role.name, policy.roles) === "major" ? ",report_verification" : ""));
           if (role.instructions) args.push("--append-system-prompt", role.instructions);
           const once = (prompt: string[]) => new Promise<number>((resolve, reject) => {
             const child = spawn(process.execPath, [...args, ...prompt], { cwd, env: { ...process.env, NUCODE_SUBAGENT_DEPTH: String(depth + 1), NUCODE_SUBAGENT_ROLE: role.name, NUCODE_VERIFY_CRITERIA: JSON.stringify(r.acceptanceCriteria ?? [r.task]), NUCODE_SUBAGENT_BUDGET: budget, NUCODE_SUBAGENT_SLOT: slot, NUCODE_WORKSPACE: workspace, NUCODE_TOOL_ACCESS: toolAccess }, stdio: ["ignore", "pipe", "pipe"], detached: depth === 0 && process.platform !== "win32" });

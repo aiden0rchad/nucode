@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canonicalModel, decide, modelChoices, normalizeRule, protectedPath, readOnlyCommand, readOnlySandbox, resolveTask, checkLimits, sandboxedCommand, type Policy } from "../extensions/lib/policy.ts";
@@ -207,6 +207,13 @@ test("the read-only sandbox runs commands but blocks writes, preferences and out
     assert.match(run("/usr/bin/python3 -c \"import socket;socket.gethostbyname('example.com')\"").stderr, /gaierror/, "names outside /etc/hosts do not resolve");
     assert.equal(run("/usr/bin/python3 -c \"import socket;s=socket.socket();s.bind(('127.0.0.1',0));s.listen();socket.create_connection(s.getsockname());print('lo')\"").stdout.trim(), "lo");
     assert.equal(run("echo \"it's $((1+1))\"").stdout.trim(), "it's 2", "quoting survives the wrapper");
+    const outside = spawn("/bin/sleep", ["30"]);
+    try { assert.notEqual(run(`/bin/kill -0 ${outside.pid}`).status, 0, "signals cannot reach processes outside the sandbox"); }
+    finally { outside.kill(); }
+    assert.equal(run("/bin/sleep 30 & /bin/kill $! && wait $!; echo $?").stdout.trim(), "143", "a command can still stop its own children");
+    assert.ok(run("mktemp").stdout.trim().startsWith(scratch + "/"), "mktemp uses the scratch folder");
+    assert.equal(run("/usr/bin/python3 -c \"import socket,os;p=os.environ['TMPDIR']+'s.sock';s=socket.socket(socket.AF_UNIX);s.bind(p);s.listen();socket.socket(socket.AF_UNIX).connect(p);print('unix')\"").stdout.trim(), "unix");
+    assert.equal(run('echo "$CARGO_TARGET_DIR"').stdout.trim(), join(scratch, "cargo-target"));
   } finally {
     spawnSync("/usr/bin/defaults", ["delete", domain]);
     rmSync(dir, { recursive: true, force: true }); rmSync(scratch, { recursive: true, force: true });
@@ -335,6 +342,11 @@ test("subagents single, parallel, chain, concurrency, per-run limit, depth and a
   assert.equal(child.depth, "1"); assert.equal(child.access, "read-only");
   assert.ok(child.args.includes("read,grep,find,ls" + (readOnlySandbox() ? ",bash" : ""))); assert.ok(child.args.includes("--session-dir") && !child.args.includes("--no-session"), "a child keeps a session so a cut-off run can go on");
   assert.equal(child.args[child.args.indexOf("--provider") + 1], "local");
+  reset(); process.env.NUCODE_WORK = "1";
+  const work = await tool.execute("work", task, undefined, undefined, ctx);
+  delete process.env.NUCODE_WORK;
+  const workChild = JSON.parse(work.details.results[0].messages[0].content[0].text);
+  assert.ok(workChild.args.includes("read,grep,find,ls"), "Work read-only roles get no shell: Work keeps its own boundaries outside the sandbox");
   reset();
   const chain = await tool.execute("chain", { chain: [task, { ...task, task: "previous: {previous}" }] }, undefined, undefined, ctx);
   assert.match(chain.details.results[1].task, /previous:.*args/);

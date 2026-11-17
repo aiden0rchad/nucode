@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, basename, resolve, relative, isAbsolute, sep } from "node:path";
+import { dirname, basename, join, resolve, relative, isAbsolute, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -69,6 +69,8 @@ const seatbeltString = (value: string) => `"${value.replaceAll("\\", "\\\\").rep
 export function readOnlyProfile(scratch: string): string {
   return [
     "(version 1)", "(allow default)",
+    // Signals may reach only processes in the same sandbox, not the engine or other apps.
+    "(deny signal)", "(allow signal (target same-sandbox))",
     "(deny file-write*)",
     `(allow file-write* (subpath ${seatbeltString(scratch)}) (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
     // A "local ip" filter on outbound traffic matches any destination, so outbound is matched by remote address
@@ -76,7 +78,8 @@ export function readOnlyProfile(scratch: string): string {
     "(deny network*)",
     '(allow network-bind network-inbound (local ip "localhost:*"))',
     '(allow network-outbound (remote ip "localhost:*"))',
-    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents"))',
+    `(allow network-bind network-inbound network-outbound (local unix-socket (subpath ${seatbeltString(scratch)})) (remote unix-socket (subpath ${seatbeltString(scratch)})))`,
+    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.windowserver.active") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))',
     '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/open") (literal "/usr/bin/automator") (literal "/usr/bin/shortcuts") (literal "/usr/bin/security") (literal "/usr/bin/pbcopy") (literal "/usr/bin/pbpaste"))',
   ].join(" ");
 }
@@ -85,7 +88,10 @@ export function readOnlySandbox(): boolean {
 }
 export function sandboxedCommand(command: string, scratch: string): string {
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  const env = [`TMPDIR=${quote(scratch + "/")}`, "PYTHONDONTWRITEBYTECODE=1", "PYTHONPYCACHEPREFIX=" + quote(scratch + "/pycache")];
+  // macOS mktemp ignores TMPDIR, so a shim sends it to the scratch folder; build caches go there too.
+  const shim = join(scratch, "bin", "mktemp");
+  if (!existsSync(shim)) { mkdirSync(join(scratch, "bin"), { recursive: true }); writeFileSync(shim, '#!/bin/sh\nexec /usr/bin/mktemp -p "${TMPDIR%/}" "$@"\n', { mode: 0o755 }); }
+  const env = [`TMPDIR=${quote(scratch + "/")}`, `PATH=${quote(join(scratch, "bin"))}:"$PATH"`, "PYTHONDONTWRITEBYTECODE=1", ...Object.entries({ PYTHONPYCACHEPREFIX: "pycache", CARGO_TARGET_DIR: "cargo-target", GOCACHE: "go-cache", GOTMPDIR: "", XDG_CACHE_HOME: "cache" }).map(([name, sub]) => `${name}=${quote(sub ? join(scratch, sub) : scratch)}`)];
   const unset = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"].map(name => `-u ${name}`).join(" ");
   return `/usr/bin/env ${unset} ${env.join(" ")} ${SANDBOX_EXEC} -p ${quote(readOnlyProfile(scratch))} /bin/bash -c ${quote(command)}`;
 }
@@ -211,8 +217,8 @@ export function modelChoices(policy: Policy): string[] {
   const enabled = Object.keys(policy.models ?? {});
   return policy.allowedModels.length ? policy.allowedModels.filter(m => !policy.models || enabled.includes(m)) : enabled;
 }
-// Models see their own provider's registry id (nucode-<provider>/<name>) and display names, so accept
-// those for the policy id: an exact registry id, or a display name that matches exactly one model.
+// Models see their own provider's registry id (nucode-<provider>/<id>) and often drop the provider, so accept
+// those for the policy id: an exact registry id, or an id without the provider that exactly one provider has.
 export function canonicalModel(policy: Policy, model: string): string {
   const models = policy.models;
   model = model.trim();

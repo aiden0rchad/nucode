@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -13,7 +13,13 @@ import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from ".
 let scratch: string | undefined;
 function sandboxScratch(): string {
   if (!scratch) {
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), "nucode-readonly-")));
+    // Folders left by an engine that was killed (no exit handler ran) are removed once their process is gone.
+    for (const name of readdirSync(tmpdir())) {
+      const pid = Number(/^nucode-readonly-(\d+)-/.exec(name)?.[1]);
+      if (!pid || pid === process.pid) continue;
+      try { process.kill(pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") try { rmSync(join(tmpdir(), name), { recursive: true, force: true }); } catch { /* Another engine may be removing it. */ } }
+    }
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), `nucode-readonly-${process.pid}-`)));
     const folder = scratch;
     process.once("exit", () => { try { rmSync(folder, { recursive: true, force: true }); } catch { /* A leftover temporary folder is harmless. */ } });
   }
