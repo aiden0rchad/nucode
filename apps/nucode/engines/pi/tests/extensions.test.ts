@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, symlinkSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decide, normalizeRule, protectedPath, readOnlyCommand, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
+import { canonicalModel, decide, modelChoices, normalizeRule, protectedPath, readOnlyCommand, readOnlySandbox, resolveTask, checkLimits, sandboxedCommand, type Policy } from "../extensions/lib/policy.ts";
 import gate from "../extensions/nucode-gate.ts";
 import subagents from "../extensions/nucode-subagents.ts";
 
@@ -159,8 +160,57 @@ test("gate approval marker, persistence, live changes and noninteractive childre
   process.env.NUCODE_TOOL_ACCESS = "full";
   assert.equal(await handler(event, { ...ctx, hasUI: false }), undefined);
   assert.equal((await handler({ ...event, input: { path: ".env" } }, { ...ctx, hasUI: false })).block, true);
+  // Read-only children run any shell command inside the macOS sandbox; other commands stay blocked elsewhere.
+  process.env.NUCODE_TOOL_ACCESS = "read-only";
+  const bash = { toolName: "bash", toolCallId: "test", input: { command: "python3 -m pytest -q" } };
+  const result = await handler(bash, { ...ctx, hasUI: false });
+  if (readOnlySandbox()) { assert.equal(result, undefined); assert.match(bash.input.command, /sandbox-exec -p .*python3 -m pytest -q/); }
+  else assert.equal(result.block, true);
+  const listed = { toolName: "bash", toolCallId: "status", input: { command: "git status" } };
+  assert.equal(await handler(listed, { ...ctx, hasUI: false }), undefined);
+  if (readOnlySandbox()) assert.match(listed.input.command, /sandbox-exec -p .*git --no-pager --no-optional-locks/, "allowlisted commands are sandboxed too (git filters run from git status)");
+  assert.equal((await handler(event, { ...ctx, hasUI: false })).block, true, "read-only children still cannot use write");
   delete process.env.NUCODE_SUBAGENT_DEPTH;
+  const top = { toolName: "bash", toolCallId: "top", input: { command: "python3 -m pytest -q" } };
+  write("read-only");
+  assert.equal((await handler(top, ctx)).block, true, "the sandbox is only for children");
   delete process.env.NUCODE_TOOL_ACCESS;
+});
+
+test("subagent model ids accept registry ids and unique ids without the provider, and errors list the choices", () => {
+  const registry: Policy = { ...policy, allowedModels: [], models: { "acct/Claude Opus 5.5": "nucode-acct/Claude Opus 5.5", "acct/GPT 6.1 Sol": "nucode-acct/GPT 6.1 Sol", "other/GPT 6.1 Sol": "nucode-other/GPT 6.1 Sol" } };
+  assert.equal(canonicalModel(registry, "nucode-acct/Claude Opus 5.5"), "acct/Claude Opus 5.5");
+  assert.equal(canonicalModel(registry, " Claude Opus 5.5 "), "acct/Claude Opus 5.5");
+  assert.equal(canonicalModel(registry, "GPT 6.1 Sol"), "GPT 6.1 Sol", "an ambiguous display name is left alone");
+  assert.equal(resolveTask(registry, { agent: "scout", model: "nucode-acct/Claude Opus 5.5" }).modelId, "Claude Opus 5.5");
+  assert.equal(resolveTask(registry, { agent: "scout", model: "Claude Opus 5.5" }).provider, "nucode-acct");
+  assert.throws(() => resolveTask(registry, { agent: "scout", model: "GPT 6.1 Sol" }), /Use one of: acct\/Claude Opus 5\.5, acct\/GPT 6\.1 Sol, other\/GPT 6\.1 Sol/);
+  assert.throws(() => resolveTask(registry, { agent: "scout", model: "acct/Missing" }), /not enabled in the provider registry\. Use one of: /);
+  assert.deepEqual(modelChoices({ ...registry, allowedModels: ["acct/GPT 6.1 Sol", "gone/x"] }), ["acct/GPT 6.1 Sol"]);
+});
+
+test("the read-only sandbox runs commands but blocks writes, preferences and outside network", { skip: !readOnlySandbox() }, () => {
+  const dir = mkdtempSync(join(process.env.HOME!, ".nucode-sandbox-test-"));
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), "nucode-sandbox-scratch-")));
+  const domain = `nucode.sandbox.test.${process.pid}`;
+  try {
+    const run = (command: string) => spawnSync("/bin/bash", ["-c", sandboxedCommand(command, scratch)], { cwd: dir, encoding: "utf8" });
+    assert.equal(run("echo ok").stdout.trim(), "ok");
+    assert.notEqual(run("echo x > written.txt").status, 0);
+    assert.equal(existsSync(join(dir, "written.txt")), false);
+    assert.equal(run('touch "$TMPDIR/own" && echo "$TMPDIR"').stdout.trim(), scratch + "/");
+    assert.notEqual(run(`echo x > ${join(tmpdir(), `nucode-shared-${process.pid}`)}`).status, 0, "only the private scratch folder is writable");
+    assert.notEqual(run("/usr/bin/osascript -e 1").status, 0);
+    run(`/usr/bin/defaults write ${domain} k v`);
+    assert.notEqual(spawnSync("/usr/bin/defaults", ["read", domain]).status, 0, "preference writes go through cfprefsd outside the sandbox");
+    assert.notEqual(run("/usr/bin/curl -sS -m 3 http://1.1.1.1 -o /dev/null").status, 0);
+    assert.match(run("/usr/bin/python3 -c \"import socket;socket.gethostbyname('example.com')\"").stderr, /gaierror/, "names outside /etc/hosts do not resolve");
+    assert.equal(run("/usr/bin/python3 -c \"import socket;s=socket.socket();s.bind(('127.0.0.1',0));s.listen();socket.create_connection(s.getsockname());print('lo')\"").stdout.trim(), "lo");
+    assert.equal(run("echo \"it's $((1+1))\"").stdout.trim(), "it's 2", "quoting survives the wrapper");
+  } finally {
+    spawnSync("/usr/bin/defaults", ["delete", domain]);
+    rmSync(dir, { recursive: true, force: true }); rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("OMP service bash calls drop the materialized timeout while plain commands keep it", async (t) => {
@@ -283,7 +333,7 @@ test("subagents single, parallel, chain, concurrency, per-run limit, depth and a
   assert.match(result.details.results[3].stderr, /per turn/);
   const child = JSON.parse(result.details.results[0].messages[0].content[0].text);
   assert.equal(child.depth, "1"); assert.equal(child.access, "read-only");
-  assert.ok(child.args.includes("read,grep,find,ls")); assert.ok(child.args.includes("--session-dir") && !child.args.includes("--no-session"), "a child keeps a session so a cut-off run can go on");
+  assert.ok(child.args.includes("read,grep,find,ls" + (readOnlySandbox() ? ",bash" : ""))); assert.ok(child.args.includes("--session-dir") && !child.args.includes("--no-session"), "a child keeps a session so a cut-off run can go on");
   assert.equal(child.args[child.args.indexOf("--provider") + 1], "local");
   reset();
   const chain = await tool.execute("chain", { chain: [task, { ...task, task: "previous: {previous}" }] }, undefined, undefined, ctx);

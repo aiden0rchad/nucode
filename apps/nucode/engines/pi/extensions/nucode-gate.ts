@@ -1,13 +1,24 @@
-import { readFileSync, writeFileSync, renameSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
+import { decide, inside, normalizeRule, protectedPath, readOnlySandbox, safeReadOnlyCommand, sandboxedCommand, type Access } from "./lib/policy.ts";
 import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
 import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
+// One private scratch folder per engine process: the only place a sandboxed read-only command may write.
+let scratch: string | undefined;
+function sandboxScratch(): string {
+  if (!scratch) {
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), "nucode-readonly-")));
+    const folder = scratch;
+    process.once("exit", () => { try { rmSync(folder, { recursive: true, force: true }); } catch { /* A leftover temporary folder is harmless. */ } });
+  }
+  return scratch;
+}
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
@@ -146,6 +157,12 @@ export default function (pi: ExtensionAPI) {
     const call = { tool: preview ? "bash" : event.toolName, cwd: ctx.cwd, command: input.command as string, path: input.path as string };
     const child = process.env.NUCODE_SUBAGENT_DEPTH ? { workspace: process.env.NUCODE_WORKSPACE!, toolAccess: process.env.NUCODE_TOOL_ACCESS ?? "read-only" } : undefined;
     const decision = decide(read(), call, home, ctx.hasUI, child);
+    // Every shell command from a read-only child runs inside the macOS sandbox, allowlisted ones included (a
+    // repository's git filters run from "git status"); the sandbox, not the allowlist, keeps the child read-only.
+    if (decision !== "ask" && call.tool === "bash" && !preview && child && typeof call.command === "string" && readOnlySandbox()) {
+      const access = read();
+      if (access.kind !== "work" && (child.toolAccess === "read-only" || access.accessMode === "read-only")) { input.command = ownedCommand(sandboxedCommand(safeReadOnlyCommand(call.command), sandboxScratch())); return; }
+    }
     if (decision === "allow") {
       if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
       return;

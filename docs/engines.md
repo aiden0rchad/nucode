@@ -97,7 +97,20 @@ use the existing access/connector policies. LSP, debugger and Python/JS eval are
 available when supported by the installed runtime; each native call requires an
 explicit interactive approval, and is denied in read-only threads and subagents.
 Native omp task/browser/computer/login tools are excluded. Nucode supplies its
-own bounded subagents and browser/computer MCP tools. Project MCP configuration,
+own bounded subagents and browser/computer MCP tools. On macOS a read-only subagent
+role (pi and omp) also gets a shell, and every command it runs, allowlisted ones
+included, runs under `sandbox-exec`. The profile lets the command write only to a
+private scratch folder (its `TMPDIR`), denies network traffic and name lookups beyond
+this machine, preference writes (cfprefsd) and the clipboard, and does not let
+`osascript`, `open`, `automator`, `shortcuts`, `security`, `pbcopy` or `pbpaste`
+start. Two limits remain: Seatbelt cannot stop Apple Events here, so automating
+another app is left to the macOS Automation permission prompt, and a service already
+listening on localhost (a build daemon, a local proxy) runs outside the sandbox and
+can act for the command. Elsewhere read-only roles keep the small read-only command
+allowlist. The subagent tool accepts a model by its policy id (`provider/id`), by the
+registry id the model sees for itself (`nucode-provider/id`), or by the id alone when
+one provider has it; the policy note lists the usable ids, and an unknown model's
+error lists them too. Project MCP configuration,
 external rules, skills and extensions are disabled in the omp profile.
 
 For ACP, nucode filters supplied MCP servers, sends feature restrictions in session
