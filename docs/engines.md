@@ -113,7 +113,9 @@ outside the sandbox and can act for the command. Tools that write caches inside 
 example Vite writes its bundled config to `node_modules/.vite-temp`, so a reviewer runs
 Vitest with `--configLoader runner`. Background jobs a command starts
 stop when it ends, since a later command runs in a new sandbox and cannot signal
-them. Work's read-only roles get no shell, and on other platforms read-only roles
+them; a job that detaches into its own session or ignores TERM keeps running.
+Here-documents work: bash's `/private/var/tmp/sh-thd-*` files are the one
+exception to the scratch-only rule. Work's read-only roles get no shell, and on other platforms read-only roles
 keep the small read-only command allowlist. The subagent tool accepts a model by its policy id (`provider/id`), by the
 registry id the model sees for itself (`nucode-provider/id`), or by the id alone when
 one provider has it; the policy note lists the usable ids, and an unknown model's

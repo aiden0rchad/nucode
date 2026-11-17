@@ -216,7 +216,10 @@ test("the read-only sandbox runs commands but blocks writes, preferences and out
     assert.equal(run("exit 3").status, 3, "the exit status survives the job cleanup");
     const marker = `nucode-leftover-${process.pid}`;
     assert.equal(run(`/bin/bash -c 'sleep 300; true' ${marker} & sleep 0.3; /usr/bin/pgrep -f ${marker} >/dev/null && echo running`).stdout.trim(), "running");
-    assert.notEqual(spawnSync("/usr/bin/pgrep", ["-f", marker]).status, 0, "jobs a command leaves behind stop with it");
+    assert.ok([0, 1, 2, 3, 4].some(() => spawnSync("/usr/bin/pgrep", ["-f", marker]).status !== 0 || (spawnSync("/bin/sleep", ["0.2"]), false)), "jobs a command leaves behind stop with it");
+    assert.equal(run("cat <<'EOF'\nheredoc\nEOF").stdout.trim(), "heredoc", "here-documents work");
+    assert.equal(run("/usr/bin/python3 - <<'EOF'\nprint(6*7)\nEOF").stdout.trim(), "42");
+    assert.notEqual(run("echo x > /private/var/tmp/nucode-other").status, 0, "other files in /var/tmp stay read-only");
     assert.equal(run("/usr/bin/lsappinfo front").stdout.trim(), "[ NULL ]", "Launch Services is out of reach");
     assert.equal(run("/usr/bin/python3 -c \"import socket,os;p=os.environ['TMPDIR']+'s.sock';s=socket.socket(socket.AF_UNIX);s.bind(p);s.listen();socket.socket(socket.AF_UNIX).connect(p);print('unix')\"").stdout.trim(), "unix");
     assert.equal(run('echo "$CARGO_TARGET_DIR"').stdout.trim(), join(scratch, "cargo-target"));

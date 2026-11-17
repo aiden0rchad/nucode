@@ -73,13 +73,15 @@ export function readOnlyProfile(scratch: string): string {
     "(deny signal)", "(allow signal (target same-sandbox))",
     "(deny file-write*)",
     `(allow file-write* (subpath ${seatbeltString(scratch)}) (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+    // bash 3.2 writes here-documents to /private/var/tmp/sh-thd-<n> whatever TMPDIR says.
+    '(allow file-write-data (literal "/private/var/tmp"))', '(allow file-write* (regex #"^/private/var/tmp/sh-thd-[0-9]+$"))',
     // A "local ip" filter on outbound traffic matches any destination, so outbound is matched by remote address
     // only. Without the mDNSResponder socket, names other than those in /etc/hosts do not resolve.
     "(deny network*)",
     '(allow network-bind network-inbound (local ip "localhost:*"))',
     '(allow network-outbound (remote ip "localhost:*"))',
     `(allow network-bind network-inbound network-outbound (local unix-socket (subpath ${seatbeltString(scratch)})) (remote unix-socket (subpath ${seatbeltString(scratch)})))`,
-    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.windowserver.active") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.coreservices.launchservicesd") (global-name-regex #"^com\\.apple\\.lsd\\."))',
+    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.windowserver.active") (global-name "com.apple.replayd") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.coreservices.launchservicesd") (global-name-regex #"^com\\.apple\\.lsd\\."))',
     // Opening a file or app through Launch Services would run it outside the sandbox.
     "(deny lsopen)",
     '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/open") (literal "/usr/bin/automator") (literal "/usr/bin/shortcuts") (literal "/usr/bin/security") (literal "/usr/bin/pbcopy") (literal "/usr/bin/pbpaste") (literal "/usr/sbin/screencapture"))',
