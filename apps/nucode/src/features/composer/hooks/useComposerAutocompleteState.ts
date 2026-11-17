@@ -11,7 +11,7 @@ import {
 import { isComposingEvent } from "../../../utils/keys";
 import { basicCommands } from "../commands";
 
-type Skill = { name: string; description?: string };
+type Skill = { name: string; description?: string; invocation?: string };
 type UseComposerAutocompleteStateArgs = {
   text: string;
   selectionStart: number | null;
@@ -92,7 +92,8 @@ export function useComposerAutocompleteState({
         id: `skill:${skill.name}`,
         label: skill.name,
         description: skill.description,
-        insertText: skill.name,
+        insertText: skill.invocation ?? skill.name,
+        replaceTrigger: skill.invocation !== undefined,
         group: "Skills" as const,
       })),
 

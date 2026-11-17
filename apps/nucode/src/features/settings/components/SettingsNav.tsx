@@ -1,6 +1,6 @@
 import { useFeatures } from "@settings/features";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { FlaskConical, Activity, KeyRound, Bot, Plug, SquarePen, Palette, Monitor, Keyboard, Mic, GitBranch, AppWindow, Folder, Box, Globe, MousePointer2, Server, Download, Info, SlidersHorizontal, Flag, Workflow } from "lucide-react";
+import { FlaskConical, Activity, KeyRound, Bot, Plug, SquarePen, Palette, Monitor, Keyboard, Mic, GitBranch, AppWindow, Folder, Box, Globe, MousePointer2, Server, Download, Info, SlidersHorizontal, Flag, Workflow, Sparkles } from "lucide-react";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import Search from "lucide-react/dist/esm/icons/search";
 import type { CodexSection } from "./settingsTypes";
@@ -9,10 +9,10 @@ export const SETTINGS_GROUPS: { label: string; sections: CodexSection[] }[] = [
   { label: "General", sections: ["appearance", "display", "composer", "shortcuts", "dictation", "features"] },
   { label: "Models", sections: ["providers", "agents", "engines", "connectors"] },
   { label: "Projects", sections: ["projects", "environments", "git", "open-apps"] },
-  { label: "Tools", sections: ["browser", "computer"] },
+  { label: "Tools", sections: ["browser", "computer", "skills"] },
   { label: "Advanced", sections: ["codex-flags", "server", "evals", "diagnostics", "import", "about"] },
 ];
-export const SETTINGS_ICONS = { evals: FlaskConical, diagnostics: Activity, features: SlidersHorizontal, engines: Workflow, "codex-flags": Flag, "providers": KeyRound, "agents": Bot, "connectors": Plug, "composer": SquarePen, "appearance": Palette, "display": Monitor, "shortcuts": Keyboard, "dictation": Mic, "git": GitBranch, "open-apps": AppWindow, "projects": Folder, "environments": Box, "browser": Globe, "computer": MousePointer2, "server": Server, "import": Download, "about": Info };
+export const SETTINGS_ICONS = { evals: FlaskConical, diagnostics: Activity, features: SlidersHorizontal, engines: Workflow, "codex-flags": Flag, "providers": KeyRound, "agents": Bot, "connectors": Plug, "composer": SquarePen, "appearance": Palette, "display": Monitor, "shortcuts": Keyboard, "dictation": Mic, "git": GitBranch, "open-apps": AppWindow, "projects": Folder, "environments": Box, "browser": Globe, "computer": MousePointer2, "skills": Sparkles, "server": Server, "import": Download, "about": Info };
 export function SettingsNav({ activeSection, onSelectSection, showDisclosure = false }: { activeSection: CodexSection; onSelectSection: (section: CodexSection) => void; showDisclosure?: boolean }) {
   const features = useFeatures();
   const [query, setQuery] = useState("");

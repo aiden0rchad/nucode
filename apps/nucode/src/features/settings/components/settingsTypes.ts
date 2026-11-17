@@ -18,6 +18,7 @@ export const SETTINGS_SECTION_IDS = [
   "import",
   "browser",
   "computer",
+  "skills",
   "diagnostics",
   "evals",
 ] as const;

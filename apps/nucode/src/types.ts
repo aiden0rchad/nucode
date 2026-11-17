@@ -331,6 +331,7 @@ export type AppSettings = {
   agentPolicy?: AgentPolicy;
   autoCompact?: { enabled: boolean; percent?: number | null };
   responseStyle?: "concise" | "standard" | "detailed";
+  skills?: { sources: { claudeCode: boolean; codex: boolean; agents: boolean }; disabled: string[] };
   codegraphEnabled: boolean;
   codexBin: string | null;
   codexArgs: string | null;
@@ -751,6 +752,8 @@ export type SkillOption = {
   name: string;
   path: string;
   description?: string;
+  /** What choosing the skill types when that is not its plain name ("/skill:name " for pi and omp). */
+  invocation?: string;
 };
 
 

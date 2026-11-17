@@ -433,6 +433,15 @@ impl ResponseStyle {
     }
 }
 
+/// Which external skill folders nucode reads live (off until the user turns them on).
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct SkillSources { pub claude_code: bool, pub codex: bool, pub agents: bool }
+/// Skills nucode offers its engines: its own library plus the enabled external folders, minus `disabled`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+#[serde(default)]
+pub(crate) struct SkillsSettings { pub sources: SkillSources, pub disabled: Vec<String> }
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct AppSettings {
     #[serde(default, rename = "chatImport")]
@@ -466,6 +475,8 @@ pub(crate) struct AppSettings {
     pub(crate) auto_compact: AutoCompact,
     #[serde(default, rename = "responseStyle")]
     pub(crate) response_style: ResponseStyle,
+    #[serde(default)]
+    pub(crate) skills: SkillsSettings,
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
@@ -1279,6 +1290,7 @@ impl Default for AppSettings {
             codegraph_enabled: true,
             auto_compact: AutoCompact::default(),
             response_style: ResponseStyle::default(),
+            skills: SkillsSettings::default(),
             codex_bin: None,
             codex_args: None,
             backend_mode: default_backend_mode(),

@@ -440,6 +440,11 @@ impl PiEngine {
         };
         done.map_err(|_| "Credential lookup failed".to_string())?
     }
+    /// The skills this engine loads: the enabled library and linked folders in Code mode, none elsewhere.
+    fn skills(&self, settings: &crate::types::AppSettings) -> Vec<super::skills::Skill> {
+        let Some(data) = self.data.as_deref().filter(|_| !self.chat && !self.work) else { return vec![] };
+        super::skills::resolve(data, &settings.skills).skills.into_iter().filter(|s| s.enabled).collect()
+    }
     async fn prepare(
         &self,
         s: &Session,
@@ -462,8 +467,9 @@ impl PiEngine {
             }
         }
         let settings = super::engine_registry::settings(self.data.as_deref());
+        let skills: Vec<_> = self.skills(&settings).into_iter().map(|s| (s.name, s.path)).collect();
         let fingerprint =
-            serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact, &settings.response_style)).map_err(|e| e.to_string())?;
+            serde_json::to_string(&(registry, policy, &connectors, settings.features(), &settings.auto_compact, &settings.response_style, &skills)).map_err(|e| e.to_string())?;
         if let Some(p) = &s.process {
             if p.alive.load(Ordering::SeqCst) && s.configuration == fingerprint {
                 return Ok(Prepared::Running(p.clone()));
@@ -501,7 +507,11 @@ impl PiEngine {
         let mut env = config::prepare(&home, registry, self.graph.as_ref(), &settings.auto_compact)?;
         env.extend(credentials);
         let features = super::engine_registry::features(self.data.as_deref());
-        self.profile.prepare(&home, registry, &features, &settings.auto_compact, &settings.response_style, &mut env)?;
+        let skills = self.skills(&settings);
+        // omp reads skills from one generated folder of links, rebuilt for every launch.
+        let omp_skills = (self.profile.omp() && !self.chat && !self.work).then(|| home.join("nucode-skills"));
+        if let Some(dir) = &omp_skills { super::skills::sync_links(dir, &skills.iter().collect::<Vec<_>>())?; }
+        self.profile.prepare(&home, registry, &features, &settings.auto_compact, &settings.response_style, omp_skills.as_deref(), &mut env)?;
         for p in registry.iter().filter(|p| p.enabled) {
             if let crate::types::ProviderAuth::Env { var } = &p.auth {
                 env.insert(var.clone(), std::env::var(var).map_err(|_| format!("Missing provider environment variable {var}"))?);
@@ -607,7 +617,9 @@ impl PiEngine {
                 command.env("NUCODE_CHAT_WEB", "1").args(["-e", "builtin:mcp", "--tools", "mcp__nucode_browser__browser_navigate,mcp__nucode_browser__browser_snapshot,mcp__nucode_browser__browser_take_screenshot,mcp__nucode_browser__web_search,mcp__nucode_browser__web_fetch"]);
             } else { command.env_remove("NUCODE_CHAT_WEB"); }
         } else if self.profile.omp() {
-            command.args(["--no-pty", "--no-title", "--no-skills", "--no-rules"]);
+            command.args(["--no-pty", "--no-title", "--no-rules"]);
+            // Code mode loads nucode's skills through settings; Work keeps only its bundled ones.
+            if self.work { command.arg("--no-skills"); }
             if features.subagents {
                 let typebox = runtime.as_ref().ok_or("Missing omp runtime")?.join("node_modules/@oh-my-pi/omptype/dist/js/typebox.js");
                 let source = include_str!("../../../../engines/pi/extensions/nucode-subagents.ts").replace("\"typebox\"", &serde_json::to_string(&typebox.to_string_lossy()).map_err(|e| e.to_string())?);
@@ -616,6 +628,10 @@ impl PiEngine {
             }
         } else {
             command.env_remove("NUCODE_CHAT").env_remove("NUCODE_CHAT_WEB");
+            if !self.work && !self.profile.custom() {
+                command.arg("--no-skills");
+                for skill in &skills { command.arg("--skill").arg(&skill.path); }
+            }
             if features.subagents { command.arg("-e").arg(home.join("extensions/nucode-subagents.ts")); }
             if features.connectors { command.args(["-e", "builtin:mcp"]); }
         }

@@ -384,6 +384,10 @@ export function createPreviewHandler(publish: Publish = () => {}, search = "") {
         const sum = totals.reduce((a, b) => a + b, 0);
         return { updatedAt: Date.now(), days, topModels: [{ model: "openai/gpt-5", tokens: Math.round(sum * 0.83), sharePercent: 83 }, { model: "openai/gpt-5-mini", tokens: sum - Math.round(sum * 0.83), sharePercent: 17 }], totals: { allTimeTokens: sum, allTimeAgentRuns: 41, allTimeAgentTimeMs: 5_400_000, last7DaysTokens: sum, last30DaysTokens: sum, averageDailyTokens: Math.round(sum / 7), cacheHitRatePercent: 62.1, peakDay: iso(0), peakDayTokens: 11476004 } };
       }
+      case "skills_request": return args.action === "resolve" ? { skills: [
+        { name: "council", description: "Convene several models to review a decision.", path: "/Users/preview/skills/council", source: "library", enabled: true },
+        { name: "review", description: "Review a diff for correctness bugs.", path: "/Users/preview/.claude/skills/review", source: "claudeCode", enabled: false },
+      ], warnings: [] } : args.action === "install" ? { installed: [], conflicts: [], warnings: [] } : null;
       case "import_request": {
         switch (args.action) {
           case "scan": return {

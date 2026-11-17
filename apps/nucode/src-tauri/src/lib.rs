@@ -37,6 +37,7 @@ mod chats;
 mod work;
 pub mod evals;
 mod import_commands;
+mod skills_commands;
 mod managed_tasks_commands;
 mod storage;
 mod tailscale;
@@ -273,6 +274,7 @@ pub fn run() {
             work::work_output,
             chats::chat_request,
             import_commands::import_request,
+            skills_commands::skills_request,
             chats::read_chat_attachment,
             chats::set_window_mode,
             providers::engine_runtime,
