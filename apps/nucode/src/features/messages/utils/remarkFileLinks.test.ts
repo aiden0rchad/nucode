@@ -33,6 +33,13 @@ describe("remarkFileLinks", () => {
     expect(tree.children?.[0]?.children?.map((child) => child.type)).toEqual(["text"]);
   });
 
+  it("leaves slash commands as text", () => {
+    const tree = runRemarkFileLinks(textParagraph("Raise the window with /maxcontext, or use /autocompact default. See /etc/hosts too."));
+    const links = tree.children?.[0]?.children?.filter((child) => child.type === "link") ?? [];
+    expect(links.map((link) => link.url)).toHaveLength(1);
+    expect(links[0].url).toContain("hosts");
+  });
+
   it("turns clear file paths into links", () => {
     const tree = runRemarkFileLinks(
       textParagraph("See docs/setup.md and /Users/example/project/src/index.ts for details."),

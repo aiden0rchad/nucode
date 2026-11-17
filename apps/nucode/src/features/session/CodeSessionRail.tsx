@@ -123,7 +123,7 @@ function ContextReportView({ report }: { report: ContextReport }) {
 /** Closes the Context card, after its lists, as one line: how far auto-compact is, and a compact button. */
 function ContextFooter({ report, onCompact }: { report: ContextReport; onCompact?: () => void }) {
   const status = report.autoCompact ? (report.untilCompact === null ? "Auto-compact is on" : `${formatK(report.untilCompact)} until auto-compact`) : "Auto-compact is off";
-  return <div className="code-context-footer"><span title={status}>{status}</span>{onCompact && <button className="code-context-compact" onClick={onCompact}>Compact session</button>}</div>;
+  return <div className="code-context-footer"><span>{status}</span>{onCompact && <button className="code-context-compact" onClick={onCompact}>Compact session</button>}</div>;
 }
 
 export function CodeSessionRail(props: CodeSessionRailProps) {

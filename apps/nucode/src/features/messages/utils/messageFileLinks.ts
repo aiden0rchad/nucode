@@ -219,6 +219,10 @@ function isPathCandidate(
   if (value.startsWith("//")) {
     return false;
   }
+  // A lone "/word" with no extension reads as a slash command (/maxcontext), not a file.
+  if (/^\/[A-Za-z][\w-]*$/.test(value)) {
+    return false;
+  }
   if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../")) {
     if (
       value.startsWith("/") &&
