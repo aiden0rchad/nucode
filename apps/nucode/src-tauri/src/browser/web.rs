@@ -20,7 +20,7 @@ pub(super) fn navigate_note(provider: WebSearchProvider) -> String {
 pub fn tools(provider: WebSearchProvider) -> Vec<Value> {
     let mut tools = vec![
         json!({"name":"web_search","description":"Search the web in the background, without opening the browser. Returns result titles, URLs and snippets. Use this first whenever you need to look something up.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"count":{"type":"integer","minimum":1,"maximum":20}},"required":["query"],"additionalProperties":false}}),
-        json!({"name":"web_fetch","description":"Fetch a public web page in the background, without opening the browser, and return its readable text. Use this to read search results, documentation and articles. It does not run JavaScript and does not use the user's sign-ins.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","minimum":0},"max_chars":{"type":"integer"}},"required":["url"],"additionalProperties":false}}),
+        json!({"name":"web_fetch","description":"Fetch a public web page in the background, without opening the browser, and return its readable text. Use this to read search results, documentation and articles; it also reads PDFs. It does not run JavaScript and does not use the user's sign-ins.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","minimum":0},"max_chars":{"type":"integer"}},"required":["url"],"additionalProperties":false}}),
     ];
     if provider == WebSearchProvider::Off { tools.remove(0); }
     tools
@@ -53,6 +53,10 @@ pub(super) async fn call(client: &Client, settings: &Settings, name: &str, args:
 }
 
 async fn body(response: reqwest::Response) -> Result<String, String> {
+    Ok(String::from_utf8_lossy(&body_bytes(response).await?).into_owned())
+}
+
+async fn body_bytes(response: reqwest::Response) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
@@ -61,7 +65,7 @@ async fn body(response: reqwest::Response) -> Result<String, String> {
         bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
         if bytes.len() == BODY_LIMIT { break; }
     }
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    Ok(bytes)
 }
 
 fn search_error(reason: impl std::fmt::Display) -> String { format!("Web search failed: {reason}") }
@@ -116,12 +120,37 @@ fn redirect_target(url: &Url, location: &str, hops: usize, settings: &Settings) 
     Ok(next)
 }
 
-fn content_type(value: &str) -> Result<bool, String> {
+#[derive(Debug, PartialEq)]
+enum Kind { Html, Text, Pdf }
+
+fn status_error(status: reqwest::StatusCode) -> String {
+    let code = status.as_u16();
+    let name = status.canonical_reason().map_or_else(|| code.to_string(), |reason| format!("{code} {reason}"));
+    let mut message = format!("Web fetch failed: {name}");
+    if matches!(code, 401 | 403 | 429 | 999) || (400..500).contains(&code) {
+        message.push_str(". The site refused an automated fetch. If the page matters, open it with browser_navigate, which uses the user's in-app browser.");
+    }
+    message
+}
+
+fn pdf_text(bytes: &[u8]) -> Result<String, String> {
+    // pdf-extract can panic on malformed files.
+    let text = std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem(bytes))
+        .map_err(|_| "Could not read this PDF: it is malformed.".to_string())?
+        .map_err(|e| format!("Could not read this PDF: {e}"))?;
+    let text = text.lines().map(str::trim_end).collect::<Vec<_>>().join("\n");
+    let text = text.trim();
+    if text.is_empty() { return Err("This PDF has no extractable text (it may be a scan of images). Open it with browser_navigate and use browser_take_screenshot to read it.".into()); }
+    Ok(text.to_string())
+}
+
+fn content_type(value: &str) -> Result<Kind, String> {
     let mime = value.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if mime == "application/pdf" { return Ok(Kind::Pdf); }
     if mime.starts_with("image/") || !(mime.starts_with("text/") || matches!(mime.as_str(), "application/json" | "application/xml" | "application/xhtml+xml") || mime.ends_with("+json")) {
         return Err(format!("Unsupported content type {mime}; use browser_navigate to view it."));
     }
-    Ok(matches!(mime.as_str(), "text/html" | "application/xhtml+xml"))
+    Ok(if matches!(mime.as_str(), "text/html" | "application/xhtml+xml") { Kind::Html } else { Kind::Text })
 }
 
 pub async fn fetch(client: &Client, settings: &Settings, url: &str, offset: usize, max_chars: usize) -> Result<String, String> {
@@ -135,14 +164,29 @@ pub async fn fetch(client: &Client, settings: &Settings, url: &str, offset: usiz
                 url = redirect_target(&url, location, hops, settings)?;
                 continue;
             }
-            if !response.status().is_success() { return Err(format!("Web fetch failed: {}", response.status())); }
-            let html = content_type(response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("unknown"))?;
+            if !response.status().is_success() { return Err(status_error(response.status())); }
+            let kind = content_type(response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("unknown"))?;
+            if kind == Kind::Pdf {
+                let bytes = body_bytes(response).await?;
+                if bytes.len() >= BODY_LIMIT { return Err("This PDF is larger than 5 MB, which web_fetch cannot read. Open it with browser_navigate instead.".into()); }
+                let text = pdf_text(&bytes)?;
+                return Ok(format_page(&url, "", &text, false, offset, max_chars));
+            }
+            let html = kind == Kind::Html;
             let raw = body(response).await?;
             let (title, text) = if html { page_text(&raw, &url) } else { (String::new(), raw) };
             return Ok(format_page(&url, &title, &text, html, offset, max_chars));
         }
         Err("Too many redirects (maximum 5)".into())
     }).await.map_err(|_| "Web fetch timed out".to_string())?
+}
+
+/// browser_get_text: page the text the in-page reader returned, the way web_fetch pages a fetched page.
+pub(super) fn page_text_result(page: &Value, args: &Value) -> Result<String, String> {
+    let count = |key: &str, default: u64| args.get(key).filter(|v| !v.is_null()).map_or(Ok(default), |v| v.as_u64().ok_or_else(|| format!("Invalid {key}: expected a nonnegative integer")));
+    let url = Url::parse(page["url"].as_str().ok_or("The page returned no URL")?).map_err(|e| e.to_string())?;
+    let text = page["text"].as_str().unwrap_or("");
+    Ok(format_page(&url, page["title"].as_str().unwrap_or(""), text, true, count("offset", 0)?.min(usize::MAX as u64) as usize, count("max_chars", 20000)?.min(100000) as usize))
 }
 
 fn format_page(url: &Url, title: &str, text: &str, html: bool, offset: usize, max_chars: usize) -> String {
@@ -413,9 +457,10 @@ mod tests {
     }
     #[test]
     fn content_types_and_unicode_pagination() {
-        for mime in ["text/html; charset=utf-8", "application/xhtml+xml"] { assert_eq!(content_type(mime), Ok(true)); }
-        for mime in ["text/plain", "text/xml", "application/json", "application/xml", "application/problem+json"] { assert_eq!(content_type(mime), Ok(false)); }
-        for mime in ["image/png", "image/svg+xml", "image/custom+json", "application/feed+xml", "application/pdf", "unknown"] { assert!(content_type(mime).unwrap_err().contains("use browser_navigate")); }
+        for mime in ["text/html; charset=utf-8", "application/xhtml+xml"] { assert_eq!(content_type(mime), Ok(Kind::Html)); }
+        for mime in ["application/pdf", "application/PDF; charset=binary"] { assert_eq!(content_type(mime), Ok(Kind::Pdf)); }
+        for mime in ["text/plain", "text/xml", "application/json", "application/xml", "application/problem+json"] { assert_eq!(content_type(mime), Ok(Kind::Text)); }
+        for mime in ["image/png", "image/svg+xml", "image/custom+json", "application/feed+xml", "unknown"] { assert!(content_type(mime).unwrap_err().contains("use browser_navigate")); }
         let url = Url::parse("https://example.test/").unwrap();
         let text = "界".repeat(2100);
         let first = format_page(&url, "Title", &text, true, 1, 10);
@@ -426,5 +471,82 @@ mod tests {
         assert!(!format_page(&url, "", "short", false, 0, 20000).contains("JavaScript"));
         let long = format_page(&url, "", &"x".repeat(100001), false, 0, usize::MAX);
         assert!(long.ends_with("[Truncated: 1 more characters. Call web_fetch again with offset=100000.]"));
+    }
+
+    /// A one-page PDF whose content stream is `stream`, with a correct xref table.
+    fn pdf(stream: &str) -> Vec<u8> {
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+        ];
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, object) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n{object}\nendobj\n", i + 1).as_bytes());
+        }
+        let xref = out.len();
+        out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+        for offset in offsets { out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes()); }
+        out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1).as_bytes());
+        out
+    }
+    #[test]
+    fn pdf_text_is_extracted_and_empty_or_broken_pdfs_explain_themselves() {
+        let text = pdf_text(&pdf("BT /F1 18 Tf 20 100 Td (Quarterly report) Tj ET")).unwrap();
+        assert!(text.contains("Quarterly report"), "{text:?}");
+        assert!(pdf_text(&pdf("0 0 10 10 re f")).unwrap_err().contains("no extractable text"));
+        assert!(pdf_text(b"not a pdf at all").unwrap_err().starts_with("Could not read this PDF"));
+    }
+    #[test]
+    fn refused_fetches_say_to_use_the_browser() {
+        for (code, shown) in [(401, "401 Unauthorized"), (403, "403 Forbidden"), (429, "429 Too Many Requests"), (999, "999"), (404, "404 Not Found")] {
+            let message = status_error(reqwest::StatusCode::from_u16(code).unwrap());
+            assert!(message.starts_with(&format!("Web fetch failed: {shown}")), "{message}");
+            assert!(message.contains("The site refused an automated fetch") && message.contains("browser_navigate"), "{message}");
+        }
+        assert_eq!(status_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR), "Web fetch failed: 500 Internal Server Error");
+    }
+    #[test]
+    fn page_text_results_page_with_offset_and_max_chars() {
+        let page = json!({"title":"Doc","url":"https://example.test/a","text":"x".repeat(2500)});
+        let first = page_text_result(&page, &json!({"max_chars":1000})).unwrap();
+        assert!(first.starts_with("URL: https://example.test/a\nTitle: Doc\n"));
+        assert!(first.contains("offset=1000"));
+        let rest = page_text_result(&page, &json!({"offset":1000,"max_chars":5000})).unwrap();
+        assert!(!rest.contains("Truncated"));
+        assert!(page_text_result(&page, &json!({"offset":-1})).is_err());
+        assert!(page_text_result(&json!({"text":"x"}), &json!({})).is_err());
+    }
+    #[tokio::test]
+    async fn web_fetch_reads_a_served_pdf_and_reports_refusals() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let document = pdf("BT /F1 18 Tf 20 100 Td (Served over HTTP) Tj ET");
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else { return };
+                let document = document.clone();
+                tokio::spawn(async move {
+                    let mut buffer = [0u8; 1024];
+                    let n = socket.read(&mut buffer).await.unwrap_or(0);
+                    let refused = String::from_utf8_lossy(&buffer[..n]).contains("GET /refused");
+                    let head = if refused { "HTTP/1.1 999 Request denied\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string() }
+                        else { format!("HTTP/1.1 200 OK\r\nContent-Type: application/pdf\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", document.len()) };
+                    let _ = socket.write_all(head.as_bytes()).await;
+                    if !refused { let _ = socket.write_all(&document).await; }
+                });
+            }
+        });
+        let client = client().unwrap();
+        let settings = Settings::default();
+        let page = fetch(&client, &settings, &format!("http://127.0.0.1:{port}/a.pdf"), 0, 20000).await.unwrap();
+        assert!(page.contains("Served over HTTP"), "{page}");
+        let error = fetch(&client, &settings, &format!("http://127.0.0.1:{port}/refused"), 0, 20000).await.unwrap_err();
+        assert!(error.starts_with("Web fetch failed: 999") && error.contains("browser_navigate"), "{error}");
     }
 }
