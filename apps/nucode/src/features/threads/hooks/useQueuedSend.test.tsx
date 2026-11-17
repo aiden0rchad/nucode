@@ -51,7 +51,7 @@ describe("useQueuedSend", () => {
     expect(options.startReview).not.toHaveBeenCalled();
   });
 
-  it.each(["/context-size 400k", "/autocompact 80", "/autocompact"])("routes %s to the context command handler", async text => {
+  it.each(["/maxcontext 500k", "/context-size 400k", "/autocompact 290k", "/autocompact"])("routes %s to the context command handler", async text => {
     const options = makeOptions();
     const { result } = renderHook(() => useQueuedSend(options));
     await act(async () => { await result.current.handleSend(text); });
@@ -59,7 +59,7 @@ describe("useQueuedSend", () => {
     expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 
-  it.each(["/context-size 400k", "/autocompact 80"])("runs %s at once while a turn is running instead of queueing it", async text => {
+  it.each(["/maxcontext 500k", "/autocompact 290k"])("runs %s at once while a turn is running instead of queueing it", async text => {
     const options = { ...makeOptions(), isProcessing: true, activeThreadId: "thread-1" };
     const { result } = renderHook(() => useQueuedSend(options));
     await act(async () => { await result.current.handleSend(text); });

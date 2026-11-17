@@ -418,6 +418,8 @@ pub(crate) fn merge_models(existing: &mut Vec<ProviderModel>, fetched: Vec<Provi
     for mut model in fetched {
         if let Some(old) = existing.iter_mut().find(|m| m.id == model.id) {
             model.enabled = old.enabled;
+            model.compact_at = old.compact_at;
+            if model.context_window.is_none() { model.context_window = old.context_window; }
             model.detected_reasoning = model.reasoning.clone();
             if old.reasoning.as_ref().is_some_and(|r| r.source == "user") {
                 model.reasoning = old.reasoning.clone();
@@ -529,6 +531,7 @@ pub(crate) async fn fetch(
                         .get("context_length")
                         .or_else(|| entry.get("inputTokenLimit"))
                         .and_then(Value::as_u64),
+                    compact_at: None,
                     supports_tools: None,
                     supports_images: image_support(p.kind, id, entry),
                     supports_images_source: None,

@@ -244,13 +244,19 @@ pub(super) fn write_access(home: &Path, id: &str, mode: Option<&str>) -> Result<
 }
 
 fn settings_value(registry: &[ProviderEntry], auto_compact: &AutoCompact) -> Value {
-    let enabled: Vec<_> = registry.iter().filter(|p| p.enabled).flat_map(|p| p.models.iter().filter(|m| m.enabled).map(move |m| (format!("{}/{}", provider_id(p, registry), m.id), m.context_window))).collect();
+    let enabled: Vec<_> = registry.iter().filter(|p| p.enabled).flat_map(|p| p.models.iter().filter(|m| m.enabled).map(move |m| (format!("{}/{}", provider_id(p, registry), m.id), m))).collect();
     let mut compaction = json!({"enabled": auto_compact.enabled});
-    if let Some(percent) = auto_compact.percent {
-        // pi compacts when used > window - reserveTokens, so the reserve is the unused share.
-        let overrides: serde_json::Map<_, _> = enabled.iter().filter_map(|(key, window)| window.map(|w| (key.clone(), json!({"reserveTokens": (w - w * percent as u64 / 100).max(1024)})))).collect();
-        compaction["modelOverrides"] = Value::Object(overrides);
-    }
+    // pi compacts when used > window - reserveTokens, so the reserve is the unused share.
+    // A model's own compaction point wins over the global percentage.
+    let overrides: serde_json::Map<_, _> = enabled.iter().filter_map(|(key, m)| {
+        let reserve = match (m.compact_at, auto_compact.percent, m.context_window) {
+            (Some(at), _, _) => m.window().saturating_sub(at),
+            (None, Some(percent), Some(w)) => w - w * percent as u64 / 100,
+            _ => return None,
+        };
+        Some((key.clone(), json!({"reserveTokens": reserve.max(1024)})))
+    }).collect();
+    if !overrides.is_empty() { compaction["modelOverrides"] = Value::Object(overrides); }
     json!({"quietStartup":true,"enableInstallTelemetry":false,"enabledModels":enabled.iter().map(|(key, _)| key).collect::<Vec<_>>(),"compaction":compaction})
 }
 

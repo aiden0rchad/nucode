@@ -2191,14 +2191,14 @@ fn omp_models_are_yaml_compatible_and_do_not_contain_credentials() {
     let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
     let mut env = HashMap::new();
     profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &crate::types::ResponseStyle::Detailed, &mut env).unwrap();
-    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":true,"percent":80}));
+    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":true,"percent":80,"points":{}}));
     assert_eq!(env["NUCODE_RESPONSE_STYLE"], "detailed");
     let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(config["compaction"], json!({"enabled":true,"thresholdPercent":80}));
     profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &crate::types::ResponseStyle::default(), &mut env).unwrap();
     let off: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(off["compaction"], json!({"enabled":false}));
-    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":false,"percent":null}));
+    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":false,"percent":null,"points":{}}));
     assert_eq!(env["NUCODE_RESPONSE_STYLE"], "standard");
     assert_eq!(config["tools"], json!({"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]}));
     assert_eq!(config["browser"]["enabled"], false);
@@ -2676,6 +2676,32 @@ fn auto_compact_settings_reach_pi_settings_json() {
     assert_eq!(compaction["enabled"], true);
     assert_eq!(compaction["modelOverrides"], json!({"nucode-provider-a/model-b":{"reserveTokens":40000}}));
     std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn a_model_compaction_point_reaches_both_engines() {
+    let registry: Vec<ProviderEntry> = serde_json::from_value(json!([{"id":"provider-a","name":"A","kind":"openai-compatible","baseUrl":"http://localhost:9000/v1","enabled":true,"auth":{"type":"none"},"models":[{"id":"model-b","enabled":true,"contextWindow":300000,"compactAt":290000},{"id":"model-c","enabled":true,"compactAt":100000},{"id":"model-d","enabled":true,"contextWindow":200000}]}])).unwrap();
+    let dir = temp();
+    std::fs::create_dir_all(dir.join("extensions")).unwrap();
+    std::fs::create_dir_all(dir.join("nucode")).unwrap();
+    config::prepare(&dir, &registry, None, &crate::types::AutoCompact { enabled: true, percent: Some(80) }).unwrap();
+    let settings: Value = serde_json::from_slice(&std::fs::read(dir.join("settings.json")).unwrap()).unwrap();
+    // The point wins over the percentage, and a model without a window uses the 128k default.
+    assert_eq!(settings["compaction"]["modelOverrides"], json!({"nucode-provider-a/model-b":{"reserveTokens":10000},"nucode-provider-a/model-c":{"reserveTokens":28000},"nucode-provider-a/model-d":{"reserveTokens":40000}}));
+    let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
+    let mut env = HashMap::new();
+    profile.prepare(&dir, &registry, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: None }, &crate::types::ResponseStyle::Detailed, &mut env).unwrap();
+    let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
+    assert_eq!(config["compaction"], json!({"enabled":true,"modelThresholds":{"nucode-provider-a/model-b":"f290000","nucode-provider-a/model-c":"f100000"}}));
+    assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap()["points"], json!({"nucode-provider-a/model-b":290000,"nucode-provider-a/model-c":100000}));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn settings_reject_a_compaction_point_at_or_above_the_window() {
+    let with = |model: Value| { let mut s = crate::types::AppSettings::default(); s.providers = serde_json::from_value(json!([{"id":"p","name":"P","kind":"openai-compatible","enabled":true,"auth":{"type":"none"},"models":[model]}])).unwrap(); crate::shared::engine_registry::validate_settings(&s) };
+    assert!(with(json!({"id":"m","enabled":true,"contextWindow":300000,"compactAt":290000})).is_ok());
+    assert!(with(json!({"id":"m","enabled":true,"contextWindow":300000,"compactAt":300000})).is_err());
+    assert!(with(json!({"id":"m","enabled":true,"compactAt":128000})).is_err());
+    assert!(with(json!({"id":"m","enabled":true,"compactAt":500})).is_err());
 }
 #[test]
 fn response_style_defaults_to_standard_for_old_settings_and_round_trips() {

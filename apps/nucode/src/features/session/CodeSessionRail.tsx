@@ -104,7 +104,7 @@ const tokens = (value: number) => value.toLocaleString();
 const rowLabels = { messages: "Messages", mcpTools: "MCP tools", systemTools: "System tools", systemPrompt: "System prompt", skills: "Skills", memory: "Memory files", buffer: "Autocompact buffer", free: "Free space" } as const;
 const reportPercent = (report: ContextReport) => report.used === null || report.window <= 0 ? null : Math.min(100, Math.round(report.used / report.window * 100));
 
-function ContextReportView({ report, onCompact }: { report: ContextReport; onCompact?: () => void }) {
+function ContextReportView({ report }: { report: ContextReport }) {
   const percent = reportPercent(report);
   const share = (value: number | null) => value === null || report.window <= 0 ? "—" : `${(value / report.window * 100).toFixed(1)}%`;
   return <>
@@ -117,8 +117,13 @@ function ContextReportView({ report, onCompact }: { report: ContextReport; onCom
       {report.deferred.map(row => <div key={`deferred-${row.id}`} style={{ display: "contents" }}><dt><i data-context-row={row.id} />{rowLabels[row.id]} (deferred)</dt><dd>{formatK(row.tokens)}</dd><dd>—</dd></div>)}
     </dl>
     <details className="code-session-nested"><summary>MCP tools <span>{report.mcpTools.length}</span></summary>{report.mcpTools.length ? <ul className="code-context-tools">{report.mcpTools.map(name => <li key={name}>{name}</li>)}</ul> : <p className="code-session-muted">None declared</p>}</details>
-    <div className="code-context-footer"><span>{report.autoCompact ? (report.untilCompact === null ? "Auto-compact is on" : `${formatK(report.untilCompact)} until auto-compact`) : "Auto-compact is off"}</span>{onCompact && <button className="code-session-link" onClick={onCompact}>Compact session</button>}</div>
   </>;
+}
+
+/** Closes the Context card, after its lists, as one line: how far auto-compact is, and a compact button. */
+function ContextFooter({ report, onCompact }: { report: ContextReport; onCompact?: () => void }) {
+  const status = report.autoCompact ? (report.untilCompact === null ? "Auto-compact is on" : `${formatK(report.untilCompact)} until auto-compact`) : "Auto-compact is off";
+  return <div className="code-context-footer"><span title={status}>{status}</span>{onCompact && <button className="code-context-compact" onClick={onCompact}>Compact session</button>}</div>;
 }
 
 export function CodeSessionRail(props: CodeSessionRailProps) {
@@ -187,7 +192,7 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
       <details className="code-session-nested"><summary><RadioTower aria-hidden />Remote access <span>{props.remote.mode === "remote" ? "Remote" : "Local"}</span></summary><p className="code-session-muted">{props.remote.mode === "remote" ? `Daemon · ${props.remote.host}` : "Local backend configured"}</p><button className="code-session-link" onClick={() => props.onOpenSettings("server")}>Settings</button></details>
     </>,
     Context: <>
-      {props.contextReport ? <ContextReportView report={props.contextReport} onCompact={props.onCompact} /> : usage ? <><div className="code-session-row"><span>{usage.detailed ? "Latest reported usage" : "Context used"}</span><strong>{usage.percent === null ? "Capacity unknown" : `${usage.percent}%`}</strong></div>
+      {props.contextReport ? <ContextReportView report={props.contextReport} /> : usage ? <><div className="code-session-row"><span>{usage.detailed ? "Latest reported usage" : "Context used"}</span><strong>{usage.percent === null ? "Capacity unknown" : `${usage.percent}%`}</strong></div>
         <div className="code-context-bar" role="meter" aria-label={usage.detailed ? "Latest exchange relative to model capacity" : "Context usage"} aria-valuemin={0} aria-valuemax={usage.capacity ?? Math.max(usage.used, 1)} aria-valuenow={Math.min(usage.used, usage.capacity ?? usage.used)} aria-valuetext={`${tokens(usage.used)} tokens${usage.capacity ? ` of ${tokens(usage.capacity)}` : "; model capacity unavailable"}`}>
           {(usage.detailed ? [{ id: "input", value: usage.input }, { id: "cache", value: usage.cached }, { id: "output", value: usage.output }, { id: "other", value: usage.other }] : [{ id: "input", value: usage.used }]).map(segment => <span key={segment.id} data-kind={segment.id} style={{ width: `${Math.min(100, segment.value / Math.max(usage.capacity ?? usage.used, usage.used, 1) * 100)}%` }} />)}
         </div><p className="code-session-muted">{tokens(usage.used)}{usage.capacity ? ` / ${tokens(usage.capacity)}` : ""} tokens</p>
@@ -196,6 +201,7 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
       {!props.contextReport && <details className="code-session-nested"><summary>MCP tools</summary><p className="code-session-muted">{props.connectors.length} enabled connectors</p><button className="code-session-link" onClick={() => props.onOpenSettings("connectors")}>Manage connectors</button></details>}
       <details className="code-session-nested"><summary>Skills {props.skillsAvailable && <span>{props.skills.length}</span>}</summary>{props.skillsAvailable ? props.skills.length ? props.skills.map(skill => <button key={skill.path} className="code-session-file" title={skill.path} onClick={() => openFile(skill.path)}>{skill.name}</button>) : <p className="code-session-muted">No skills reported.</p> : <p className="code-session-muted">Skill inventory not reported</p>}<button className="code-session-link" onClick={() => props.onOpenSettings("agents")}>Agent settings</button></details>
       <details className="code-session-nested"><summary>Memory files <span>{props.memoryFiles.length}</span></summary>{props.memoryFiles.length ? props.memoryFiles.map(path => <button className="code-session-file" key={path} onClick={() => openFile(path)}>{path}</button>) : <p className="code-session-muted">None detected</p>}</details>
+      {props.contextReport && <ContextFooter report={props.contextReport} onCompact={props.onCompact} />}
     </>,
     Connectors: <>{props.connectorsLoading ? <p className="code-session-muted">Loading…</p> : props.connectorError ? <p role="alert">{props.connectorError}</p> : props.connectors.length ? props.connectors.map(connector => <details className="code-session-connector" key={connector.id}>
       <summary><Plug size={12} aria-hidden /><span>{connector.name || connector.id}</span></summary>

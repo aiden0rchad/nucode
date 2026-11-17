@@ -49,9 +49,11 @@ export default function (pi: ExtensionAPI) {
         autoCompact = compaction?.enabled !== false;
       } else {
         // omp has no settings API; nucode passes its compaction choice in the environment.
-        const setting = JSON.parse(process.env.NUCODE_AUTOCOMPACT || "{}") as { enabled?: boolean; percent?: number | null };
+        const setting = JSON.parse(process.env.NUCODE_AUTOCOMPACT || "{}") as { enabled?: boolean; percent?: number | null; points?: Record<string, number> };
         autoCompact = setting.enabled !== false;
-        reserve = typeof setting.percent === "number" ? usage.contextWindow - Math.floor(usage.contextWindow * setting.percent / 100) : null;
+        const point = setting.points?.[`${ctx.model.provider}/${ctx.model.id}`];
+        reserve = typeof point === "number" ? Math.max(0, usage.contextWindow - point)
+          : typeof setting.percent === "number" ? usage.contextWindow - Math.floor(usage.contextWindow * setting.percent / 100) : null;
       }
       const report = contextReport({ ...captured, tools: pi.getAllTools(), activeTools: pi.getActiveTools(), usedTokens: usage.tokens, window: usage.contextWindow, reserve, autoCompact });
       ctx.ui.setStatus("nucode-context", JSON.stringify(report));

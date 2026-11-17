@@ -55,6 +55,7 @@ pub(crate) fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     for engine in &settings.engines { validate(engine)?; if !ids.insert(&engine.id) { return Err("Duplicate engine ID".into()); } }
     if settings.auto_compact.percent.is_some_and(|p| !(50..=95).contains(&p)) { return Err("Auto-compact percent must be between 50 and 95".into()); }
     if settings.providers.iter().flat_map(|p| &p.models).any(|m| m.context_window.is_some_and(|n| !(8_000..=10_000_000).contains(&n))) { return Err("Context size must be between 8,000 and 10,000,000 tokens".into()); }
+    if settings.providers.iter().flat_map(|p| &p.models).any(|m| m.compact_at.is_some_and(|n| n < 1_000 || n >= m.window())) { return Err("The auto-compact point must be at least 1,000 tokens and below the context size".into()); }
     if !registry(settings).iter().any(|e| e.enabled) { return Err("Keep at least one engine enabled".into()); }
     Ok(())
 }

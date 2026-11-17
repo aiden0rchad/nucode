@@ -112,7 +112,7 @@ describe("useComposerAutocompleteState slash commands", () => {
       "goal",
       "new",
       "compact",
-      "context-size",
+      "maxcontext",
       "autocompact",
     ]);
   });

@@ -1715,6 +1715,9 @@ pub(crate) struct ProviderModel {
     pub display_name: Option<String>,
     pub enabled: bool,
     pub context_window: Option<u64>,
+    /// Tokens of context at which this model auto-compacts; below the window.
+    #[serde(default)]
+    pub compact_at: Option<u64>,
     pub supports_tools: Option<bool>,
     pub supports_images: Option<bool>,
     #[serde(default)]
@@ -1723,6 +1726,11 @@ pub(crate) struct ProviderModel {
     pub detected_supports_images: Option<bool>,
     pub reasoning: Option<ReasoningCapability>,
     pub detected_reasoning: Option<ReasoningCapability>,
+}
+impl ProviderModel {
+    /// Context window nucode assumes when none is set.
+    pub const DEFAULT_WINDOW: u64 = 128_000;
+    pub fn window(&self) -> u64 { self.context_window.unwrap_or(Self::DEFAULT_WINDOW) }
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

@@ -71,14 +71,15 @@ type SlashCommandKind =
   | "resume"
   | "review"
   | "status"
+  | "maxcontext"
   | "context-size"
   | "autocompact";
 
 // These only change a setting that applies from the next turn, so they need not wait for the running one.
-const immediateCommands: ReadonlySet<SlashCommandKind> = new Set(["context-size", "autocompact"]);
+const immediateCommands: ReadonlySet<SlashCommandKind> = new Set(["maxcontext", "context-size", "autocompact"]);
 
 function parseSlashCommand(text: string): SlashCommandKind | null {
-  const match = /^\/(compact|fast|fork|mcp|new|resume|review|status|context-size|autocompact)(?=\s|$)/i.exec(text);
+  const match = /^\/(compact|fast|fork|mcp|new|resume|review|status|maxcontext|context-size|autocompact)(?=\s|$)/i.exec(text);
   return match ? match[1].toLowerCase() as SlashCommandKind : null;
 }
 
@@ -188,7 +189,7 @@ export function useQueuedSend({
         await startStatus(trimmed);
         return;
       }
-      if (command === "context-size" || command === "autocompact") {
+      if (command === "maxcontext" || command === "context-size" || command === "autocompact") {
         await startContextCommand(trimmed);
         return;
       }
