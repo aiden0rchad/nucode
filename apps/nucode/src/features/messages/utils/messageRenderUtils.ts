@@ -430,6 +430,7 @@ const BROWSER_VERBS: Record<string, [string, string[]]> = {
   browser_navigate: ["Opened", ["url"]],
   browser_navigate_back: ["Went back", []],
   browser_snapshot: ["Read page", []],
+  browser_get_text: ["Read page", []],
   browser_take_screenshot: ["Took screenshot", []],
   browser_click: ["Clicked", ["element", "target", "ref"]],
   browser_type: ["Typed into", ["element", "target", "ref"]],

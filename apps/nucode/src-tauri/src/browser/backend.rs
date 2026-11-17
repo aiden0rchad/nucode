@@ -77,6 +77,7 @@ pub fn supported_tools() -> &'static [&'static str] {
         "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form",
         "browser_evaluate", "browser_scroll", "browser_wait_for", "browser_tabs",
         "browser_close", "browser_take_screenshot", "browser_console_messages", "browser_handle_dialog",
+        "browser_get_text",
     ]
 }
 
@@ -91,6 +92,14 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
                         "x":{"type":"number","description":"Horizontal pixels (+right)"},
                         "y":{"type":"number","description":"Vertical pixels (+down)"},
                         "ref":{"type":"string","description":"Snapshot ref or unique selector to scroll into view. With x/y, scroll inside the element instead."}
+                    },"additionalProperties":false}}));
+            }
+            if !tools.iter().any(|tool| tool["name"] == "browser_get_text") {
+                tools.push(json!({"name":"browser_get_text",
+                    "description":"Read-only: the title, URL and readable text of the current page (the article or main content when the page has one, otherwise the whole body), without refs or element detail. Use it to read a page; use browser_snapshot when you need refs to click or type. Long pages continue with offset.",
+                    "inputSchema":{"type":"object","properties":{
+                        "offset":{"type":"integer","minimum":0,"description":"Character to start from, to continue a truncated page"},
+                        "max_chars":{"type":"integer","description":"Most characters to return (default 20000, at most 100000)"}
                     },"additionalProperties":false}}));
             }
             let input = ["browser_click", "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form"];
@@ -152,6 +161,10 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
             let target = args.get("target").filter(|v| !v.is_null() && **v != "").or_else(|| args.get("ref").filter(|v| !v.is_null() && **v != ""));
             let target = target.map(|v| v.as_str().ok_or("Invalid evaluation target")).transpose()?;
             backend.request(json!({"action":"evaluate","function":function,"ref":target})).await?
+        },
+        "browser_get_text" => {
+            let page = backend.request(json!({"action":"script","op":"text"})).await?;
+            return Ok(json!({"content":[{"type":"text","text":super::web::page_text_result(&page, &args)?}]}));
         },
         "browser_scroll" => backend.scroll(args).await?,
         "browser_wait_for" => backend.wait_for(args).await?,
@@ -315,6 +328,19 @@ mod tests {
             let result = tool(&TabResults(cdp.clone()), "browser_snapshot", json!({})).await.unwrap();
             assert_eq!(result["content"][0]["text"], cdp.to_string());
         }
+    }
+    #[tokio::test]
+    async fn get_text_pages_the_pages_readable_text_and_is_listed_for_native() {
+        let page = json!({"title":"Report","url":"https://example.test/r","text":"y".repeat(1500)});
+        let result = tool(&TabResults(page.clone()), "browser_get_text", json!({"max_chars":1000})).await.unwrap();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with("URL: https://example.test/r\nTitle: Report\n") && text.contains("offset=1000"), "{text}");
+        let rest = tool(&TabResults(page), "browser_get_text", json!({"offset":1000})).await.unwrap();
+        assert!(!rest["content"][0]["text"].as_str().unwrap().contains("Truncated"));
+        let mut native = json!({"result":{"tools":[]}});
+        filter_tools(&mut native, true, crate::types::WebSearchProvider::Searxng);
+        let listed = native["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "browser_get_text").unwrap();
+        assert!(listed["description"].as_str().unwrap().starts_with("Read-only"));
     }
     #[tokio::test]
     async fn tool_tabs_keep_only_public_fields_and_actionable_errors() {

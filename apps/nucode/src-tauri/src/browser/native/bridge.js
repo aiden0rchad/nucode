@@ -215,6 +215,10 @@
           items.push(item); if (el) nodes.set(item.ref, el);
         }
         result = { nodes: items, truncated };
+      } else if (p.op === "text") {
+        // The readable part of the page: the article or main region when there is one, else the whole body.
+        const root = document.querySelector("article, main, [role=main]") || document.body;
+        result = { title: document.title, url: location.href, text: (root?.innerText || "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 1000000) };
       } else if (p.op === "mark" || p.op === "unmark") {
         if (!/^data-nucode-evaluate-[a-f0-9-]{36}$/.test(p.marker)) throw new Error("Invalid evaluation marker");
         if (p.op === "mark") target(p.ref).setAttribute(p.marker, "");

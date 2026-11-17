@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
-import { connectorDecision, type Connector } from "./lib/connectors.ts";
+import { canonicalMcpName, connectorVerdict, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
@@ -62,22 +62,44 @@ export default function (pi: ExtensionAPI) {
   pi.on("turn_end", reportContext);
   pi.on("agent_end", reportContext);
   pi.on("session_compact", reportContext);
+  // Do not offer connector tools whose policy decision is a fixed block for this run; the tool_call gate still enforces.
+  const hidden = new Set<string>();
+  const verdictFor = (home: string, toolName: string, ctx: any) => {
+    const servers = JSON.parse(readFileSync(join(home, "nucode/connectors.json"), "utf8")) as Connector[];
+    const name = canonicalMcpName(servers, toolName);
+    if (!name) return { decision: "block" } as const;
+    const read = () => JSON.parse(readFileSync(join(home, "nucode/threads", `${process.env.NUCODE_SESSION_KEY}.json`), "utf8")) as Access;
+    return connectorVerdict(servers, name, process.env.NUCODE_SUBAGENT_DEPTH && process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : read().accessMode, !!ctx.hasUI && !process.env.NUCODE_SUBAGENT_DEPTH);
+  };
+  const hideBlockedConnectorTools = async (ctx: any) => {
+    try {
+      const home = process.env.PI_CODING_AGENT_DIR, session = process.env.NUCODE_SESSION_KEY;
+      if (!home || !session || !/^[\w-]+$/.test(session) || typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
+      const active = pi.getActiveTools();
+      const next = active.filter((name: string) => !name.startsWith("mcp__") || verdictFor(home, name, ctx).decision !== "block");
+      // Tools hidden earlier come back if a changed access mode now allows them.
+      const restored = [...hidden].filter(name => !active.includes(name) && verdictFor(home, name, ctx).decision !== "block");
+      for (const name of active) if (!next.includes(name)) hidden.add(name);
+      for (const name of restored) { hidden.delete(name); next.push(name); }
+      if (next.length !== active.length || next.some((name: string, i: number) => name !== active[i])) await pi.setActiveTools(next);
+    } catch {}
+  };
+  pi.on("before_agent_start", async (_event, ctx) => { await hideBlockedConnectorTools(ctx); });
   pi.on("session_start", async (_event, ctx) => {
     if (process.env.NUCODE_OMP === "1") {
       const features = JSON.parse(process.env.NUCODE_FEATURES || "{}");
       await pi.setActiveTools(pi.getActiveTools().filter(name => ["read", "bash", "edit", "write", "grep", "glob", "lsp", "debug", "eval"].includes(name) || (["subagent", "report_verification"].includes(name) && features.subagents !== false) || (name.startsWith("mcp__") && features.connectors !== false)));
     }
+    await hideBlockedConnectorTools(ctx);
     ctx.ui.setStatus("nucode-gate", "ready");
   });
   pi.on("tool_call", async (event, ctx) => {
     if (process.env.NUCODE_OMP === "1") {
       if (["task", "browser", "computer", "login"].includes(event.toolName)) return { block: true, reason: "Use nucode-managed tools and subagents" };
       if (event.toolName.startsWith("mcp__") && !event.toolName.slice(5).includes("__")) {
-        const connectors = JSON.parse(readFileSync(join(process.env.PI_CODING_AGENT_DIR!, "nucode/connectors.json"), "utf8")) as Connector[];
-        const connector = connectors.sort((a, b) => b.id.length - a.id.length).find(c => event.toolName.startsWith(`mcp__${c.id.replace(/-/g, "_")}_`));
-        if (!connector) return { block: true, reason: "Unknown connector" };
-        const prefix = `mcp__${connector.id.replace(/-/g, "_")}_`;
-        event = { ...event, toolName: prefix.slice(0, -1) + "__" + event.toolName.slice(prefix.length) };
+        const name = canonicalMcpName(JSON.parse(readFileSync(join(process.env.PI_CODING_AGENT_DIR!, "nucode/connectors.json"), "utf8")) as Connector[], event.toolName);
+        if (!name) return { block: true, reason: "Unknown connector" };
+        event = { ...event, toolName: name };
       }
     }
     if (process.env.NUCODE_CHAT === "1" && !(process.env.NUCODE_CHAT_WEB === "1" && ["mcp__nucode_browser__browser_navigate", "mcp__nucode_browser__browser_snapshot", "mcp__nucode_browser__browser_take_screenshot", "mcp__nucode_browser__web_search", "mcp__nucode_browser__web_fetch"].includes(event.toolName))) return { block: true, reason: "Tools are disabled in Chat mode" };
@@ -130,17 +152,17 @@ export default function (pi: ExtensionAPI) {
     const file = join(home, "nucode", "threads", `${session}.json`);
     const read = () => JSON.parse(readFileSync(file, "utf8")) as Access;
     if (event.toolName.startsWith("mcp__")) {
-      const decideMcp = () => {
+      const decideMcp = (): { decision: "allow" | "ask" | "block"; reason?: string } => {
         try {
-          return connectorDecision(JSON.parse(readFileSync(join(home, "nucode/connectors.json"), "utf8")) as Connector[], event.toolName, process.env.NUCODE_SUBAGENT_DEPTH && process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : read().accessMode, ctx.hasUI && !process.env.NUCODE_SUBAGENT_DEPTH);
-        } catch { return "block"; }
+          return connectorVerdict(JSON.parse(readFileSync(join(home, "nucode/connectors.json"), "utf8")) as Connector[], event.toolName, process.env.NUCODE_SUBAGENT_DEPTH && process.env.NUCODE_TOOL_ACCESS === "read-only" ? "read-only" : read().accessMode, ctx.hasUI && !process.env.NUCODE_SUBAGENT_DEPTH);
+        } catch { return { decision: "block" }; }
       };
-      const decision = decideMcp();
+      const { decision, reason } = decideMcp();
       if (decision === "allow") return;
-      if (decision === "block") return { block: true, reason: "Connector tool blocked by nucode policy" };
+      if (decision === "block") return { block: true, reason: reason ?? "Connector tool blocked by nucode policy" };
       const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, tool: event.toolName, command: event.toolName, cwd: ctx.cwd });
       const answer = await ctx.ui.select(title, ["Allow", "Block"]);
-      if (answer !== "Allow" || decideMcp() === "block") return { block: true, reason: "Connector call denied" };
+      if (answer !== "Allow" || decideMcp().decision === "block") return { block: true, reason: "Connector call denied" };
       return;
     }
     // Strict tool-call layers send every optional field; OMP service mode rejects any bash timeout.

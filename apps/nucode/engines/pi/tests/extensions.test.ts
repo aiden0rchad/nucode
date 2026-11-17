@@ -338,3 +338,29 @@ test("Work preview starts share bash policy; cleanup stays available without rew
     assert.equal((await handler(event, ctx)).block, true);
   } finally { for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; } }
 });
+
+test("the gate hides connector tools whose policy decision is a fixed block, and restores them when the mode allows", async (t) => {
+  const keys = ["NUCODE_OMP", "NUCODE_CHAT", "NUCODE_WORK", "PI_CODING_AGENT_DIR", "NUCODE_SESSION_KEY", "NUCODE_SUBAGENT_DEPTH", "NUCODE_TOOL_ACCESS"];
+  const previous = keys.map(key => process.env[key]);
+  t.after(() => keys.forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]));
+  for (const key of keys) delete process.env[key];
+  process.env.PI_CODING_AGENT_DIR = home;
+  process.env.NUCODE_SESSION_KEY = "hide";
+  const setMode = (accessMode: string) => writeFileSync(join(home, "nucode/threads/hide.json"), JSON.stringify({ accessMode, sessionAllow: [] }));
+  writeFileSync(join(home, "nucode/connectors.json"), JSON.stringify([{ id: "nucode-browser", enabled: true, approval: "ask" }]));
+  let active = ["read", "mcp__nucode_browser__browser_click", "mcp__nucode_browser__browser_get_text", "mcp__nucode_browser__browser_snapshot"];
+  const handlers: Record<string, any> = {};
+  gate({ on: (name: string, fn: any) => { handlers[name] = fn; }, getActiveTools: () => active, setActiveTools: async (names: string[]) => { active = names; } } as any);
+  const ctx = { cwd, hasUI: true, ui: { setStatus() {} } };
+  setMode("read-only");
+  await handlers.before_agent_start({}, ctx);
+  assert.deepEqual(active, ["read", "mcp__nucode_browser__browser_get_text", "mcp__nucode_browser__browser_snapshot"]);
+  setMode("ask");
+  await handlers.before_agent_start({}, ctx);
+  assert.ok(active.includes("mcp__nucode_browser__browser_click"));
+  const noUi = { ...ctx, hasUI: false };
+  await handlers.before_agent_start({}, noUi);
+  assert.ok(!active.includes("mcp__nucode_browser__browser_click"));
+  const result = await handlers.tool_call({ toolName: "mcp__nucode_browser__browser_click", toolCallId: "x", input: {} }, noUi);
+  assert.match(result.reason, /browser_click is unavailable.*browser_get_text/);
+});

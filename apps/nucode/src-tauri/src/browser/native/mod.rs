@@ -778,7 +778,9 @@ impl NativeBackend {
                 if p["op"] == "click" && agent && pointer_click(&view, &p, url.as_str()).await {
                     return Ok(json!({"performed":true}));
                 }
+                let text = p["op"] == "text";
                 let mut result = macos::script(&view, p).await?;
+                if text && macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
                 if snapshot && !macos::sensitive(&view).await? {
                     match macos::evaluate_page(&view, hooks(json!({"action":"snapshot"})), url.as_str()).await {
                         Ok(note) => if let Some(note) = note.as_str().filter(|s| !s.is_empty()) {
@@ -1095,7 +1097,7 @@ async fn pointer_click(view: &Webview, p: &Value, url: &str) -> bool {
 
 fn needs_ready_page(p: &Value) -> bool {
     matches!(p["action"].as_str(), Some("evaluate" | "screenshot" | "console" | "idle")) ||
-        (p["action"] == "script" && matches!(p["op"].as_str(), Some("snapshot" | "click" | "type" | "press" | "select" | "scroll" | "fill")))
+        (p["action"] == "script" && matches!(p["op"].as_str(), Some("snapshot" | "text" | "click" | "type" | "press" | "select" | "scroll" | "fill")))
 }
 
 const STILL_LOADING: &str = "The page is still loading; try again in a moment";
@@ -1437,7 +1439,7 @@ mod tests {
         for action in ["evaluate", "screenshot", "console", "idle"] {
             assert!(needs_ready_page(&json!({"action":action})));
         }
-        for op in ["snapshot", "click", "type", "press", "select", "scroll", "fill"] {
+        for op in ["snapshot", "text", "click", "type", "press", "select", "scroll", "fill"] {
             assert!(needs_ready_page(&json!({"action":"script","op":op})));
         }
         for action in ["navigate", "tabs", "close", "stop", "dialog", "poll"] {

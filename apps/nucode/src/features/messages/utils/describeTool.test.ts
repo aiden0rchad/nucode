@@ -8,6 +8,9 @@ type Tool = Extract<ConversationItem, { kind: "tool" }>;
 const tool = (patch: Partial<Tool>): Tool => ({ id: Math.random().toString(36), kind: "tool", toolType: "mcpToolCall", title: "", detail: "", status: "completed", ...patch } as Tool);
 
 describe("describeTool", () => {
+  it("labels the read-only page text tool like a snapshot", () => {
+    expect(describeTool(tool({ title: "Tool: nucode-browser / browser_get_text", detail: "{}" }))).toEqual({ verb: "Read page", target: "", category: "browser" });
+  });
   it("renders background web tools as search and reading with a globe", () => {
     const search = tool({ title: "Tool: Browser / web_search", detail: JSON.stringify({ query: "Rust docs" }) });
     const fetch = tool({ title: "Tool: nucode-browser / web_fetch", detail: JSON.stringify({ url: "https://example.test/docs/" }) });

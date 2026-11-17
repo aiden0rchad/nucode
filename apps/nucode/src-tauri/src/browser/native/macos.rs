@@ -6,6 +6,7 @@ use objc2_foundation::{NSDictionary, NSError, NSString, NSObjectProtocol};
 use objc2_web_kit::{WKContentWorld, WKWebView, WKScriptMessageHandler};
 use serde_json::{json, Value};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::Webview;
 #[path = "accessibility.rs"]
 mod accessibility;
@@ -34,13 +35,21 @@ pub(super) fn parse_page_url(url: Option<String>) -> Result<tauri::Url, String> 
 // tauri's Webview::url() unwraps WKWebView.URL, which stays nil until a page's first load commits;
 // that panic on the main thread ended the app when an agent read a just-created tab.
 pub async fn page_url(view: &Webview) -> Result<tauri::Url, String> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    view.with_webview(move |platform| unsafe {
-        let wk = &*(platform.inner() as *const WKWebView);
-        let _ = tx.send(wk.URL().and_then(|url| url.absoluteString()).map(|url| url.to_string()));
-    }).map_err(|e| e.to_string())?;
-    parse_page_url(rx.await.map_err(|_| "Browser page closed".to_string())?)
+    // The URL stays nil until the first load commits (right after a navigation); wait for it instead of failing.
+    let deadline = tokio::time::Instant::now() + PAGE_URL_WAIT;
+    loop {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        view.with_webview(move |platform| unsafe {
+            let wk = &*(platform.inner() as *const WKWebView);
+            let _ = tx.send(wk.URL().and_then(|url| url.absoluteString()).map(|url| url.to_string()));
+        }).map_err(|e| e.to_string())?;
+        match parse_page_url(rx.await.map_err(|_| "Browser page closed".to_string())?) {
+            Err(_) if tokio::time::Instant::now() < deadline => tokio::time::sleep(Duration::from_millis(100)).await,
+            result => return result,
+        }
+    }
 }
+const PAGE_URL_WAIT: Duration = Duration::from_secs(10);
 /// WebKit's message when a page's CSP sandbox forbids scripts (file previews, many PDF hosts). The private
 /// bridge's own world still runs; page-world calls (evaluate, console, dialogs) fail.
 const NO_PAGE_SCRIPTS: &str = "Cannot execute JavaScript in this document";
