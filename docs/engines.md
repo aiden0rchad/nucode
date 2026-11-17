@@ -98,7 +98,12 @@ available when supported by the installed runtime; each native call requires an
 explicit interactive approval, and is denied in read-only threads and subagents.
 Native omp task/browser/computer/login tools are excluded. Nucode supplies its
 own bounded subagents and browser/computer MCP tools. Project MCP configuration,
-external rules, skills and extensions are disabled in the omp profile.
+external rules and extensions are disabled in the omp profile. Skills are not
+discovered by omp: the profile turns off every skill source (project and user
+folders, plugins) and points omp at one folder of links that nucode rebuilds before
+each launch, holding only the skills enabled in Settings → Skills. pi gets the same
+skills as explicit `--skill` paths, and Codex reads links in its managed home.
+Chat loads none, and Work only its bundled skills. See [Skills](skills.md).
 
 For ACP, nucode filters supplied MCP servers, sends feature restrictions in session
 metadata, and denies permission requests for disabled native capabilities. Arbitrary

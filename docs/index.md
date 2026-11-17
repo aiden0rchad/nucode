@@ -60,6 +60,7 @@ features:
 | Understand models, engines, and connectors | [FAQ](faq.md#what-is-the-difference-between-a-provider-a-model-an-engine-and-a-connector) |
 | Work with more than one agent | [Agents & Chain of Command](agents.md) |
 | Add tools or code intelligence | [MCP connectors & CodeGraph](connectors.md) |
+| Teach agents a task with a skill pack | [Skills](skills.md) |
 | Understand what can leave your computer | [Privacy, storage & trust](privacy.md) |
 | Fix a failed request or installation | [Troubleshooting](troubleshooting.md) |
 | Build, test, or contribute | [Development](development.md) |

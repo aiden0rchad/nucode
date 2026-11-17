@@ -1080,6 +1080,11 @@ async fn spawn_codex_engine<E: EventSink>(
             return Err("Configure providers and models in nucode Settings; account and provider overrides in Codex arguments are disabled".into());
         }
     }
+    // Codex reads skills from its managed home, which holds only links to the enabled ones.
+    if let Some(data) = home.ancestors().nth(2) {
+        let skills = crate::shared::skills::resolve(data, &settings.skills);
+        let _ = crate::shared::skills::sync_links(&home.join("skills"), &skills.enabled().collect::<Vec<_>>());
+    }
     let mut provider_env = crate::shared::engines::prepare_codex(
         &home,
         &settings.providers,

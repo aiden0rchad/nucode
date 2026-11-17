@@ -33,7 +33,7 @@ if args.session_dir:
             assert json.loads((pathlib.Path(os.environ["PI_CODING_AGENT_DIR"]) / "mcp.json").read_text())["mcpServers"] == {}
         # Compare resolved paths: macOS temp dirs live under /var, a link to /private/var.
         assert pathlib.Path.cwd().resolve() == pathlib.Path(header["cwd"]).resolve()
-        session.with_suffix(".spawn").write_text(json.dumps({"args": sys.argv, "cwd": header["cwd"]}))
+    session.with_suffix(".spawn").write_text(json.dumps({"args": sys.argv, "cwd": header["cwd"]}))
 
 
 def record(request):

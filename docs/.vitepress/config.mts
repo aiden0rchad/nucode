@@ -47,6 +47,7 @@ export default defineConfig({
       ] },
       { text: 'Connect & customize', items: [
         { text: 'MCP connectors & CodeGraph', link: '/connectors' },
+        { text: 'Skills', link: '/skills' },
         { text: 'Browser', link: '/browser' },
         { text: 'Computer use & permissions', link: '/computer-use' },
         { text: 'Themes & appearance', link: '/themes' },

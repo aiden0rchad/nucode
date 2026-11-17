@@ -725,6 +725,15 @@ export async function getCollaborationModes(workspaceId: string) {
 
 
 
+export type ResolvedSkill = { name: string; description: string; path: string; source: "library" | "claudeCode" | "codex" | "agents"; enabled: boolean };
+export type SkillWarning = { path: string; message: string };
+export type SkillsResolution = { skills: ResolvedSkill[]; warnings: SkillWarning[] };
+export type SkillsInstall = { installed: string[]; conflicts: string[]; warnings: SkillWarning[] };
+/** nucode's own skill library plus the enabled Claude Code, Codex and agents folders. */
+export function skillsRequest<T = unknown>(action: "resolve" | "install" | "remove", params: Record<string, unknown> = {}): Promise<T> {
+  return invoke<T>("skills_request", { action, params });
+}
+
 export async function getSkillsList(workspaceId: string) {
   return invoke<any>("skills_list", { workspaceId });
 }

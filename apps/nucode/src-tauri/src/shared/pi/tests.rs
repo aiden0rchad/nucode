@@ -2190,12 +2190,20 @@ fn omp_models_are_yaml_compatible_and_do_not_contain_credentials() {
     std::fs::create_dir_all(dir.join("nucode")).unwrap();
     let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
     let mut env = HashMap::new();
-    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &crate::types::ResponseStyle::Detailed, &mut env).unwrap();
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: Some(80) }, &crate::types::ResponseStyle::Detailed, None, &mut env).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":true,"percent":80,"points":{}}));
     assert_eq!(env["NUCODE_RESPONSE_STYLE"], "detailed");
     let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(config["compaction"], json!({"enabled":true,"thresholdPercent":80}));
-    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &crate::types::ResponseStyle::default(), &mut env).unwrap();
+    // No skill discovery of its own: only the one folder of links nucode generates (none here).
+    assert_eq!(config["skills"]["customDirectories"], json!([]));
+    for key in ["enableCodexUser", "enableClaudeUser", "enableClaudeProject", "enablePiUser", "enablePiProject", "enableAgentsUser", "enableAgentsProject"] { assert_eq!(config["skills"][key], false, "{key}"); }
+    assert!(config["disabledProviders"].as_array().unwrap().iter().any(|p| p == "github"));
+    let linked = dir.join("nucode-skills");
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: None }, &crate::types::ResponseStyle::default(), Some(&linked), &mut env).unwrap();
+    let on: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
+    assert_eq!(on["skills"]["customDirectories"], json!([linked.to_string_lossy()]));
+    profile.prepare(&dir, &providers, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: false, percent: None }, &crate::types::ResponseStyle::default(), None, &mut env).unwrap();
     let off: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(off["compaction"], json!({"enabled":false}));
     assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap(), json!({"enabled":false,"percent":null,"points":{}}));
@@ -2689,7 +2697,7 @@ fn a_model_compaction_point_reaches_both_engines() {
     assert_eq!(settings["compaction"]["modelOverrides"], json!({"nucode-provider-a/model-b":{"reserveTokens":10000},"nucode-provider-a/model-c":{"reserveTokens":28000},"nucode-provider-a/model-d":{"reserveTokens":40000}}));
     let profile = profile::EngineProfile { definition: crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0 };
     let mut env = HashMap::new();
-    profile.prepare(&dir, &registry, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: None }, &crate::types::ResponseStyle::Detailed, &mut env).unwrap();
+    profile.prepare(&dir, &registry, &crate::types::Features::default(), &crate::types::AutoCompact { enabled: true, percent: None }, &crate::types::ResponseStyle::Detailed, None, &mut env).unwrap();
     let config: Value = serde_json::from_slice(&std::fs::read(dir.join("config.yml")).unwrap()).unwrap();
     assert_eq!(config["compaction"], json!({"enabled":true,"modelThresholds":{"nucode-provider-a/model-b":"f290000","nucode-provider-a/model-c":"f100000"}}));
     assert_eq!(serde_json::from_str::<Value>(&env["NUCODE_AUTOCOMPACT"]).unwrap()["points"], json!({"nucode-provider-a/model-b":290000,"nucode-provider-a/model-c":100000}));
@@ -3290,5 +3298,38 @@ async fn a_new_thread_waiting_on_the_keychain_says_so_under_the_id_it_will_get()
     let keychain = json!(if cfg!(target_os = "macos") { "macosKeychain" } else { "systemKeychain" });
     assert_eq!(recorded(), [(id.clone(), keychain), (id.clone(), Value::Null), (id, json!("started"))]);
     engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn code_engines_get_only_the_enabled_skills_and_chat_and_work_get_none() {
+    let dir = temp();
+    for (name, description) in [("on", "d"), ("off", "d")] {
+        let skill = dir.join("skills").join(name);
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), format!("---\nname: {name}\ndescription: {description}\n---\n")).unwrap();
+    }
+    std::fs::write(dir.join("settings.json"), json!({"skills":{"disabled":["off"]}}).to_string()).unwrap();
+    let providers: Vec<ProviderEntry> = serde_json::from_value(json!([{"id":"first","name":"First","kind":"ollama","enabled":true,"auth":{"type":"apiKey"},"models":[{"id":"fake","enabled":true}]}])).unwrap();
+    let enabled = std::fs::canonicalize(dir.join("skills/on")).unwrap().to_string_lossy().into_owned();
+    let mut engine = PiEngine::new(dir.clone(), "workspace".into(), dir.to_string_lossy().into(), None, Arc::new(|_, _| {}));
+    engine.fake = true;
+    engine.keys = Arc::new(Keys);
+    engine.configure("workspace", providers.clone(), AgentPolicy::default()).await;
+    let id = engine.request("workspace", "thread/start", json!({"model":"first/fake"})).await.unwrap()["result"]["thread"]["id"].as_str().unwrap().to_owned();
+    engine.request("workspace", "turn/start", json!({"threadId":id,"input":[{"type":"text","text":"hello"}]})).await.unwrap();
+    let spawn: Value = serde_json::from_slice(&std::fs::read(engine.directory("workspace").unwrap().join(format!("{id}.spawn"))).unwrap()).unwrap();
+    let args: Vec<String> = spawn["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_owned()).collect();
+    assert!(args.contains(&"--no-skills".into()));
+    assert_eq!(args.iter().enumerate().filter(|(_, a)| *a == "--skill").map(|(i, _)| args[i + 1].clone()).collect::<Vec<_>>(), [enabled]);
+    // Turning the skill back on changes the launch configuration, so the engine restarts on the next message.
+    std::fs::write(dir.join("settings.json"), json!({"skills":{"disabled":[]}}).to_string()).unwrap();
+    let again = engine.skills(&crate::shared::engine_registry::settings(Some(&dir)));
+    assert_eq!(again.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["off", "on"]);
+    engine.shutdown().await.unwrap();
+
+    let chat = PiEngine::chat(dir.clone(), Arc::new(|_, _| {}));
+    let work = PiEngine::work(dir.clone(), "workspace".into(), dir.to_string_lossy().into(), Arc::new(|_, _| {}));
+    for engine in [chat, work] { assert!(engine.skills(&crate::shared::engine_registry::settings(Some(&dir))).is_empty()); }
     std::fs::remove_dir_all(dir).unwrap();
 }

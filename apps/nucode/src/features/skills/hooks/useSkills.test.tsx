@@ -7,6 +7,7 @@ import { subscribeAppServerEvents } from "../../../services/events";
 import { useSkills } from "./useSkills";
 
 vi.mock("../../../services/tauri", () => ({
+  skillsRequest: vi.fn(),
   getSkillsList: vi.fn(),
 }));
 

@@ -23,7 +23,8 @@ impl EngineProfile {
         }
         config
     }
-    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, auto_compact: &AutoCompact, response_style: &ResponseStyle, env: &mut HashMap<String,String>) -> Result<(), String> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare(&self, home: &Path, registry: &[ProviderEntry], features: &Features, auto_compact: &AutoCompact, response_style: &ResponseStyle, skills_dir: Option<&Path>, env: &mut HashMap<String,String>) -> Result<(), String> {
         if let Some(key) = &self.definition.config_dir_env { env.insert(key.clone(), home.to_string_lossy().into()); }
         env.extend(self.definition.env.clone());
         if self.omp() {
@@ -37,7 +38,7 @@ impl EngineProfile {
             // "f<n>" is omp's fixed trigger: compact at exactly n tokens for that model.
             let fixed: serde_json::Map<_, _> = compact_points(registry).into_iter().map(|(key, at)| (key, json!(format!("f{at}")))).collect();
             if !fixed.is_empty() { compaction["modelThresholds"] = Value::Object(fixed); }
-            config::write_json(&home.join("config.yml"), &json!({"compaction":compaction,"startup":{"checkUpdate":false,"setupWizard":false},"marketplace":{"autoUpdate":false},"telemetry":{"otlpExportEnabled":false},"mcp":{"enableProjectConfig":false},"browser":{"enabled":false},"tools":{"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]},"lsp":{"enabled":true,"lazy":true},"task":{"maxRecursionDepth":0}}))?;
+            config::write_json(&home.join("config.yml"), &json!({"compaction":compaction,"startup":{"checkUpdate":false,"setupWizard":false},"marketplace":{"autoUpdate":false},"telemetry":{"otlpExportEnabled":false},"mcp":{"enableProjectConfig":false},"browser":{"enabled":false},"tools":{"xdevDocs":"builtins","xdevInlineDevices":["mcp__nucode_browser_*"]},"lsp":{"enabled":true,"lazy":true},"task":{"maxRecursionDepth":0},"skills":omp_skills(skills_dir),"disabledProviders":OMP_DISCOVERY_OFF}))?;
             let origins: Vec<_> = registry.iter().filter(|p| p.enabled).filter_map(|p| reqwest::Url::parse(&providers::base_url(p)).ok().map(|url|url.origin().ascii_serialization())).collect();
             config::write_json(&home.join("nucode/network.json"), &json!(origins))?;
             // The gate uses the compatible tool_call API; only explicitly gated
@@ -77,4 +78,16 @@ pub(crate) fn omp_models(registry: &[ProviderEntry]) -> Value {
         }
     }
     result
+}
+
+/// Discovery providers that would otherwise read project-level skill folders (`.codex`, `.github`, plugins).
+const OMP_DISCOVERY_OFF: [&str; 6] = ["codex", "github", "skillshare", "claude-plugins", "agent-plugins", "omp-plugins"];
+/// omp's own discovery is off (project, `.omp` and `~/.agents` folders, the foreign Claude Code and
+/// Codex user folders); the only skills it loads are the links nucode generated in `skills_dir`.
+pub(crate) fn omp_skills(skills_dir: Option<&Path>) -> Value {
+    json!({
+        "enableCodexUser": false, "enableClaudeUser": false, "enableClaudeProject": false,
+        "enablePiUser": false, "enablePiProject": false, "enableAgentsUser": false, "enableAgentsProject": false,
+        "customDirectories": skills_dir.map(|d| vec![d.to_string_lossy().into_owned()]).unwrap_or_default(),
+    })
 }

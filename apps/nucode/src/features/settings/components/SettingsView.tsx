@@ -32,6 +32,7 @@ import { SETTINGS_SECTION_LABELS, STAGED_SETTINGS_SECTIONS } from "./settingsVie
 import { SettingsSectionContainers } from "./sections/SettingsSectionContainers";
 import { SettingsComputerSection } from "./sections/SettingsComputerSection";
 import { SettingsBrowserSection } from "./sections/SettingsBrowserSection";
+import { SettingsSkillsSection } from "./sections/SettingsSkillsSection";
 
 export type SettingsViewProps = {
   activeWorkspace?: WorkspaceInfo | null;
@@ -221,6 +222,7 @@ export function SettingsView({
                activeSection === "engines" ? <SettingsEnginesSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} onOpenCodexFlags={() => handleSelectSection("codex-flags")} onOpenCodexSetup={() => handleSelectSection("codex")} /> :
                activeSection === "computer" ? <SettingsComputerSection onManageEngines={manageEngines} appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} /> : activeSection === "browser" ? <SettingsBrowserSection onManageEngines={manageEngines} appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} /> :
                activeSection === "import" ? <SettingsImportSection /> :
+               activeSection === "skills" ? <SettingsSkillsSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} /> :
                activeSection === "providers" ? <SettingsProvidersSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} /> :
                activeSection === "connectors" ? <SettingsConnectorsSection appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} workspace={activeWorkspace} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} /> :
                activeSection === "agents" ? <SettingsAgentPolicySection key={`${activeWorkspace?.id ?? "global"}-${agentTab}`} onUpdateWorkspaceSettings={onUpdateWorkspaceSettings} tab={agentTab as "defaults" | "subagents" | "roles"} appSettings={appSettings} onUpdateAppSettings={onUpdateAppSettings} workspace={activeWorkspace} onManageEngines={manageEngines}

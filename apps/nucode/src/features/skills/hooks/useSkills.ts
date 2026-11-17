@@ -2,9 +2,11 @@ import { useFeatureSettings } from "@settings/features";
 import { codexReady } from "@settings/registry";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DebugEntry, SkillOption, WorkspaceInfo } from "../../../types";
-import { getSkillsList } from "../../../services/tauri";
+import { getSkillsList, skillsRequest, type SkillsResolution } from "../../../services/tauri";
 import { subscribeAppServerEvents } from "../../../services/events";
 import { isSkillsUpdateAvailableEvent } from "../../../utils/appServerEvents";
+
+export const SKILLS_CHANGED = "nucode:skills-changed";
 
 type UseSkillsOptions = {
   activeWorkspace: WorkspaceInfo | null;
@@ -14,7 +16,10 @@ type UseSkillsOptions = {
 
 export function useSkills({ activeWorkspace, engine, onDebug }: UseSkillsOptions) {
   const settings = useFeatureSettings();
-  const enabled = (engine ?? activeWorkspace?.settings.agentPolicy?.defaultEngine ?? settings?.agentPolicy?.defaultEngine ?? "pi") === "codex" && codexReady(settings);
+  const activeEngine = engine ?? activeWorkspace?.settings.agentPolicy?.defaultEngine ?? settings?.agentPolicy?.defaultEngine ?? "pi";
+  // Codex lists its own skills through its app server; pi and omp use nucode's resolved list.
+  const isCodex = activeEngine === "codex";
+  const enabled = isCodex ? codexReady(settings) : activeEngine === "pi" || activeEngine === "omp";
   const eligibility = useRef(enabled);
   eligibility.current = enabled;
   const [skills, setSkills] = useState<SkillOption[]>([]);
@@ -32,14 +37,26 @@ export function useSkills({ activeWorkspace, engine, onDebug }: UseSkillsOptions
       return;
     }
     inFlight.current = true;
-    onDebug?.({
-      id: `${Date.now()}-client-skills-list`,
-      timestamp: Date.now(),
-      source: "client",
-      label: "skills/list",
-      payload: { workspaceId },
-    });
     try {
+      if (!isCodex) {
+        const resolved = await skillsRequest<SkillsResolution>("resolve");
+        if (!eligibility.current) return;
+        setSkills(resolved.skills.filter((skill) => skill.enabled).map((skill) => ({
+          name: skill.name,
+          path: skill.path,
+          description: skill.description || undefined,
+          invocation: `/skill:${skill.name} `,
+        })));
+        lastFetchedWorkspaceId.current = workspaceId;
+        return;
+      }
+      onDebug?.({
+        id: `${Date.now()}-client-skills-list`,
+        timestamp: Date.now(),
+        source: "client",
+        label: "skills/list",
+        payload: { workspaceId },
+      });
       const response = await getSkillsList(workspaceId);
       if (!eligibility.current) return;
       onDebug?.({
@@ -75,7 +92,18 @@ export function useSkills({ activeWorkspace, engine, onDebug }: UseSkillsOptions
     } finally {
       inFlight.current = false;
     }
-  }, [enabled, isConnected, onDebug, workspaceId]);
+  }, [enabled, isCodex, isConnected, onDebug, workspaceId]);
+
+  // The two sources differ in shape, so a list fetched for one engine kind is never reused for the other.
+  useEffect(() => { setSkills([]); lastFetchedWorkspaceId.current = null; }, [isCodex]);
+
+  // Installing, removing or toggling a skill in Settings announces itself here.
+  useEffect(() => {
+    if (isCodex) return;
+    const reload = () => { void refreshSkills(); };
+    window.addEventListener(SKILLS_CHANGED, reload);
+    return () => window.removeEventListener(SKILLS_CHANGED, reload);
+  }, [isCodex, refreshSkills]);
 
   useEffect(() => {
     if (!enabled) { setSkills([]); lastFetchedWorkspaceId.current = null; return; }
