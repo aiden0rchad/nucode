@@ -63,7 +63,7 @@ export function safeReadOnlyCommand(command: string): string {
 // their own scratch folder, cannot resolve or reach hosts beyond this machine, cannot change preferences and
 // cannot use the clipboard. Two limits remain and are documented: Seatbelt cannot stop Apple Events here (macOS
 // still asks the user before one app automates another), and a service already listening on localhost runs
-// outside the sandbox. The programs that drive other apps or the keychain are not allowed to start.
+// outside the sandbox. As defence in depth, the programs that drive other apps or the keychain may not start.
 const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 const seatbeltString = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 export function readOnlyProfile(scratch: string): string {
@@ -79,8 +79,10 @@ export function readOnlyProfile(scratch: string): string {
     '(allow network-bind network-inbound (local ip "localhost:*"))',
     '(allow network-outbound (remote ip "localhost:*"))',
     `(allow network-bind network-inbound network-outbound (local unix-socket (subpath ${seatbeltString(scratch)})) (remote unix-socket (subpath ${seatbeltString(scratch)})))`,
-    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.windowserver.active") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))',
-    '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/open") (literal "/usr/bin/automator") (literal "/usr/bin/shortcuts") (literal "/usr/bin/security") (literal "/usr/bin/pbcopy") (literal "/usr/bin/pbpaste"))',
+    '(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.pasteboard.1") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.windowserver.active") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.coreservices.launchservicesd") (global-name-regex #"^com\\.apple\\.lsd\\."))',
+    // Opening a file or app through Launch Services would run it outside the sandbox.
+    "(deny lsopen)",
+    '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/open") (literal "/usr/bin/automator") (literal "/usr/bin/shortcuts") (literal "/usr/bin/security") (literal "/usr/bin/pbcopy") (literal "/usr/bin/pbpaste") (literal "/usr/sbin/screencapture"))',
   ].join(" ");
 }
 export function readOnlySandbox(): boolean {
@@ -90,10 +92,12 @@ export function sandboxedCommand(command: string, scratch: string): string {
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   // macOS mktemp ignores TMPDIR, so a shim sends it to the scratch folder; build caches go there too.
   const shim = join(scratch, "bin", "mktemp");
-  if (!existsSync(shim)) { mkdirSync(join(scratch, "bin"), { recursive: true }); writeFileSync(shim, '#!/bin/sh\nexec /usr/bin/mktemp -p "${TMPDIR%/}" "$@"\n', { mode: 0o755 }); }
+  if (!existsSync(shim)) { mkdirSync(join(scratch, "bin"), { recursive: true }); writeFileSync(shim, '#!/bin/sh\nfor a in "$@"; do case $a in /*) exec /usr/bin/mktemp "$@";; esac; done\nexec /usr/bin/mktemp -p "${TMPDIR%/}" "$@"\n', { mode: 0o755 }); }
   const env = [`TMPDIR=${quote(scratch + "/")}`, `PATH=${quote(join(scratch, "bin"))}:"$PATH"`, "PYTHONDONTWRITEBYTECODE=1", ...Object.entries({ PYTHONPYCACHEPREFIX: "pycache", CARGO_TARGET_DIR: "cargo-target", GOCACHE: "go-cache", GOTMPDIR: "", XDG_CACHE_HOME: "cache" }).map(([name, sub]) => `${name}=${quote(sub ? join(scratch, sub) : scratch)}`)];
   const unset = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"].map(name => `-u ${name}`).join(" ");
-  return `/usr/bin/env ${unset} ${env.join(" ")} ${SANDBOX_EXEC} -p ${quote(readOnlyProfile(scratch))} /bin/bash -c ${quote(command)}`;
+  // A later command runs in a new sandbox and cannot signal this one's jobs, so jobs it leaves behind stop with it.
+  const body = `trap 'trap "" TERM; kill -TERM 0 2>/dev/null' EXIT\n${command}`;
+  return `/usr/bin/env ${unset} ${env.join(" ")} ${SANDBOX_EXEC} -p ${quote(readOnlyProfile(scratch))} /bin/bash -c ${quote(body)}`;
 }
 // Work file boundaries also apply to children. Full access authorizes shell
 // execution; the shared protected-path and child restrictions still apply.

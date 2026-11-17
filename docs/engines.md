@@ -103,16 +103,18 @@ included, runs under `sandbox-exec`. The profile lets the command write only to 
 private scratch folder (its `TMPDIR`; `mktemp`, Go, Cargo, Python and XDG caches are
 pointed there), denies network traffic and name lookups beyond
 this machine, signals to processes outside the sandbox, preference writes
-(cfprefsd), the clipboard, the window server (screen capture, synthetic input) and
-the keychain, and does not let
-`osascript`, `open`, `automator`, `shortcuts`, `security`, `pbcopy` or `pbpaste`
+(cfprefsd), the clipboard, the window server (screen capture, synthetic input),
+Launch Services (opening files or apps) and the keychain, and does not let
+`osascript`, `open`, `automator`, `shortcuts`, `security`, `pbcopy`, `pbpaste` or `screencapture`
 start. Two limits remain: Seatbelt cannot stop Apple Events here, so automating
 another app is left to the macOS Automation permission prompt, and a service already
 listening on localhost (a build daemon, a local proxy, an SSH port forward) runs
 outside the sandbox and can act for the command. Tools that write caches inside the project fail there; for
 example Vite writes its bundled config to `node_modules/.vite-temp`, so a reviewer runs
-Vitest with `--configLoader runner`. Work's read-only roles and other platforms keep
-the small read-only command allowlist. The subagent tool accepts a model by its policy id (`provider/id`), by the
+Vitest with `--configLoader runner`. Background jobs a command starts
+stop when it ends, since a later command runs in a new sandbox and cannot signal
+them. Work's read-only roles get no shell, and on other platforms read-only roles
+keep the small read-only command allowlist. The subagent tool accepts a model by its policy id (`provider/id`), by the
 registry id the model sees for itself (`nucode-provider/id`), or by the id alone when
 one provider has it; the policy note lists the usable ids, and an unknown model's
 error lists them too. Project MCP configuration,

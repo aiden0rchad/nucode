@@ -164,11 +164,11 @@ test("gate approval marker, persistence, live changes and noninteractive childre
   process.env.NUCODE_TOOL_ACCESS = "read-only";
   const bash = { toolName: "bash", toolCallId: "test", input: { command: "python3 -m pytest -q" } };
   const result = await handler(bash, { ...ctx, hasUI: false });
-  if (readOnlySandbox()) { assert.equal(result, undefined); assert.match(bash.input.command, /sandbox-exec -p .*python3 -m pytest -q/); }
+  if (readOnlySandbox()) { assert.equal(result, undefined); assert.match(bash.input.command, /sandbox-exec -p .*python3 -m pytest -q/s); }
   else assert.equal(result.block, true);
   const listed = { toolName: "bash", toolCallId: "status", input: { command: "git status" } };
   assert.equal(await handler(listed, { ...ctx, hasUI: false }), undefined);
-  if (readOnlySandbox()) assert.match(listed.input.command, /sandbox-exec -p .*git --no-pager --no-optional-locks/, "allowlisted commands are sandboxed too (git filters run from git status)");
+  if (readOnlySandbox()) assert.match(listed.input.command, /sandbox-exec -p .*git --no-pager --no-optional-locks/s, "allowlisted commands are sandboxed too (git filters run from git status)");
   assert.equal((await handler(event, { ...ctx, hasUI: false })).block, true, "read-only children still cannot use write");
   delete process.env.NUCODE_SUBAGENT_DEPTH;
   const top = { toolName: "bash", toolCallId: "top", input: { command: "python3 -m pytest -q" } };
@@ -212,6 +212,12 @@ test("the read-only sandbox runs commands but blocks writes, preferences and out
     finally { outside.kill(); }
     assert.equal(run("/bin/sleep 30 & /bin/kill $! && wait $!; echo $?").stdout.trim(), "143", "a command can still stop its own children");
     assert.ok(run("mktemp").stdout.trim().startsWith(scratch + "/"), "mktemp uses the scratch folder");
+    assert.ok(run('mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX"').stdout.trim().startsWith(scratch + "/"), "an absolute mktemp template still works");
+    assert.equal(run("exit 3").status, 3, "the exit status survives the job cleanup");
+    const marker = `nucode-leftover-${process.pid}`;
+    assert.equal(run(`/bin/bash -c 'sleep 300; true' ${marker} & sleep 0.3; /usr/bin/pgrep -f ${marker} >/dev/null && echo running`).stdout.trim(), "running");
+    assert.notEqual(spawnSync("/usr/bin/pgrep", ["-f", marker]).status, 0, "jobs a command leaves behind stop with it");
+    assert.equal(run("/usr/bin/lsappinfo front").stdout.trim(), "[ NULL ]", "Launch Services is out of reach");
     assert.equal(run("/usr/bin/python3 -c \"import socket,os;p=os.environ['TMPDIR']+'s.sock';s=socket.socket(socket.AF_UNIX);s.bind(p);s.listen();socket.socket(socket.AF_UNIX).connect(p);print('unix')\"").stdout.trim(), "unix");
     assert.equal(run('echo "$CARGO_TARGET_DIR"').stdout.trim(), join(scratch, "cargo-target"));
   } finally {
