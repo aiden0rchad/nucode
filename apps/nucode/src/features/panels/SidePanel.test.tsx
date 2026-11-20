@@ -241,6 +241,16 @@ it("registers the first agent-created page as a tab without covering Task", asyn
   expect(screen.getByRole("tab", { name: "Task", selected: true })).toBeTruthy();
   expect(screen.queryByLabelText("Native browser page")).toBeNull();
 });
+it("drops the tab of a page the agent closed instead of leaving a dead tab", async () => {
+  render(shell());
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const page = { id: "agent-page", title: "API tokens", url: "http://127.0.0.1:8765/settings", ready: true, loading: false };
+  act(() => { host = { backend: "native", tabs: [page], active: "agent-page", agent: true }; callbacks.forEach(callback => callback(host)); });
+  expect(await screen.findByRole("tab", { name: "API tokens" })).toBeTruthy();
+  act(() => { host = { backend: "native", tabs: [], active: "", agent: true }; callbacks.forEach(callback => callback(host)); });
+  await waitFor(() => expect(screen.queryByRole("tab", { name: "API tokens" })).toBeNull());
+  expect(screen.queryByText("Unknown browser tab")).toBeNull();
+});
 it("resizes with the keyboard and retains mounted tools when the panel is hidden", () => {
   vi.stubGlobal("innerWidth", 1600);
   render(shell()); fireEvent.click(screen.getByRole("button", { name: "Toggle side panel" }));

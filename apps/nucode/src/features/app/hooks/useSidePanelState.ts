@@ -143,6 +143,9 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
       const hadSnapshot = receivedBrowserState.current;
       receivedBrowserState.current = true;
       const previousActive = latest.current.active;
+      // A page this window saw that is now gone was closed (by the agent or another window). Its tab goes too, instead
+      // of staying as a dead "Unknown browser tab". Saved tabs whose page was never seen (after a restart) still restore.
+      const closedPages = new Set(latest.current.tabs.filter(page => !value.tabs.some(next => next.id === page.id)).map(page => page.id));
       latest.current = value;
       if (value.agent) {
         clearTimeout(agentTurn.current.reset);
@@ -174,6 +177,12 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
           const page = value.tabs.find(t => t.id === tab.target) ?? (created && request?.scope === previous.scope && request.id === tab.id ? created : undefined);
           return page ? { ...tab, target: page.id, ...(restoring.current.has(page.id) ? {} : { url: page.url, title: page.title || "New page" }) } : tab;
         });
+        const closed = tabs.filter(tab => tab.kind === "browser" && tab.target && closedPages.has(tab.target));
+        if (closed.length) {
+          const remaining = closed.reduce((state, tab) => panelReducer(state, { type: "close", id: tab.id }), { ...previous.state, tabs });
+          tabs.splice(0, tabs.length, ...remaining.tabs);
+          previous = { ...previous, state: remaining };
+        }
         if (!request && hadSnapshot) {
           for (const page of newPages) if (!tabs.some(tab => tab.target === page.id)) tabs.push({ id: page.id, kind: "browser", title: page.title || "New page", url: page.url, target: page.id });
         }

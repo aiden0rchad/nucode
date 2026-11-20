@@ -80,6 +80,8 @@ pub fn supported_tools() -> &'static [&'static str] {
     ]
 }
 
+pub const CLOSE_NOTE: &str = "Close the current page in the in-app browser. The user watches this browser and looks at the page you leave open, so close a page only when the user asks or it is a leftover you opened by mistake; leave the page you checked open when you finish.";
+
 pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::WebSearchProvider) {
     if native {
         if let Some(tools) = response.get_mut("result").and_then(|r| r.get_mut("tools")).and_then(Value::as_array_mut) {
@@ -92,6 +94,10 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
                         "y":{"type":"number","description":"Vertical pixels (+down)"},
                         "ref":{"type":"string","description":"Snapshot ref or unique selector to scroll into view. With x/y, scroll inside the element instead."}
                     },"additionalProperties":false}}));
+            }
+            // The user watches this browser: a page left open is what they look at after the agent is done.
+            if let Some(close) = tools.iter_mut().find(|tool| tool["name"] == "browser_close") {
+                close["description"] = json!(CLOSE_NOTE);
             }
             let input = ["browser_click", "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form"];
             for tool in tools.iter_mut().filter(|tool| input.iter().any(|name| tool["name"] == *name)) {
@@ -179,7 +185,7 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
     if matches!(name, "browser_navigate" | "browser_navigate_back" | "browser_tabs") {
         trim_tool_tabs(&mut result);
     }
-    let mut text = if name == "browser_snapshot" { compact_snapshot(&result) } else { None }
+    let mut text = if name == "browser_snapshot" { compact_snapshot(&result).map(or_empty_page) } else { None }
         .unwrap_or_else(|| result.to_string());
     // The agent reads the new page next anyway: one call instead of two.
     let page_changed = matches!(name, "browser_navigate" | "browser_navigate_back") || (name == "browser_click" && result["navigated"].is_string())
@@ -187,12 +193,18 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
     if page_changed && result["error"].is_null() && backend.snapshot_on_page_change() {
         if let Some(lines) = backend.snapshot().await.ok().as_ref().and_then(compact_snapshot) {
             text.push_str("\n\nPage snapshot:\n");
-            text.push_str(&lines);
+            text.push_str(&or_empty_page(lines));
         }
     }
     Ok(
         json!({"content":[{"type":"text","text":text}]}),
     )
+}
+
+/// An empty snapshot read as a tool that returned nothing; say what it means instead.
+const EMPTY_PAGE: &str = "(The page shows no text or controls. It may still be rendering, or the route may not exist: check browser_console_messages or take a screenshot.)";
+fn or_empty_page(lines: String) -> String {
+    if lines.trim().is_empty() { EMPTY_PAGE.into() } else { lines }
 }
 
 fn compact_snapshot(value: &Value) -> Option<String> {
@@ -348,6 +360,19 @@ mod tests {
             }) })
         }
     }
+    struct Blank;
+    impl BrowserBackend for Blank {
+        fn snapshot_on_page_change(&self) -> bool { true }
+        fn request(&self, params: Value) -> BoxFuture<'_, Result<Value, String>> {
+            Box::pin(async move { Ok(if params["op"] == "snapshot" { json!({"nodes":[]}) } else { json!({"id":"one","url":"https://example.test/missing","ready":true}) }) })
+        }
+    }
+    #[tokio::test]
+    async fn an_empty_page_snapshot_says_so() {
+        let text = |r: Value| r["content"][0]["text"].as_str().unwrap().to_string();
+        assert_eq!(text(tool(&Blank, "browser_snapshot", json!({})).await.unwrap()), EMPTY_PAGE);
+        assert!(text(tool(&Blank, "browser_navigate", json!({"url":"https://example.test/missing"})).await.unwrap()).ends_with(&format!("Page snapshot:\n{EMPTY_PAGE}")));
+    }
     #[tokio::test]
     async fn page_changes_return_the_new_page_snapshot() {
         let text = |r: Value| r["content"][0]["text"].as_str().unwrap().to_string();
@@ -473,6 +498,8 @@ mod tests {
                 assert!(description.starts_with("Original description. ") && description.contains("don't guess a generic domain") && description.contains("sign in in the browser panel"));
             } else if tool["name"] == "browser_tabs" {
                 assert!(tool["description"].as_str().unwrap().starts_with("Original description. The list marks the active tab"));
+            } else if tool["name"] == "browser_close" {
+                assert_eq!(tool["description"], CLOSE_NOTE);
             } else if !["browser_evaluate", "web_search", "web_fetch"].iter().any(|name| tool["name"] == *name) {
                 assert_eq!(tool["description"], "Original description.");
             }
