@@ -91,6 +91,9 @@ async fn pinned_playwright_lists_verified_schemas_without_a_browser_or_sockets()
         .find(|t| t["name"] == "browser_scroll").unwrap();
     assert_eq!(scroll["inputSchema"]["properties"]["y"]["type"], "number");
     assert_eq!(scroll["inputSchema"]["properties"]["ref"]["type"], "string");
+    let resize = native["result"]["tools"].as_array().unwrap().iter().filter(|t| t["name"] == "browser_resize").collect::<Vec<_>>();
+    assert_eq!(resize.len(), 1, "the native list carries nucode's own browser_resize once");
+    assert!(resize[0]["inputSchema"]["required"].is_null(), "no width means follow the pane again");
     child.kill().await.unwrap();
     child.wait().await.unwrap();
     std::fs::remove_dir_all(data).unwrap();

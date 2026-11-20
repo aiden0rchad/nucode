@@ -77,6 +77,18 @@ pub struct Rect {
     pub w: f64,
     pub h: f64,
 }
+/// Smallest and largest viewport an agent may ask for, in CSS pixels.
+pub const VIEWPORT_WIDTH: (f64, f64) = (240., 3840.);
+pub const VIEWPORT_HEIGHT: (f64, f64) = (240., 2160.);
+/// Lays an agent's requested viewport out inside the pane, in the pane's points. A narrower viewport keeps full size
+/// and is centred; a wider one is scaled down with page zoom, so the page still lays out at the requested width and
+/// the user sees all of it. Returns the view's bounds and the page zoom to apply.
+pub fn fit_viewport(pane: Rect, width: f64, height: Option<f64>) -> (Rect, f64) {
+    let zoom = (pane.w / width).min(1.);
+    let w = (width * zoom).min(pane.w);
+    let h = height.map_or(pane.h, |h| (h * zoom).min(pane.h));
+    (Rect { x: pane.x + (pane.w - w) / 2., y: pane.y, w, h }, zoom)
+}
 /// A native view may only occupy bounds measured for its own mounted UI slot.
 #[derive(Default)]
 pub struct Placement {
@@ -299,3 +311,28 @@ pub(super) fn check_target(params: &serde_json::Value, tab: &str, url: Option<&s
     Ok(())
 }
 
+
+#[cfg(test)]
+mod viewport_tests {
+    use super::*;
+    const PANE: Rect = Rect { x: 100., y: 50., w: 800., h: 600. };
+    #[test]
+    fn a_narrower_viewport_is_centred_at_full_size() {
+        let (rect, zoom) = fit_viewport(PANE, 390., None);
+        assert_eq!((rect, zoom), (Rect { x: 305., y: 50., w: 390., h: 600. }, 1.));
+        let (rect, _) = fit_viewport(PANE, 390., Some(844.));
+        assert_eq!(rect.h, 600., "a taller viewport than the pane keeps the pane height");
+        let (rect, _) = fit_viewport(PANE, 390., Some(400.));
+        assert_eq!(rect.h, 400.);
+    }
+    #[test]
+    fn a_wider_viewport_is_scaled_to_fit_and_still_lays_out_at_its_width() {
+        let (rect, zoom) = fit_viewport(PANE, 1600., Some(1000.));
+        assert_eq!(zoom, 0.5);
+        assert_eq!((rect.x, rect.w, rect.h), (100., 800., 500.));
+        // Page CSS width = view width / page zoom.
+        assert_eq!(rect.w / zoom, 1600.);
+        let (rect, zoom) = fit_viewport(PANE, 800., None);
+        assert_eq!((rect, zoom), (PANE, 1.));
+    }
+}
