@@ -1306,6 +1306,11 @@ mod tests {
             assert!(state.borrow()["passwordOffer"].is_null());
         }
         std::fs::write(&path, "{}").unwrap();
+        state.send_modify(|s| s["agent"] = json!(true));
+        offer_capture(&path, &pending, &index, &state, capture("agent-secret", 0)).unwrap();
+        assert!(pending.lock().unwrap().is_none(), "a login the agent typed is not offered");
+        assert!(state.borrow()["passwordOffer"].is_null());
+        state.send_modify(|s| s["agent"] = json!(false));
         offer_capture(&path, &pending, &index, &state, capture("expired-secret", 120001)).unwrap();
         assert!(pending.lock().unwrap().is_none());
         offer_capture(&path, &pending, &index, &state, capture("first-secret", 0)).unwrap();
@@ -1764,6 +1769,8 @@ fn offer_capture(settings_path: &std::path::PathBuf, pending: &Arc<Mutex<Option<
     let Some(password) = captured["password"].as_str() else { return Ok(()); };
     nucode_diag_mcp::writer::remember_secret(password);
     if !settings.offer_to_save_passwords || settings.private_browsing { return Ok(()); }
+    // A login the agent typed (test credentials for the app it is building) is not the user's to save.
+    if state.borrow()["agent"] == true { return Ok(()); }
     let site = origin(captured["origin"].as_str().ok_or("Invalid login origin")?)?;
     let username = captured["username"].as_str().ok_or("Invalid login username")?;
     if password.is_empty() || password.len() > 65536 || username.len() > 4096 { return Ok(()); }
