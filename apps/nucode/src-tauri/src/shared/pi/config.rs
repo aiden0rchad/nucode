@@ -322,6 +322,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/loopGuard.ts"),
         ),
         (
+            "lib/toolBatching.ts",
+            include_str!("../../../../engines/pi/extensions/lib/toolBatching.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),
