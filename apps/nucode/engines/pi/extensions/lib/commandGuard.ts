@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { constants } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +14,10 @@ export function ownedCommand(command: string) {
 
 // A separate supervisor survives SIGKILL of the engine. Its child owns a process
 // group, so foreground pipelines stop together even after the engine disappears.
-if (process.argv[1] === script) {
+// Node gives the main module its real path but leaves argv[1] as typed, so compare real paths: the engine home can
+// sit under a symlink (macOS /var is /private/var), and a guard that misses this exits 0 without running anything.
+const isMain = () => { try { return realpathSync(process.argv[1]) === script; } catch { return false; } };
+if (isMain()) {
   const owner = Number(process.argv[2]), shell = process.argv[3], command = process.argv[4];
   if (!Number.isSafeInteger(owner) || owner <= 1 || !shell || command === undefined || process.platform === "win32") process.exit(2);
   const sharedGroup = process.argv[5] === "--shared-group";

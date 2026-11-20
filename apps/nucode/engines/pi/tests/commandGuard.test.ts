@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ownedCommand } from "../extensions/lib/commandGuard.ts";
@@ -50,4 +52,17 @@ for (const mode of ["cancel", "crash", "stubborn", "managed-stop", "managed-cras
     await new Promise(resolve => setTimeout(resolve, 30));
   }
   assert.fail("foreground command survived its owner");
+});
+
+test("the guard runs its command when started through a symlinked path", { skip: process.platform === "win32" }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), "guard-link-"));
+  try {
+    const link = join(dir, "commandGuard.ts");
+    symlinkSync(script, link);
+    const child = spawn(process.execPath, [link, String(process.pid), "/bin/bash", "echo ran; exit 5", "--shared-group"]);
+    let output = ""; child.stdout.on("data", data => { output += data; });
+    const [code] = await once(child, "close");
+    assert.equal(output, "ran\n");
+    assert.equal(code, 5);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
