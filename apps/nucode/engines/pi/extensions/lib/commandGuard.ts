@@ -3,6 +3,14 @@ import { constants } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(import.meta.url);
+// The engine runs with an isolated HOME so its own settings stay out of the user's. The project's commands are the
+// user's commands: with that HOME they rebuilt every cache per project (Go, npm, bun), could not find installed
+// Playwright browsers and lost the user's git identity. They get the user's HOME back; the engine keeps its own.
+export function userHome(command: string) {
+  const home = process.env.NUCODE_USER_HOME;
+  if (!home || process.platform === "win32") return command;
+  return `export HOME='${home.replaceAll("'", "'\\''")}'; unset XDG_CONFIG_HOME\n${command}`;
+}
 export function ownedCommand(command: string) {
   if (process.platform === "win32") return command;
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;

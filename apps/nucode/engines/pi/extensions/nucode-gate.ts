@@ -5,7 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decide, inside, normalizeRule, protectedPath, readOnlySandbox, safeReadOnlyCommand, sandboxedCommand, type Access } from "./lib/policy.ts";
 import { canonicalMcpName, connectorVerdict, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
-import { ownedCommand } from "./lib/commandGuard.ts";
+import { ownedCommand, userHome } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
 import { applyToolBatching } from "./lib/toolBatching.ts";
@@ -196,7 +196,7 @@ export default function (pi: ExtensionAPI) {
       if (access.kind !== "work" && (child.toolAccess === "read-only" || access.accessMode === "read-only")) { input.command = ownedCommand(sandboxedCommand(safeReadOnlyCommand(call.command), sandboxScratch())); return; }
     }
     if (decision === "allow") {
-      if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
+      if (call.tool === "bash" && !preview) input.command = ownedCommand(userHome(safeReadOnlyCommand(call.command)));
       return;
     }
     if (decision === "block") return { block: true, reason: "Blocked by nucode access policy (read-only, protected path, or no interactive approval)" };
@@ -213,6 +213,6 @@ export default function (pi: ExtensionAPI) {
       renameSync(temp, file);
     }
     if (answer !== "Allow" && answer !== "Allow for session") return { block: true, reason: "Blocked by user" };
-    if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
+    if (call.tool === "bash" && !preview) input.command = ownedCommand(userHome(safeReadOnlyCommand(call.command)));
   });
 }

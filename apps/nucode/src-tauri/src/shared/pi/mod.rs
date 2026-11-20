@@ -591,6 +591,8 @@ impl PiEngine {
         } else if self.profile.omp() { Command::new(runtime.as_ref().ok_or("Missing omp runtime")?.join("node_modules/.bin/bun")) }
         else { Command::new(&node) };
         command.env_clear().envs(super::engine_registry::environment(std::env::vars(), &home));
+        // The engine keeps the isolated HOME above; the gate hands the user's own back to project commands.
+        if let Some(user_home) = std::env::var_os("HOME") { command.env("NUCODE_USER_HOME", user_home); }
         let guard = runtime.as_ref().map(|dir| dir.join("no-accounts.mjs")).unwrap_or_default();
         #[cfg(test)]
         if !self.fake && !self.profile.custom() {
