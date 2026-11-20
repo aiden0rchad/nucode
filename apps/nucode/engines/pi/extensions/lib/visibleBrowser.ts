@@ -9,6 +9,7 @@ export const VISIBLE_UI = `${HEADING}
 
 - Show your work where the user can see it. The user watches the in-app browser (the mcp__nucode_browser__browser_* tools), so every UI check happens there by default: open the page with browser_navigate, look with browser_snapshot or browser_take_screenshot, and click or type through the flow.
 - To check a layout at a given width (a phone, a tablet), call browser_resize with that width and look again; call it with no width when you are done so the browser follows the pane again.
+- When you finish, leave the page you checked open in the browser so the user can look at it. Don't close it unless the user asks.
 - Run headless browser checks (Playwright, Puppeteer, Selenium scripts, or captures nobody can watch) only when the user or the project's instructions ask for them, and say when you do. The project's own browser test suite still runs as usual.`;
 
 /** True when this thread can reach the in-app browser's navigate tool. */
