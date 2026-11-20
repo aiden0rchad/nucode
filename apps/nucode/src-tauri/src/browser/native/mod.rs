@@ -34,6 +34,12 @@ struct Views {
     placement: policy::Placement,
     last_poll: Instant,
     private: bool,
+    /// Viewport an agent asked for with browser_resize (CSS width, optional height); None follows the pane.
+    viewport: Option<(f64, Option<f64>)>,
+    /// The zoom the user picked in the pane; it returns when the agent's viewport is cleared.
+    user_zoom: f64,
+    /// Tab and page zoom last applied, so placement does not set it again on every poll.
+    applied_zoom: Option<(String, f64)>,
 }
 impl Views {
     fn creation_failed(&mut self, state: &watch::Sender<Value>, id: &str, error: &str) {
@@ -72,6 +78,9 @@ impl NativeBackend {
                 placement: policy::Placement::default(),
                 last_poll: Instant::now(),
                 private: false,
+                viewport: None,
+                user_zoom: 1.,
+                applied_zoom: None,
             }),
             downloads: Arc::default(),
             pending: Arc::new(Mutex::new(None)),
@@ -403,11 +412,19 @@ impl NativeBackend {
             // Child webviews sit above HTML; leave the window resize gutter reachable.
             rect.w = rect.w.min((frame.width - 8. - rect.x).max(1.));
             rect.h = rect.h.min((frame.height - 8. - rect.y).max(1.));
+            let zoom = match views.viewport {
+                Some((width, height)) => { let (fitted, zoom) = policy::fit_viewport(rect, width, height); rect = fitted; zoom }
+                None => views.user_zoom,
+            };
             view.set_bounds(tauri::Rect {
                 position: LogicalPosition::new(rect.x, rect.y).into(),
                 size: LogicalSize::new(rect.w, rect.h).into(),
             })
             .map_err(|e| e.to_string())?;
+            if views.applied_zoom.as_ref().is_none_or(|(tab, applied)| tab != &id || (applied - zoom).abs() > 1e-6) {
+                view.set_zoom(zoom).map_err(|e| e.to_string())?;
+                views.applied_zoom = Some((id.clone(), zoom));
+            }
             if views.shown.as_deref() != Some(&id) {
                 view.show().map_err(|e| e.to_string())?;
                 #[cfg(target_os = "macos")]
@@ -562,6 +579,32 @@ impl NativeBackend {
             self.state
                 .send_replace(json!({"backend":"native","tabs":[],"active":"","agent":false}));
             return Ok(Value::Null);
+        }
+        if action == "viewport" {
+            let range = |value: &Value, (low, high): (f64, f64), what: &str| -> Result<Option<f64>, String> {
+                match value {
+                    Value::Null => Ok(None),
+                    v => v.as_f64().filter(|v| (low..=high).contains(v)).map(|v| Some(v.round())).ok_or(format!("Viewport {what} must be {low} to {high} CSS pixels")),
+                }
+            };
+            let width = range(&p["width"], policy::VIEWPORT_WIDTH, "width")?;
+            let height = range(&p["height"], policy::VIEWPORT_HEIGHT, "height")?;
+            if width.is_none() && height.is_some() { return Err("Give a viewport width with the height".into()); }
+            views.viewport = width.map(|w| (w, height));
+            views.applied_zoom = None;
+            let ui_zoom = self.main_frame().await.map_or(1., |f| f.zoom);
+            let pane = views.placement.rect(&self.active()).map(|r| r.scaled(ui_zoom)).transpose()?;
+            self.state.send_modify(|s| s["viewport"] = views.viewport.map_or(Value::Null, |(w, h)| json!({"width":w,"height":h})));
+            self.place(&mut views).await?;
+            return Ok(match (views.viewport, pane) {
+                (None, _) => json!({"viewport":null,"note":"The page follows the browser pane again."}),
+                (Some((w, h)), Some(pane)) => {
+                    let (_, zoom) = policy::fit_viewport(pane, w, h);
+                    json!({"viewport":{"width":w,"height":h},"scale":(zoom * 100.).round() / 100.,
+                        "note":if zoom < 1. { "The pane is narrower than this viewport, so the page is shown scaled down; it still lays out at the requested width." } else { "The page lays out at the requested width, centred in the pane." }})
+                }
+                (Some((w, h)), None) => json!({"viewport":{"width":w,"height":h},"note":"Applied when the browser pane is shown."}),
+            });
         }
         if action == "attach" || action == "bounds" || action == "resize" {
             if let Some(id) = p["tabId"].as_str() {
@@ -728,7 +771,12 @@ impl NativeBackend {
                     .as_f64()
                     .filter(|v| (0.25..=5.).contains(v))
                     .ok_or("Invalid zoom")?;
-                view.set_zoom(zoom).map_err(|e| e.to_string())?;
+                views.user_zoom = zoom;
+                // While an agent's viewport is set, its zoom wins; the user's returns when it is cleared.
+                if views.viewport.is_none() {
+                    view.set_zoom(zoom).map_err(|e| e.to_string())?;
+                    views.applied_zoom = Some((id.clone(), zoom));
+                }
             }
             "clearSite" => {
                 if p["confirmed"] != true {
@@ -1612,7 +1660,7 @@ mod tests {
     fn failed_creation_settles_the_tab_and_discards_only_its_partial_state() {
         let original = json!({"id":"other","ready":true,"loading":false,"title":"Keep this page","url":"https://example.test/"});
         let (state, _) = watch::channel(json!({"tabs":[original.clone(),{"id":"failed","ready":false,"loading":true,"progress":0.1}],"active":"failed"}));
-        let mut views = Views { live: vec!["other".into(), "failed".into()], hook_keys: HashMap::from([("other".into(), "keep".into()), ("failed".into(), "discard".into())]), shown: Some("failed".into()), placement: Default::default(), last_poll: Instant::now(), private: false };
+        let mut views = Views { live: vec!["other".into(), "failed".into()], hook_keys: HashMap::from([("other".into(), "keep".into()), ("failed".into(), "discard".into())]), shown: Some("failed".into()), placement: Default::default(), last_poll: Instant::now(), private: false, viewport: None, user_zoom: 1., applied_zoom: None };
         views.creation_failed(&state, "failed", "Main window unavailable");
         let snapshot = state.borrow().clone();
         assert_eq!(snapshot["active"], "failed");

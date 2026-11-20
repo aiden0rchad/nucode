@@ -77,6 +77,7 @@ pub fn supported_tools() -> &'static [&'static str] {
         "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form",
         "browser_evaluate", "browser_scroll", "browser_wait_for", "browser_tabs",
         "browser_close", "browser_take_screenshot", "browser_console_messages", "browser_handle_dialog",
+        "browser_resize",
     ]
 }
 
@@ -93,6 +94,13 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
                         "ref":{"type":"string","description":"Snapshot ref or unique selector to scroll into view. With x/y, scroll inside the element instead."}
                     },"additionalProperties":false}}));
             }
+            tools.retain(|tool| tool["name"] != "browser_resize");
+            tools.push(json!({"name":"browser_resize",
+                "description":"Set the in-app browser's viewport to a width (and optionally a height) in CSS pixels, to check a layout at phone, tablet or desktop size where the user can watch. A viewport wider than the pane is shown scaled down but still lays out at that width. Call it with no width to go back to the pane's own size; do that when you finish.",
+                "inputSchema":{"type":"object","properties":{
+                    "width":{"type":"number","minimum":240,"maximum":3840,"description":"Viewport width in CSS pixels, e.g. 320, 390, 768, 1024 or 1440. Omit to follow the pane again."},
+                    "height":{"type":"number","minimum":240,"maximum":2160,"description":"Optional viewport height in CSS pixels; by default the pane's height."}
+                },"additionalProperties":false}}));
             let input = ["browser_click", "browser_type", "browser_press_key", "browser_select_option", "browser_fill_form"];
             for tool in tools.iter_mut().filter(|tool| input.iter().any(|name| tool["name"] == *name)) {
                 let note = if tool["name"] == "browser_click" {
@@ -154,6 +162,7 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
             backend.request(json!({"action":"evaluate","function":function,"ref":target})).await?
         },
         "browser_scroll" => backend.scroll(args).await?,
+        "browser_resize" => backend.request(json!({"action":"viewport","width":args["width"],"height":args["height"]})).await?,
         "browser_wait_for" => backend.wait_for(args).await?,
         "browser_tabs" => backend.tabs(json!({"action":"tabs","params":args})).await?,
         "browser_close" => backend.request(json!({"action":"close"})).await?,
@@ -473,6 +482,9 @@ mod tests {
                 assert!(description.starts_with("Original description. ") && description.contains("don't guess a generic domain") && description.contains("sign in in the browser panel"));
             } else if tool["name"] == "browser_tabs" {
                 assert!(tool["description"].as_str().unwrap().starts_with("Original description. The list marks the active tab"));
+            } else if tool["name"] == "browser_resize" {
+                assert!(tool["description"].as_str().unwrap().contains("where the user can watch"));
+                assert_eq!(tool["inputSchema"]["properties"]["width"]["minimum"], 240);
             } else if !["browser_evaluate", "web_search", "web_fetch"].iter().any(|name| tool["name"] == *name) {
                 assert_eq!(tool["description"], "Original description.");
             }
