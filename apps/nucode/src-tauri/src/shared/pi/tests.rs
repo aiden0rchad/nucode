@@ -2651,6 +2651,24 @@ fn provider_retries_report_the_attempt() {
 }
 
 #[test]
+fn a_turn_that_recovers_from_a_provider_error_does_not_end_failed() {
+    let answer = |stop: &str| json!({"type":"message_end","message":{"role":"assistant","timestamp":2,"content":[{"type":"text","text":"part"}],"stopReason":stop,"errorMessage":if stop == "error" { json!("read tcp: connection reset by peer") } else { Value::Null }}});
+    let turn = |stops: &[&str]| {
+        let mut t = Translator::new("thread", "/workspace");
+        t.apply(&json!({"type":"agent_start"}));
+        for stop in stops { t.apply(&answer(stop)); }
+        t.apply(&json!({"type":"agent_settled"})).into_iter().find(|e| e["method"] == "turn/completed").expect("turn completed")["params"]["turn"].clone()
+    };
+    // Stream recovery resumed the turn after the reset, and the later answer finished it.
+    let recovered = turn(&["toolUse", "error", "toolUse", "stop"]);
+    assert_eq!(recovered["status"], "completed");
+    assert!(recovered["error"].is_null());
+    let failed = turn(&["toolUse", "error"]);
+    assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["error"]["message"], "read tcp: connection reset by peer");
+}
+
+#[test]
 fn nucode_context_records_become_thread_context_updates() {
     let mut t = Translator::new("thread-a", "/workspace");
     let record = json!({"window":100000,"used":5000,"rows":[{"id":"messages","tokens":5000}]});
