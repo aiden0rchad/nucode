@@ -34,6 +34,8 @@ export function BrowserPane({ embedded = false, tools = [], paneActions = [], se
   }, [state.takeover, onTakeOver]);
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
+  // An error belongs to the page it happened on; a stale one would keep covering (and hiding) every page after it.
+  useEffect(() => { setError(""); }, [state.active]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const keyboard = useRef<HTMLTextAreaElement>(null);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **In-app browser stuck on "Unknown browser tab":** after an agent closed a page, the pane could keep that error and hide every page opened after it, so an agent seemed to work in the browser with nothing showing. Errors now belong to the page they happened on, and a page closing under the pane is not an error. nucode also no longer offers to save a login the agent typed.
 - **In-app browser after an agent closes a page:** the page's tab now goes away instead of staying as a dead "Unknown browser tab" with an empty address bar. Agents are also told to leave the page they checked open, so you can look at it after they finish, and a page that renders nothing now says so instead of returning an empty snapshot.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.

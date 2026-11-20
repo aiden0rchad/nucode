@@ -36,6 +36,22 @@ describe("Browser pane", () => {
     act(() => { input.blur(); input.focus(); });
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
   });
+  it("keeps showing pages after one closes under it, and drops an error when the page changes", async () => {
+    const native = (active: string): BrowserState => ({ backend: "native", tabs: [{ id: active, title: "Page", url: `https://example.test/${active}`, loading: false, ready: true }], active });
+    vi.mocked(browserNativeBounds).mockRejectedValue("Unknown browser tab");
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    act(() => receive(native("closed")));
+    await waitFor(() => expect(browserNativeBounds).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(screen.queryByRole("alert")).toBeNull();
+    vi.mocked(browserNativeBounds).mockRejectedValue("Native browser failed");
+    act(() => receive(native("first")));
+    expect(await screen.findByText("Native browser failed")).toBeTruthy();
+    vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
+    act(() => receive(native("second")));
+    await waitFor(() => expect(screen.queryByText("Native browser failed")).toBeNull());
+  });
   it("does not focus the URL when an agent opens a blank page", async () => {
     render(<><input aria-label="Composer" /><BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} /></>);
     await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());

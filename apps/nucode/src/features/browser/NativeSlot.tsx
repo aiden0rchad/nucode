@@ -5,6 +5,9 @@ import { nativeOverlayIntersects, trackNativeDragOverlay } from "@/features/desi
 export function roundedRect(rect: DOMRect) {
   return { x: Math.max(0, Math.round(rect.x)), y: Math.max(0, Math.round(rect.y)), w: Math.max(1, Math.round(rect.width)), h: Math.max(1, Math.round(rect.height)) };
 }
+// The page was closed (by the agent or another window) between the last state update and this placement; the next
+// state removes it, so this is not an error to show.
+const closedTab = (error: unknown) => /Unknown browser tab/.test(String(error));
 export function NativeSlot({ tabId, snapshot, ready, blocked, onError }: { tabId: string; snapshot?: string; ready: boolean; blocked: boolean; onError: (error: string) => void }) {
   const slot = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState(true);
@@ -27,7 +30,7 @@ export function NativeSlot({ tabId, snapshot, ready, blocked, onError }: { tabId
       if (pending || key === last) return;
       pending = true; last = key;
       // A drag outpaces the round trip; send the newest bounds as soon as this one lands.
-      void browserNativeBounds(tabId, rect, visible).catch(e => { if (!disposed) onError(String(e)); }).finally(() => { pending = false; sync(); });
+      void browserNativeBounds(tabId, rect, visible).catch(e => { if (!disposed && !closedTab(e)) onError(String(e)); }).finally(() => { pending = false; sync(); });
     };
     // One measurement per frame covers ancestor scrolls, transitions, mode changes and overlays.
     const measure = () => { if (disposed) return; sync(); frame = requestAnimationFrame(measure); };
