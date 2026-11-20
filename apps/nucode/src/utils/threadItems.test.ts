@@ -31,6 +31,14 @@ describe("threadItems", () => {
     expect(previewThreadName("x".repeat(200), "New chat")).toHaveLength(81);
     expect(previewThreadName(" \n ", "New chat")).toBe("New chat");
   });
+  it("skips a greeting so the name says what the thread is for", () => {
+    expect(previewThreadName("Hi! Phase 3f is built, could you fix what the reviewers found?", "New chat")).toBe("Phase 3f is built, could you fix what the reviewers found");
+    expect(previewThreadName("Hi, on to the next phase of the redesign.", "New chat")).toBe("On to the next phase of the redesign");
+    expect(previewThreadName("Hey there, thanks! Please check the build.", "New chat")).toBe("Check the build");
+    expect(previewThreadName("Hello", "New chat")).toBe("Hello");
+    expect(previewThreadName("Hiking trip plan for May.", "New chat")).toBe("Hiking trip plan for May");
+    expect(previewThreadName("So the tests fail on CI. Why?", "New chat")).toBe("The tests fail on CI");
+  });
   it("restores failed turns with their original error and request, but not interrupted turns", () => {
     const thread = { turns: [
       { id: "failed-turn", status: "failed", error: { message: "429 requests are paused" }, items: [{ type: "userMessage", id: "user", content: [{ type: "text", text: "Check this" }, { type: "image", url: "data:image/png;base64,AAA" }] }] },
