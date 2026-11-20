@@ -26,6 +26,8 @@ const CONTINUE = "Your last answer was cut off by the model provider before it f
 const output = (r: Result) => r.messages.filter(m => m.role === "assistant").at(-1)?.content?.filter(c => c.type === "text").map(c => c.text).join("\n") || r.stderr;
 
 const CHILD_SETTINGS = { async: { enabled: false }, bash: { autoBackground: { enabled: false } }, eval: { autoBackground: { enabled: false } } };
+export const SUBAGENTS_OFF = "Subagents are off for this thread, so there is no subagent tool. Do the work in this thread.";
+
 export default function (pi: ExtensionAPI) {
   registerExecutionLimits(pi, readPolicy);
   registerLoopGuard(pi);
@@ -56,13 +58,28 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_start", () => { count = 0; clearBudget(); });
   pi.on("agent_end", () => { finish(); for (const checkpoint of completedCheckpoints) checkpoint.discard(); completedCheckpoints.clear(); });
   pi.on("session_shutdown", () => { clearInterval(parentWatch); finish(); });
+  // A thread whose team is off still had the subagent tool (omp mounts it as xd://subagent), and the only sign it was
+  // off was "enabled":false inside the policy JSON, so models called it and were refused. Unmount it while off.
+  let parked = false;
+  const syncTool = (enabled: boolean): Promise<void> | undefined => {
+    if (typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
+    const active = pi.getActiveTools();
+    if (!enabled && active.includes("subagent")) { parked = true; return Promise.resolve(pi.setActiveTools(active.filter(name => name !== "subagent"))); }
+    if (enabled && parked) { parked = false; if (!active.includes("subagent")) return Promise.resolve(pi.setActiveTools([...active, "subagent"])); }
+  };
   pi.on("before_agent_start", () => {
     const current: Policy = readPolicy();
+    const synced = syncTool(current.enabled !== false);
+    if (current.enabled === false) {
+      const off = { message: { customType: "nucode-subagent-policy", display: false, content: SUBAGENTS_OFF } };
+      return synced ? synced.then(() => off) : off;
+    }
     const role = Number(process.env.NUCODE_SUBAGENT_DEPTH ?? 0) === 0 ? "commander" : process.env.NUCODE_SUBAGENT_ROLE ?? "unknown";
-    const chain = current.enabled !== false && current.mode === "chain-of-command";
+    const chain = current.mode === "chain-of-command";
     const targets = commandTargets(role, current.roles);
     const visible = { ...current, models: chain ? undefined : modelChoices(current), ...(chain ? { roles: current.roles.filter(r => targets.includes(r.name)) } : {}) };
-    return { message: { customType: "nucode-subagent-policy", display: false, content: `${chain ? commandInstructions(role, current.roles) + "\n" : ""}Subagent policy: ${JSON.stringify(visible)}` } };
+    const result = { message: { customType: "nucode-subagent-policy", display: false, content: `${chain ? commandInstructions(role, current.roles) + "\n" : ""}Subagent policy: ${JSON.stringify(visible)}` } };
+    return synced ? synced.then(() => result) : result;
   });
   pi.registerTool({
     name: "subagent",
