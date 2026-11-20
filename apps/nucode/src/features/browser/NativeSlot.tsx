@@ -8,7 +8,15 @@ export function roundedRect(rect: DOMRect) {
 // The page was closed (by the agent or another window) between the last state update and this placement; the next
 // state removes it, so this is not an error to show.
 const closedTab = (error: unknown) => /Unknown browser tab/.test(String(error));
-export function NativeSlot({ tabId, snapshot, ready, blocked, onError }: { tabId: string; snapshot?: string; ready: boolean; blocked: boolean; onError: (error: string) => void }) {
+// The rectangle the backend gives the page while an agent has set its width (fit_viewport in policy.rs): that width,
+// scaled down to fit a narrower pane, centred and top-aligned, its height clipped to the pane. The last snapshot was
+// taken of that rectangle, so it is drawn there too; stretched over the whole pane it showed around the page.
+export function viewportStyle(viewport?: { width: number; height?: number | null } | null) {
+  if (!viewport) return undefined;
+  const width = `min(100cqw, ${viewport.width}px)`;
+  return { width, height: viewport.height ? `min(100cqh, calc(${width} * ${viewport.height / viewport.width}))` : "100%", margin: "0 auto" };
+}
+export function NativeSlot({ tabId, snapshot, ready, blocked, onError, viewport }: { tabId: string; snapshot?: string; ready: boolean; blocked: boolean; onError: (error: string) => void; viewport?: { width: number; height?: number | null } | null }) {
   const slot = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState(true);
   useEffect(() => {
@@ -42,7 +50,7 @@ export function NativeSlot({ tabId, snapshot, ready, blocked, onError }: { tabId
     return () => { disposed = true; stopDrag(); cancelAnimationFrame(frame); observer.disconnect(); void browserNativeBounds(tabId, rect, false).catch(() => {}); };
   }, [tabId, ready, blocked, onError]);
   return <div ref={slot} className="browser-native-slot" data-native-hidden={hidden} aria-label="Native browser page">
-    {snapshot && <img className="browser-native-snapshot" src={snapshot.startsWith("data:") ? snapshot : `data:image/png;base64,${snapshot}`} alt="Last page snapshot" />}
+    {snapshot && <img className="browser-native-snapshot" style={viewportStyle(viewport)} src={snapshot.startsWith("data:") ? snapshot : `data:image/png;base64,${snapshot}`} alt="Last page snapshot" />}
     {!ready && !blocked && <div className="browser-empty">Loading page…</div>}
   </div>;
 }

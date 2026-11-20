@@ -23,7 +23,7 @@
 .browser-progress { height: 2px; flex: 0 0 2px; overflow: hidden; }
 .browser-progress span { display: block; height: 2px; background: var(--text-accent, var(--text-strong)); transition: width .15s; }
 .browser-tab.active { background: var(--surface-active, var(--surface-hover)); }
-.browser-native-slot { position: absolute; inset: 0; background: var(--surface-card); }
+.browser-native-slot { position: absolute; inset: 0; background: var(--surface-card); container-type: size; }
 .browser-native-snapshot { display: block; width: 100%; height: 100%; object-fit: fill; }
 .browser-agent-active .browser-surface { outline: 2px solid var(--text-accent, var(--text-strong)); outline-offset: 2px; }
 .browser-confirm { font-size: 12px; color: var(--text-strong); overflow-wrap: anywhere; }
