@@ -4,7 +4,7 @@ use std::{collections::{HashMap, HashSet}, path::Path, sync::atomic::AtomicBool}
 
 pub(super) fn clean(text: &str) -> String {
     let mut text = text.to_string();
-    for tag in ["system-reminder", "local-command-caveat", "local-command-stdout"] {
+    for tag in ["system-reminder", "local-command-caveat", "local-command-stdout", "task-notification"] {
         let open = format!("<{tag}>"); let close = format!("</{tag}>");
         while let Some(start) = text.find(&open) {
             let end = text[start..].find(&close).map(|n| start+n+close.len()).unwrap_or(text.len());

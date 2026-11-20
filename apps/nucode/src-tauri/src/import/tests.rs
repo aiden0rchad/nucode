@@ -1192,3 +1192,10 @@ fn old_settings_ignore_the_removed_worker_run_option() {
     let settings:AppSettings=serde_json::from_value(value).unwrap();
     assert_eq!(json!(settings)["chatImport"],json!({"auto":false,"sources":["claude","codex"],"includeArchived":false}));
 }
+
+#[test]
+fn claude_task_notifications_are_not_prompts() {
+    // Claude Code records background-task notices as user rows; one must never become a thread's preview or title.
+    assert_eq!(super::claude::clean("<task-notification><task-id>b1</task-id><status>completed</status></task-notification>"), "");
+    assert_eq!(super::claude::clean("<task-notification>x</task-notification>\nFix the login page"), "Fix the login page");
+}
