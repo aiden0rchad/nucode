@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { NativeSlot, roundedRect } from "./NativeSlot";
+import { NativeSlot, roundedRect, viewportStyle } from "./NativeSlot";
 import { browserNativeBounds } from "@services/tauri";
 import { intersects, registerNativeOverlay } from "@/features/design-system/nativeOverlays";
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
@@ -145,4 +145,13 @@ it("preserves full page bounds while annotation blocking hides and restores the 
   view.rerender(<NativeSlot tabId="one" ready blocked={false} snapshot="AAAA" onError={error} />);
   await frame();
   expect(browserNativeBounds).toHaveBeenLastCalledWith("one", expected, true);
+});
+
+it("draws the last snapshot where the page sits while an agent has set its width", () => {
+  // Matches fit_viewport: the width (scaled to a narrower pane), centred, top-aligned, height clipped to the pane.
+  expect(viewportStyle(null)).toBeUndefined();
+  expect(viewportStyle({ width: 390 })).toEqual({ width: "min(100cqw, 390px)", height: "100%", margin: "0 auto" });
+  expect(viewportStyle({ width: 400, height: 800 })).toEqual({ width: "min(100cqw, 400px)", height: "min(100cqh, calc(min(100cqw, 400px) * 2))", margin: "0 auto" });
+  render(<NativeSlot tabId="one" ready blocked={false} snapshot="AAAA" onError={error} />);
+  expect(screen.getByAltText("Last page snapshot").getAttribute("style")).toBeNull();
 });
