@@ -51,6 +51,17 @@ describe("Browser pane", () => {
     vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
     act(() => receive(native("second")));
     await waitFor(() => expect(screen.queryByText("Native browser failed")).toBeNull());
+  it("shows the width the agent set and fits the pane again on click", async () => {
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    const page: BrowserState = { backend: "native", tabs: [{ id: "one", title: "Radios", url: "http://127.0.0.1:4317/radios", loading: false, ready: true }], active: "one" };
+    act(() => receive(page));
+    expect(screen.queryByRole("button", { name: /Viewport .* set by the agent/ })).toBeNull();
+    act(() => receive({ ...page, viewport: { width: 390, height: 844 } }));
+    const chip = screen.getByRole("button", { name: "Viewport 390 pixels wide, set by the agent. Fit the pane again" });
+    expect(chip.textContent).toBe("390 × 844");
+    fireEvent.click(chip);
+    expect(browserRequest).toHaveBeenCalledWith({ action: "viewport" });
   });
   it("does not focus the URL when an agent opens a blank page", async () => {
     render(<><input aria-label="Composer" /><BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} /></>);
