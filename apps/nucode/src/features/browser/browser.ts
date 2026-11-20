@@ -8,6 +8,8 @@ export type BrowserState = {
   active: string; frame?: string | null; frameTarget?: string; width?: number; height?: number; dpr?: number;
   backend?: "native" | "cdp"; takeover?: number; externalRequest?: string; newWindow?: string; downloadRequest?: string;
   agent?: boolean; cursor?: string; error?: string;
+  /** A width (and height) the agent set with browser_resize; the page lays out at it until reset. */
+  viewport?: { width: number; height?: number | null } | null;
 };
 export function normalizeBrowserUrl(input: string, searchUrl: string): string {
   const value = input.trim();

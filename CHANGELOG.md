@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **UI checks you can watch:** agents now check pages in the in-app browser by default, so you can see what they look at. Headless browser scripts (Playwright, Puppeteer, Selenium) are for when you or the project's instructions ask for them; an agent that runs one anyway gets a one-line reminder. The project's own browser test suite still runs as usual.
+- **Width chip in the browser:** when an agent sets the page to a phone or tablet width, the address bar shows that width; click it to fit the pane again.
 - **Checking narrow layouts where you can see it:** agents can set the in-app browser to a phone or tablet width (browser_resize) and look at the page there. A width wider than the pane is scaled down to fit, and calling it with no width returns the browser to the pane's own size.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
