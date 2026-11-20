@@ -4,7 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
 import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
-import { ownedCommand } from "./lib/commandGuard.ts";
+import { ownedCommand, userHome } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
 import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
@@ -147,7 +147,7 @@ export default function (pi: ExtensionAPI) {
     const child = process.env.NUCODE_SUBAGENT_DEPTH ? { workspace: process.env.NUCODE_WORKSPACE!, toolAccess: process.env.NUCODE_TOOL_ACCESS ?? "read-only" } : undefined;
     const decision = decide(read(), call, home, ctx.hasUI, child);
     if (decision === "allow") {
-      if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
+      if (call.tool === "bash" && !preview) input.command = ownedCommand(userHome(safeReadOnlyCommand(call.command)));
       return;
     }
     if (decision === "block") return { block: true, reason: "Blocked by nucode access policy (read-only, protected path, or no interactive approval)" };
@@ -164,6 +164,6 @@ export default function (pi: ExtensionAPI) {
       renameSync(temp, file);
     }
     if (answer !== "Allow" && answer !== "Allow for session") return { block: true, reason: "Blocked by user" };
-    if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
+    if (call.tool === "bash" && !preview) input.command = ownedCommand(userHome(safeReadOnlyCommand(call.command)));
   });
 }

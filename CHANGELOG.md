@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Project commands use your home folder:** an agent's commands now run with your own HOME, while the engine keeps its separate settings folder. Before, each project's commands got a home folder of their own, so they rebuilt every Go, npm and bun cache per project (1.4 GB of caches plus 600 MB of Go modules in one project), could not find installed Playwright browsers and did not see your git identity. Read-only reviewers' sandboxed commands are unchanged.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
 - **Agents opening the same pictures over and over:** an agent that keeps re-opening the same screenshots is now stopped even when it copies them to new folders or another format first. With a model reached through an OpenAI-format proxy, an agent can open at most two images per step: the proxy passes on only the last two, so a third is refused with that reason instead of arriving as text and being opened again.

@@ -51,3 +51,20 @@ for (const mode of ["cancel", "crash", "stubborn", "managed-stop", "managed-cras
   }
   assert.fail("foreground command survived its owner");
 });
+
+test("project commands get the user's HOME back while the engine keeps its own", async () => {
+  const { userHome } = await import("../extensions/lib/commandGuard.ts");
+  const previous = process.env.NUCODE_USER_HOME;
+  try {
+    delete process.env.NUCODE_USER_HOME;
+    assert.equal(userHome("npm test"), "npm test");
+    process.env.NUCODE_USER_HOME = "/Users/someone's home";
+    const wrapped = userHome("npm test");
+    assert.equal(wrapped, "export HOME='/Users/someone'\\''s home'; unset XDG_CONFIG_HOME\nnpm test");
+    const { execFileSync } = await import("node:child_process");
+    const out = execFileSync("/bin/bash", ["-c", userHome('printf "%s|%s" "$HOME" "${XDG_CONFIG_HOME-unset}"')], { env: { ...process.env, HOME: "/isolated", XDG_CONFIG_HOME: "/isolated" } }).toString();
+    assert.equal(out, "/Users/someone's home|unset");
+  } finally {
+    if (previous === undefined) delete process.env.NUCODE_USER_HOME; else process.env.NUCODE_USER_HOME = previous;
+  }
+});
