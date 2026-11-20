@@ -7,6 +7,7 @@ import { canonicalMcpName, connectorVerdict, type Connector } from "./lib/connec
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { registerScreenshotFiles } from "./lib/screenshotFile.ts";
 import { ownedCommand, userHome } from "./lib/commandGuard.ts";
+import { editTargets, judgedPath, loadInspect, userPath } from "./lib/toolPaths.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
 import { applyToolBatching, registerBatchNudge } from "./lib/toolBatching.ts";
@@ -149,6 +150,7 @@ export default function (pi: ExtensionAPI) {
     // Apply connector policy there once, rather than prompting for a filesystem write first.
     if (process.env.NUCODE_OMP === "1" && event.toolName === "write" && typeof event.input?.path === "string" && event.input.path.startsWith("xd://mcp__")) return;
     const input = event.input as Record<string, unknown>;
+    if (["read", "write", "edit", "grep", "find", "glob", "ls"].includes(event.toolName) && typeof input.path === "string") input.path = userPath(input.path);
     const preview = event.toolName === "preview_server";
     if (preview) {
       if (process.env.NUCODE_WORK !== "1" || process.env.NUCODE_SUBAGENT_DEPTH || !ctx.hasUI) return { block: true, reason: "Preview servers belong to the parent Work task" };
@@ -178,8 +180,40 @@ export default function (pi: ExtensionAPI) {
     // Strict tool-call layers send every optional field; OMP service mode rejects any bash timeout.
     if (process.env.NUCODE_OMP === "1" && event.toolName === "bash" && typeof input.name === "string" && input.name.trim()) delete input.timeout;
     const call = { tool: preview ? "bash" : event.toolName, cwd: ctx.cwd, command: input.command as string, path: input.path as string };
+    // A write or edit is judged on every file it writes. An OMP edit names them inside its payload ("[path#TAG]"
+    // sections, patch headers, move targets), so read them with OMP's own inspector; without one, refuse rather
+    // than guess, since judging no path would judge the workspace folder.
+    let targets: string[] = [];
+    if (event.toolName === "edit") {
+      const inspect = process.env.NUCODE_OMP === "1" ? await loadInspect() : undefined;
+      if (process.env.NUCODE_OMP === "1" && !inspect) return { block: true, reason: "nucode could not read which files this edit writes" };
+      targets = inspect ? editTargets(input, inspect) : typeof input.path === "string" ? [input.path] : [];
+      if (!targets.length) return { block: true, reason: "nucode could not tell which files this edit writes" };
+    // nucode's own devices keep the access-mode check they always had (a read-only thread starts no subagent).
+    } else if (event.toolName === "write" && typeof input.path === "string" && !/^xd:\/\/(?:subagent|report_verification)$/.test(input.path)) targets = [input.path];
     const child = process.env.NUCODE_SUBAGENT_DEPTH ? { workspace: process.env.NUCODE_WORKSPACE!, toolAccess: process.env.NUCODE_TOOL_ACCESS ?? "read-only" } : undefined;
-    const decision = decide(read(), call, home, ctx.hasUI, child);
+    const judged: string[] = [];
+    for (const target of targets) {
+      const result = judgedPath(target);
+      if ("path" in result) { judged.push(result.path); continue; }
+      const access = read();
+      // OMP's session scratch (local://) holds no project or user file; a read-only thread still writes nothing.
+      if (event.toolName === "write" && /^local:\/\//i.test(target) && access.accessMode !== "read-only" && child?.toolAccess !== "read-only") continue;
+      const url = /:\//.test(target) && !/^[@:]*~/.test(target);
+      // Other device and process URLs act with the shell's reach: Full access runs those unasked, a file URL never.
+      if (!url || event.toolName !== "write" || child || access.accessMode === "read-only" || !ctx.hasUI) return { block: true, reason: result.refuse };
+      if (access.accessMode === "full-access" && !/^[@:]*file:/i.test(target)) continue;
+      const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, tool: event.toolName, path: target, cwd: ctx.cwd });
+      if (await ctx.ui.select(title, ["Allow", "Block"]) !== "Allow" || read().accessMode === "read-only") return { block: true, reason: "Blocked by user" };
+    }
+    if (targets.length && !judged.length) return;
+    if (targets.length) call.path = judged.join(", ");
+    const calls = targets.length ? judged.map(path => ({ ...call, path })) : [call];
+    const decideAll = () => {
+      const decisions = calls.map(c => decide(read(), c, home, ctx.hasUI, child));
+      return decisions.includes("block") ? "block" : decisions.includes("ask") ? "ask" : "allow";
+    };
+    const decision = decideAll();
     // Every shell command from a read-only child runs inside the macOS sandbox, allowlisted ones included (a
     // repository's git filters run from "git status"); the sandbox, not the allowlist, keeps the child read-only.
     if (decision !== "ask" && call.tool === "bash" && !preview && child && typeof call.command === "string" && readOnlySandbox()) {
@@ -192,9 +226,10 @@ export default function (pi: ExtensionAPI) {
     }
     if (decision === "block") return { block: true, reason: "Blocked by nucode access policy (read-only, protected path, or no interactive approval)" };
     const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, ...call, diffPreview: call.tool === "edit" ? JSON.stringify(event.input).slice(0, 4000) : undefined });
-    const answer = await ctx.ui.select(title, read().kind === "work" ? ["Allow", "Block"] : ["Allow", "Allow for session", "Block"]);
+    // A session rule names one exact file, so an edit that writes several is approved once.
+    const answer = await ctx.ui.select(title, read().kind === "work" || calls.length > 1 ? ["Allow", "Block"] : ["Allow", "Allow for session", "Block"]);
     // A mode change while the dialog was open must take effect before execution.
-    if (decide(read(), call, home, ctx.hasUI, child) === "block") return { block: true, reason: "Thread access changed while awaiting approval" };
+    if (decideAll() === "block") return { block: true, reason: "Thread access changed while awaiting approval" };
     if (answer === "Allow for session") {
       const access = read();
       const rule = normalizeRule(call);

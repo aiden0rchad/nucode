@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { canonicalModel, decide, modelChoices, normalizeRule, protectedPath, readOnlyCommand, readOnlySandbox, resolveTask, checkLimits, sandboxedCommand, type Policy } from "../extensions/lib/policy.ts";
 import gate from "../extensions/nucode-gate.ts";
 import subagents from "../extensions/nucode-subagents.ts";
+import { setInspect } from "../extensions/lib/toolPaths.ts";
 
 const policy: Policy = { maxConcurrent: 2, maxPerTurn: 3, maxDepth: 2, allowedModels: ["local/small", "local/large"], defaultModel: "local/small", roles: [{ name: "worker", description: "Work", toolAccess: "full", instructions: "Keep it small" }, { name: "scout", description: "Read", toolAccess: "read-only", instructions: "", model: "local/large" }] };
 const root = mkdtempSync(join(tmpdir(), "nucode-extensions-"));
@@ -281,7 +282,9 @@ test("OMP virtual MCP writes use only the inner connector gate and retain denial
   assert.equal(await handler(inner, ctx), undefined);
   assert.equal(prompts, 1);
   // Ordinary files, edits and other virtual devices still use their own gate.
-  for (const event of [{ ...outer, input: { path: "file.ts" } }, { ...outer, toolName: "edit" }, { ...outer, input: { path: "xd://other_device" } }]) {
+  setInspect(() => ({}));
+  t.after(() => setInspect(undefined));
+  for (const event of [{ ...outer, input: { path: "file.ts" } }, { ...outer, toolName: "edit", input: { path: "file.ts", old_string: "a", new_string: "b" } }, { ...outer, input: { path: "xd://other_device" } }]) {
     assert.equal(await handler(event, ctx), undefined);
   }
   assert.equal(prompts, 4);
