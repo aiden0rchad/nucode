@@ -54,6 +54,9 @@ pub(super) struct Translator {
     tools: HashMap<String, Value>,
     files: HashMap<String, String>,
     failure: Option<String>,
+    /// The failure came from a provider answer that ended in an error. nucode's stream recovery resumes the same turn
+    /// without the engine's auto_retry events, so a later answer that ends normally means the turn recovered.
+    provider_failure: bool,
     /// The latest review of the open turn, shown when the turn settles: a run can end and resume by itself
     /// (a background job finishing), and a review reported at such a pause is not the turn's result.
     review: Option<Value>,
@@ -88,6 +91,7 @@ impl Translator {
             tools: HashMap::new(),
             files: HashMap::new(),
             failure: None,
+            provider_failure: false,
             review: None,
             aborted: false,
             compaction_only: false,
@@ -144,6 +148,7 @@ impl Translator {
         }
         self.active = true;
         self.failure = None;
+        self.provider_failure = false;
         self.review = None;
         self.aborted = false;
         self.diff.clear();
@@ -277,6 +282,10 @@ impl Translator {
                             .unwrap_or("Pi provider failed")
                             .into(),
                     );
+                    self.provider_failure = true;
+                } else if self.provider_failure && m["stopReason"] != "aborted" {
+                    self.failure = None;
+                    self.provider_failure = false;
                 }
                 if m["stopReason"] == "aborted" {
                     self.aborted = true;
