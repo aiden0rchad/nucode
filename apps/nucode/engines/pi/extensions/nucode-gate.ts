@@ -8,6 +8,7 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
+import { applyToolBatching } from "./lib/toolBatching.ts";
 import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
 // One private scratch folder per engine process: the only place a sandboxed read-only command may write.
 let scratch: string | undefined;
@@ -33,6 +34,7 @@ export default function (pi: ExtensionAPI) {
     const original: string | string[] = event.systemPrompt;
     let prompt = original;
     try { prompt = applyResponseStyle(original, parseResponseStyle(process.env.NUCODE_RESPONSE_STYLE)); } catch { prompt = original; }
+    try { prompt = applyToolBatching(prompt); } catch {}
     captured = { systemPrompt: Array.isArray(prompt) ? prompt.join("\n\n") : prompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
     if (prompt !== original) return { systemPrompt: prompt as any };
   });
