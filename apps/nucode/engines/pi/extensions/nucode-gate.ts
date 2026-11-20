@@ -134,10 +134,15 @@ export default function (pi: ExtensionAPI) {
       const access = JSON.parse(readFileSync(join(home, "nucode/threads", `${session}.json`), "utf8")) as Access;
       const input = (event.input ?? {}) as Record<string, unknown>;
       // OMP expands @/~ prefixes and file URLs; only auto-allow plain local paths.
+      const plainLocal = (file: unknown) => typeof file === "string" && /^[\w ./-]+$/.test(file) && !!file.trim()
+        && inside(resolve(ctx.cwd, file), ctx.cwd) && !protectedPath(resolve(ctx.cwd, file), home);
+      // Full access edits project files unasked, so a rename through the language server does too (a renamed file
+      // must land in the project as well). Listing code actions changes nothing; applying one can run a server command.
+      const action = String(input.action);
+      const unasked = ["definition", "type_definition", "implementation", "references", "hover", "symbols", "rename"].includes(action)
+        || (action === "rename_file" && plainLocal(input.new_name)) || (action === "code_actions" && input.apply !== true);
       if (event.toolName === "lsp" && access.accessMode === "full-access" && !process.env.NUCODE_WORK && !process.env.NUCODE_SUBAGENT_DEPTH
-        && ["definition", "type_definition", "implementation", "references", "hover", "symbols"].includes(String(input.action))
-        && typeof input.file === "string" && /^[\w ./-]+$/.test(input.file) && input.file.trim()
-        && inside(resolve(ctx.cwd, input.file), ctx.cwd) && !protectedPath(resolve(ctx.cwd, input.file), home)) return;
+        && unasked && plainLocal(input.file)) return;
       if (access.accessMode === "read-only" || process.env.NUCODE_SUBAGENT_DEPTH || !ctx.hasUI) return { block: true, reason: "Native tool requires interactive approval" };
       // Eval runs code with the same reach as the shell, and Full access already runs the shell unasked.
       if (event.toolName === "eval" && access.accessMode === "full-access") return;

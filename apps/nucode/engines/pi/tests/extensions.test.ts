@@ -93,9 +93,19 @@ test("OMP Full access allows scoped LSP queries while retaining native mutation 
   for (const file of ["../outside.js", "/etc/hosts", "lsp-outside/file.js", ".env", ".git/config", home, "~/file.js", "@/etc/hosts", ":/etc/hosts", "file:///etc/hosts", "src/\u00a0../file.js"]) {
     assert.equal((await call({ action: "references", file })).block, true, file);
   }
-  for (const action of ["rename", "rename_file", "code_actions", "request", "reload", "future_action"]) {
+  for (const action of ["code_actions", "request", "reload", "future_action"]) {
     assert.equal((await call({ action, file: "src/lib.js", apply: true })).block, true, action);
   }
+  // A rename edits project files, which Full access does unasked; a renamed file must stay in the project.
+  const asked = prompts;
+  assert.equal(await call({ action: "rename", file: "src/lib.js", line: 3, symbol: "range", new_name: "span" }), undefined);
+  assert.equal(await call({ action: "rename_file", file: "src/lib.js", new_name: "src/span.js" }), undefined);
+  assert.equal(await call({ action: "code_actions", file: "src/lib.js", line: 3 }), undefined);
+  assert.equal(prompts, asked);
+  for (const new_name of ["../outside.js", "/etc/hosts", ".env", ".git/config", "~/x.js", "lsp-outside/x.js"]) {
+    assert.equal((await call({ action: "rename_file", file: "src/lib.js", new_name })).block, true, new_name);
+  }
+  assert.equal((await call({ action: "rename", file: "../outside.js", symbol: "x", new_name: "y" })).block, true);
   const before = prompts;
   setMode("read-only");
   assert.equal((await call({ action: "references", file: "src/lib.js" })).block, true);
