@@ -134,6 +134,11 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
     }
 }
 
+/// WebKit drops a script that is still running when its page goes away, and says so in its own terms.
+pub(crate) const EVALUATE_NAVIGATED: &str = "The page navigated or reloaded while the script was running, so the script returned nothing. If it reloaded the page on purpose, the reload happened. Wait for the page with browser_wait_for or take a browser_snapshot before evaluating again, and keep a reload out of a script whose result you need.";
+fn evaluate_error(error: String) -> String {
+    if error.contains("no longer reachable") { EVALUATE_NAVIGATED.into() } else { error }
+}
 pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Result<Value, String> {
     backend.authorize_tool(args.clone()).await?;
     let tab_page = name == "browser_tabs" && matches!(args["action"].as_str(), Some("new" | "select"));
@@ -151,7 +156,7 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
             if !args["filename"].is_null() && args["filename"] != "" { return Err("Native evaluation returns results inline; filename is unsupported".into()); }
             let target = args.get("target").filter(|v| !v.is_null() && **v != "").or_else(|| args.get("ref").filter(|v| !v.is_null() && **v != ""));
             let target = target.map(|v| v.as_str().ok_or("Invalid evaluation target")).transpose()?;
-            backend.request(json!({"action":"evaluate","function":function,"ref":target})).await?
+            backend.request(json!({"action":"evaluate","function":function,"ref":target})).await.map_err(evaluate_error)?
         },
         "browser_scroll" => backend.scroll(args).await?,
         "browser_wait_for" => backend.wait_for(args).await?,
@@ -360,6 +365,18 @@ mod tests {
         assert!(!text(tool(&Pages, "browser_navigate_back", json!({})).await.unwrap()).contains("Page snapshot"));
         assert!(!text(tool(&Pages, "browser_press_key", json!({"key":"Tab"})).await.unwrap()).contains("Page snapshot"));
         assert!(!text(tool(&Fake, "browser_navigate", json!({"url":"https://example.test/"})).await.unwrap()).contains("Page snapshot"));
+    }
+    struct Navigated;
+    impl BrowserBackend for Navigated {
+        fn request(&self, _params: Value) -> BoxFuture<'_, Result<Value, String>> {
+            Box::pin(async { Err("Completion handler for function call is no longer reachable".into()) })
+        }
+    }
+    #[tokio::test]
+    async fn a_script_cut_off_by_navigation_says_so() {
+        let error = tool(&Navigated, "browser_evaluate", json!({"function":"() => location.reload()"})).await.unwrap_err();
+        assert_eq!(error, EVALUATE_NAVIGATED);
+        assert_eq!(evaluate_error("TypeError: x is undefined".into()), "TypeError: x is undefined");
     }
     impl BrowserBackend for Fake {
         fn request(&self, params: Value) -> BoxFuture<'_, Result<Value, String>> {
