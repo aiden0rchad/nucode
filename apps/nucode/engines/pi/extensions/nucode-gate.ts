@@ -7,15 +7,18 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
+import { applyVisibleUi, browserAvailable, registerVisibleBrowser } from "./lib/visibleBrowser.ts";
 import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
+  registerVisibleBrowser(pi);
   let captured: { systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[] } | undefined;
   pi.on("before_agent_start", async event => {
     const original: string | string[] = event.systemPrompt;
     let prompt = original;
     try { prompt = applyResponseStyle(original, parseResponseStyle(process.env.NUCODE_RESPONSE_STYLE)); } catch { prompt = original; }
+    try { if (browserAvailable()) prompt = applyVisibleUi(prompt); } catch {}
     captured = { systemPrompt: Array.isArray(prompt) ? prompt.join("\n\n") : prompt, contextFiles: event.systemPromptOptions?.contextFiles ?? [], skills: event.systemPromptOptions?.skills ?? [] };
     if (prompt !== original) return { systemPrompt: prompt as any };
   });

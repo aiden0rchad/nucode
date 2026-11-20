@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **UI checks you can watch:** agents now check pages in the in-app browser by default, so you can see what they look at. Headless browser scripts (Playwright, Puppeteer, Selenium) are for when you or the project's instructions ask for them; an agent that runs one anyway gets a one-line reminder. The project's own browser test suite still runs as usual.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
 - **Agents opening the same pictures over and over:** an agent that keeps re-opening the same screenshots is now stopped even when it copies them to new folders or another format first. With a model reached through an OpenAI-format proxy, an agent can open at most two images per step: the proxy passes on only the last two, so a third is refused with that reason instead of arriving as text and being opened again.
