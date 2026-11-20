@@ -298,6 +298,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/commandGuard.ts"),
         ),
         (
+            "lib/toolPaths.ts",
+            include_str!("../../../../engines/pi/extensions/lib/toolPaths.ts"),
+        ),
+        (
             "lib/verification.ts",
             include_str!("../../../../engines/pi/extensions/lib/verification.ts"),
         ),

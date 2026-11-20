@@ -23,7 +23,8 @@ export function canonical(path: string): string {
   path = resolve(path);
   try {
     if (lstatSync(path).isSymbolicLink()) return canonical(resolve(dirname(path), readlinkSync(path)));
-    return realpathSync(path);
+    // The native call returns the on-disk case: ".GIT/config" on a case-insensitive disk is ".git/config".
+    return realpathSync.native(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -35,7 +36,8 @@ export function inside(path: string, root: string): boolean {
   return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`));
 }
 export function protectedPath(path: string, home: string): boolean {
-  return [resolve(path), canonical(path)].some(p => p.split(sep).some(part => part === ".git" || part.startsWith(".env")) || inside(p, home));
+  // macOS and Windows disks ignore case by default, so ".ENV" and ".Git" are the files the names protect.
+  return [resolve(path), canonical(path)].some(p => p.split(sep).some(part => part.toLowerCase() === ".git" || part.toLowerCase().startsWith(".env")) || inside(p, home));
 }
 export function readOnlyCommand(command: string): boolean {
   // Deliberately small grammar: no shell expansion, redirects, pipelines or executable flags.
