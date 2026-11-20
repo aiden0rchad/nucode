@@ -51,6 +51,7 @@ describe("Browser pane", () => {
     vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
     act(() => receive(native("second")));
     await waitFor(() => expect(screen.queryByText("Native browser failed")).toBeNull());
+  });
   it("shows the width the agent set and fits the pane again on click", async () => {
     render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
     await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());

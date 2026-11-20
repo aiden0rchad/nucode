@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Browser screenshots saved where the agent asked:** a screenshot taken with a filename is now written to that file (when the thread may write there) and the agent is told where; before, the filename was ignored and reports could cite screenshots that did not exist. The note after a key press now tells the agent how to check it worked instead of pointing at a setting it cannot change.
 - **In-app browser stuck on "Unknown browser tab":** after an agent closed a page, the pane could keep that error and hide every page opened after it, so an agent seemed to work in the browser with nothing showing. Errors now belong to the page they happened on, and a page closing under the pane is not an error. nucode also no longer offers to save a login the agent typed.
 - **False "Couldn't reach the provider" after a recovered turn:** a turn that hit a dropped connection and then carried on to the end no longer reopens as failed, with an error card under its final answer and its prompt put back in the composer.
 - **Subagents off for a thread:** when a thread's team is turned off, agents no longer see a subagent tool they cannot use, and are told plainly that subagents are off. Before, they called it, were refused, and worked around it.
