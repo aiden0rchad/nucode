@@ -332,6 +332,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/toolBatching.ts"),
         ),
         (
+            "lib/visibleBrowser.ts",
+            include_str!("../../../../engines/pi/extensions/lib/visibleBrowser.ts"),
+        ),
+        (
             "LICENSE",
             include_str!("../../../../engines/pi/extensions/LICENSE"),
         ),
