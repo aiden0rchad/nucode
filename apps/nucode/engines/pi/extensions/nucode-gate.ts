@@ -7,11 +7,12 @@ import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
-import { applyToolBatching } from "./lib/toolBatching.ts";
+import { applyToolBatching, registerBatchNudge } from "./lib/toolBatching.ts";
 import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from "./lib/foreignReasoning.ts";
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
+  registerBatchNudge(pi);
   let captured: { systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[] } | undefined;
   pi.on("before_agent_start", async event => {
     const original: string | string[] = event.systemPrompt;

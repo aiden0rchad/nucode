@@ -25,3 +25,36 @@ test("applying the response style after batching keeps both sections", () => {
   assert.ok(out.includes(TOOL_BATCHING));
   assert.ok(out.some(part => part.includes("Be thorough.")));
 });
+
+test("a run of single lookups gets one reminder, then a cooldown", async () => {
+  const { LookupStreak, STREAK, COOLDOWN } = await import("../extensions/lib/toolBatching.ts");
+  const watch = new LookupStreak();
+  const step = (...tools: string[]) => { watch.start(); tools.forEach(t => watch.call(t)); return watch.end(); };
+  for (let i = 1; i < STREAK; i++) assert.equal(step("read"), false);
+  assert.equal(step("grep"), true);
+  for (let i = 0; i < COOLDOWN - 1; i++) assert.equal(step("read"), false, "quiet during the cooldown");
+  assert.equal(step("read"), true, "a streak that never broke is reminded again when the cooldown ends");
+});
+
+test("batched lookups, edits and commands break the streak", async () => {
+  const { LookupStreak } = await import("../extensions/lib/toolBatching.ts");
+  const watch = new LookupStreak();
+  const step = (...tools: string[]) => { watch.start(); tools.forEach(t => watch.call(t)); return watch.end(); };
+  for (const breaker of [["read", "read"], ["edit"], ["bash"], []]) {
+    assert.equal(step("read"), false); assert.equal(step("read"), false);
+    assert.equal(step(...breaker), false, JSON.stringify(breaker));
+  }
+});
+
+test("the gate's hook sends the reminder with the last result of the third single-lookup step", async () => {
+  const { registerBatchNudge, BATCH_NUDGE } = await import("../extensions/lib/toolBatching.ts");
+  const handlers: Record<string, Function> = {};
+  registerBatchNudge({ on: (name: string, fn: Function) => { handlers[name] = fn; } } as any);
+  handlers.agent_start();
+  const step = (...tools: string[]) => { handlers.turn_start(); tools.forEach(t => handlers.tool_call({ toolName: t })); return tools.map(() => handlers.tool_result({})); };
+  assert.deepEqual(step("read"), [undefined]);
+  assert.deepEqual(step("read", "grep"), [undefined, undefined]);
+  assert.deepEqual(step("read"), [undefined]);
+  assert.deepEqual(step("glob"), [undefined]);
+  assert.deepEqual(step("read"), [{ additionalContext: BATCH_NUDGE }]);
+});
