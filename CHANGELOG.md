@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Browser scripts cut off by a reload:** when a page reloads or navigates while an agent's script is running in it, the agent is now told that plainly, and what to do next, instead of getting WebKit's "Completion handler … no longer reachable".
 - **Renames in Full access:** a rename through the language server (a symbol, or a file that stays in the project) no longer stops a Full access thread for approval, since Full access already edits project files unasked. Applying a code action still asks.
 - **Edits judged by the files they change:** nucode's access rules now check every file an omp edit writes. Before, they looked at the project folder instead, so a subagent in Ask mode could edit files outside the project, including the thread's own access settings. Paths written in ways that move a file elsewhere (`~name`, a leading `:` or `@`, `[path#tag]`, odd spaces, file URLs) are judged as written to where they land or refused, and `.GIT`/`.ENV` are protected like `.git`/`.env`. A path starting `~/` in the file tools now means your home folder, as it already did in shell commands; before, reading `~/notes.md` failed.
 - **Browser screenshots saved where the agent asked:** a screenshot taken with a filename is now written to that file (when the thread may write there) and the agent is told where; before, the filename was ignored and reports could cite screenshots that did not exist. The note after a key press now tells the agent how to check it worked instead of pointing at a setting it cannot change.
