@@ -294,6 +294,10 @@ pub(super) fn prepare(
             include_str!("../../../../engines/pi/extensions/lib/streamRecovery.ts"),
         ),
         (
+            "lib/screenshotFile.ts",
+            include_str!("../../../../engines/pi/extensions/lib/screenshotFile.ts"),
+        ),
+        (
             "lib/commandGuard.ts",
             include_str!("../../../../engines/pi/extensions/lib/commandGuard.ts"),
         ),

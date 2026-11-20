@@ -4,6 +4,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
 import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
+import { registerScreenshotFiles } from "./lib/screenshotFile.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
 import { applyResponseStyle, parseResponseStyle } from "./lib/responseStyle.ts";
@@ -11,6 +12,7 @@ import { dropArchivedReasoning, dropForeignReasoning, withoutReasoning } from ".
 
 export default function (pi: ExtensionAPI) {
   registerStreamRecovery(pi);
+  registerScreenshotFiles(pi);
   let captured: { systemPrompt: string; contextFiles: { content: string }[]; skills: { name: string; description?: string }[] } | undefined;
   pi.on("before_agent_start", async event => {
     const original: string | string[] = event.systemPrompt;

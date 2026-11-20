@@ -273,7 +273,7 @@
         else throw new Error(`Unsupported native operation. ${hint}`);
         result = { performed: true };
         // Values and scrolling are set directly; only key events are ones a site may ignore.
-        if (p.op === "press") result.note = `Synthetic input is not isTrusted. If the site ignored it, ${hint}`;
+        if (p.op === "press") result.note = "This key event is synthetic (isTrusted is false), and some pages ignore those. Check the effect with browser_snapshot; if nothing changed, click the control or type into it instead.";
       }
       return JSON.stringify({ result });
     } catch (e) { return JSON.stringify({ error: e.message }); }
