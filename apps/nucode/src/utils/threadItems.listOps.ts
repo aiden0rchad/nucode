@@ -159,10 +159,17 @@ export function getThreadCreatedTimestamp(thread: Record<string, unknown>) {
   return normalizeThreadTimestamp(raw);
 }
 
+// A greeting or acknowledgement says nothing about the task, so it never names a thread ("Hi! Fix the login page").
+const OPENER = /^(?:hi|hey|hello|hiya|yo|ok(?:ay)?|alright|so|thanks|thank you|please|good (?:morning|afternoon|evening))(?: (?:there|again|all|team|everyone))?\b[\s,.!?:;-]*/i;
+
 export function previewThreadName(text: string, fallback: string) {
   const line = text.trim().split(/\r?\n/, 1)[0].replace(/^#{1,6}\s+/, "");
-  const sentence = line.split(/(?<=[.!?])\s+(?=[A-Z])/, 1)[0].replace(/[.!?]$/, "");
-  return clampThreadName(sentence) ?? fallback;
+  let rest = line;
+  for (let match = OPENER.exec(rest); match?.[0] && match[0].length < rest.length; match = OPENER.exec(rest)) {
+    rest = rest.slice(match[0].length);
+  }
+  const sentence = rest.split(/(?<=[.!?])\s+(?=[A-Z])/, 1)[0].replace(/[.!?]$/, "");
+  return clampThreadName(sentence.charAt(0).toUpperCase() + sentence.slice(1)) ?? fallback;
 }
 
 function chooseRicherItem(remote: ConversationItem, local: ConversationItem) {
