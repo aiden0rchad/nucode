@@ -65,8 +65,8 @@ test("OMP Full access allows scoped LSP queries while retaining native mutation 
     assert.equal(await call({ action, file: "src/lib.js", line: 1, symbol: "range" }), undefined);
   }
   assert.equal(prompts, 0);
-  for (const toolName of ["eval", "debug", "lsp"]) {
-    const input = toolName === "eval" ? { code: "console.log('approval preview')" } : { action: "request", file: "src/lib.js" };
+  for (const toolName of ["debug", "lsp"]) {
+    const input = { action: "request", file: "src/lib.js" };
     const result = await handler({ toolName, toolCallId: "preview", input }, {
       ...ctx, ui: { select: async (title: string) => {
         const approval = JSON.parse(title.slice("nucode:approval:".length));
@@ -76,17 +76,16 @@ test("OMP Full access allows scoped LSP queries while retaining native mutation 
     });
     assert.equal(result.block, true);
   }
-  // With full access one answer may cover eval for the rest of the conversation; no other tool or mode gets that choice.
+  // Eval runs unasked with full access, like the shell; every other mode and native tool still asks, with no session choice.
   const offered: string[][] = [];
   const evalCall = (answer: string) => handler({ toolName: "eval", toolCallId: "eval", input: { code: "1" } }, { ...ctx, ui: { select: async (_title: string, options: string[]) => { offered.push(options); return answer; } } });
-  assert.equal(await evalCall("Allow for session"), undefined);
   assert.equal(await evalCall("Block"), undefined);
-  assert.deepEqual(offered, [["Allow", "Allow for session", "Block"]]);
-  assert.deepEqual(JSON.parse(readFileSync(join(home, "nucode/threads/lsp.json"), "utf8")).sessionAllow, [{ tool: "eval" }]);
+  assert.deepEqual(offered, []);
   assert.equal((await handler({ toolName: "debug", toolCallId: "debug", input: {} }, { ...ctx, ui: { select: async (_title: string, options: string[]) => { offered.push(options); return "Block"; } } })).block, true);
-  writeFileSync(join(home, "nucode/threads/lsp.json"), JSON.stringify({ accessMode: "ask", sessionAllow: [{ tool: "eval" }] }));
+  setMode("ask");
   assert.equal((await evalCall("Block")).block, true);
-  assert.deepEqual(offered.slice(1), [["Allow", "Block"], ["Allow", "Block"]]);
+  assert.equal(await evalCall("Allow"), undefined);
+  assert.deepEqual(offered, [["Allow", "Block"], ["Allow", "Block"], ["Allow", "Block"]]);
   setMode("full-access");
   symlinkSync(root, join(cwd, "lsp-outside"));
   for (const file of ["../outside.js", "/etc/hosts", "lsp-outside/file.js", ".env", ".git/config", home, "~/file.js", "@/etc/hosts", ":/etc/hosts", "file:///etc/hosts", "src/\u00a0../file.js"]) {
