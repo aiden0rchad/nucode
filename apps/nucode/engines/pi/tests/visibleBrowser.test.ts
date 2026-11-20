@@ -14,6 +14,7 @@ const home = (connectors: unknown) => {
 
 test("the section is added once, in the prompt's own shape", () => {
   assert.match(VISIBLE_UI, /browser_resize with that width/);
+  assert.match(VISIBLE_UI, /leave the page you checked open/);
   assert.deepEqual(applyVisibleUi(["a"]), ["a", VISIBLE_UI]);
   assert.deepEqual(applyVisibleUi(applyVisibleUi(["a"])), ["a", VISIBLE_UI]);
   const text = applyVisibleUi("Intro\n");
