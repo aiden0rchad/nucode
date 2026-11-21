@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Browser left over the home screen:** going home or to another view at the moment the in-app browser was being moved could leave the page drawn on top of the new view until the app restarted. Moves and hides now reach the browser in the order they were made.
 - **Browser at an agent-set width:** while an agent had narrowed the in-app browser to check a phone layout, a stretched copy of the page showed on both sides of it. The pane now draws only the page, centred.
 - **Browser scripts cut off by a reload:** when a page reloads or navigates while an agent's script is running in it, the agent is now told that plainly, and what to do next, instead of getting WebKit's "Completion handler … no longer reachable".
 - **Renames in Full access:** a rename through the language server (a symbol, or a file that stays in the project) no longer stops a Full access thread for approval, since Full access already edits project files unasked. Applying a code action still asks.
