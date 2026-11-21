@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Key presses inside frames:** when focus was inside a frame on the page, an agent's key press went to the frame's outer box and the page inside never saw it, so arrow-key checks of a map or list in a frame did nothing. Keys now go to the focused element inside the frame, as a real keyboard sends them.
 - **Playwright selectors explained:** an agent that targets an element with Playwright syntax such as `text=Save` or `:has-text('Retry')` is now told that syntax isn't supported and to use a snapshot ref or plain CSS, instead of a bare "Invalid selector".
 - **Agent pages that froze while nobody watched:** with the screen locked, the window covered, or the browser pane never opened, WebKit treated an agent's page as hidden and paused its animations and frame callbacks. Checks waiting on a frame timed out and panels stayed at their first keyframe. The agent's page now keeps running whether or not anyone is looking at it.
 - **No approval card for leaving .git out:** in Full access, a command that names `.git` or `.env` only to exclude it (`rsync --exclude .git`, `grep --exclude-dir=.git`) no longer stops the thread for approval. A command that could write into them still asks, now whatever the letter case.
