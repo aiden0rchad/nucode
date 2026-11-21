@@ -383,6 +383,21 @@ pub async fn hide_app_bridge(view: &Webview) -> Result<(), String> {
     rx.await.map_err(|_| "Native view closed".into())
 }
 
+/// An agent's page stays "visible" to WebKit while nobody is looking: with occlusion detection on, a locked screen or
+/// a window covered by another app made the page hidden, which paused its CSS animations and requestAnimationFrame
+/// and throttled its timers. A check waiting on a frame then never returned, and a panel stayed at its first keyframe.
+pub async fn keep_page_visible(view: &Webview) -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    view.with_webview(move |platform| unsafe {
+        let wk = &*(platform.inner() as *const WKWebView);
+        if wk.respondsToSelector(objc2::sel!(_setWindowOcclusionDetectionEnabled:)) {
+            let _: () = objc2::msg_send![wk, _setWindowOcclusionDetectionEnabled: false];
+        }
+        let _ = tx.send(());
+    }).map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "Native view closed".into())
+}
+
 pub async fn install_passwords(view: &Webview, capture: Box<dyn Fn(Value) + Send + Sync>) -> Result<(), String> {
     use objc2_web_kit::{WKUserScript, WKUserScriptInjectionTime};
     let (tx, rx) = tokio::sync::oneshot::channel();
