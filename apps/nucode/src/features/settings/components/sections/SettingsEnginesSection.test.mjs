@@ -28,7 +28,7 @@ it("keeps each engine in one row with one action column and only offers needed p
   const { container } = show();
   await screen.findByText("Ready · v1.4.0");
   const rows = container.querySelectorAll(".engine-row");
-  expect(rows).toHaveLength(5);
+  expect(rows).toHaveLength(8);
   for (const row of rows) {
     expect(row.children).toHaveLength(2);
     expect(getComputedStyle(row).gridTemplateColumns).toBe("minmax(0, 1fr) auto");
@@ -47,6 +47,29 @@ it("keeps each engine in one row with one action column and only offers needed p
   expect(within(screen.getByLabelText("Claude Code (ACP) engine")).getByRole("button", { name: "Retry" })).toBeTruthy();
   expect(within(screen.getByRole("combobox", { name: "Default engine" })).getAllByRole("option").map(e => e.textContent)).toEqual(["pi", "Codex"]);
   expect(screen.getByRole("button", { name: "Add engine" }).closest(".settings-group-actions")).toBeTruthy();
+});
+
+it("lists Antigravity, OpenCode and Cursor as disabled sign-in-on-their-own engines with install, found and tested states", async () => {
+  vi.mocked(engineRuntime).mockResolvedValue([
+    { engine: "pi", state: "ready", message: "Ready v1.4.0" },
+    { engine: "antigravity", state: "pending", message: "Not installed. Install Google's Antigravity CLI (`agy`)" },
+    { engine: "opencode", state: "found", message: "Found /bin/opencode. Run Test to check that it starts." },
+    { engine: "cursor", state: "pending", message: "Not installed. Install the Cursor CLI from cursor.com/cli" },
+  ]);
+  vi.mocked(testEngine).mockResolvedValue({ engine: "opencode", state: "ready", message: "Protocol handshake passed · v0.9.1", version: "0.9.1" });
+  show([{ id: "opencode", name: "OpenCode", protocol: "acp", builtIn: true, enabled: true }]);
+  await screen.findByText("Ready · v1.4.0");
+  for (const name of ["Antigravity", "OpenCode", "Cursor"]) expect(screen.getByLabelText(`${name} engine`)).toBeTruthy();
+  const agy = screen.getByLabelText("Antigravity engine");
+  expect(within(agy).getByText("Disabled")).toBeTruthy();
+  expect(within(agy).getByText(/run `agy` in Terminal to sign in/)).toBeTruthy();
+  expect(within(agy).queryByRole("button", { name: "Install" })).toBeNull();
+  expect(within(screen.getByLabelText("Cursor engine")).getByText(/Install the Cursor CLI from cursor.com\/cli/)).toBeTruthy();
+  const opencode = screen.getByLabelText("OpenCode engine");
+  expect(within(opencode).getByText("Found · Not tested")).toBeTruthy();
+  fireEvent.click(within(opencode).getByRole("button", { name: "Test OpenCode" }));
+  await screen.findByText("Ready · v0.9.1");
+  expect(testEngine).toHaveBeenCalledWith(expect.objectContaining({ id: "opencode", builtIn: true }));
 });
 
 it("shows progress and Cancel while installing, with no Install action", async () => {

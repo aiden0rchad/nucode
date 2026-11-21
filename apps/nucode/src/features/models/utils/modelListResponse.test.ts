@@ -13,6 +13,18 @@ it("limits Claude thread models to its registry provider", () => {
   expect(modelsForThread(models, undefined)).toBe(models);
 });
 
+it("shows only an engine's own models for Antigravity, OpenCode and Cursor threads", () => {
+  const models = parseModelListResponse({ result: { data: [
+    { id: "a/one", model: "a/one", providerId: "a", engines: ["pi", "claude"] },
+    { id: "opencode/m1", model: "opencode/m1", providerId: "opencode", engines: ["opencode"] },
+    { id: "opencode/anthropic/m2", model: "opencode/anthropic/m2", providerId: "opencode", engines: ["opencode"] },
+    { id: "cursor/default", model: "cursor/default", providerId: "cursor", engines: ["cursor"] },
+  ] } });
+  const thread = { id: "thread", name: "Thread", updatedAt: 1, engine: "opencode", modelProvider: "opencode" };
+  expect(modelsForThread(models, thread).map(m => m.id)).toEqual(["opencode/m1", "opencode/anthropic/m2"]);
+  expect(modelsForThread(models, { ...thread, engine: "cursor", modelProvider: "cursor" }).map(m => m.id)).toEqual(["cursor/default"]);
+});
+
 describe("parseModelListResponse", () => {
   it("uses displayName when present", () => {
     const response = {

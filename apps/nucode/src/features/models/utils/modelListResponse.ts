@@ -1,6 +1,9 @@
 import type { ModelOption, ThreadSummary } from "../../../types";
+import { isOwnLoginEngine } from "../../settings/engines";
 
 export function modelsForThread(models: ModelOption[], thread: ThreadSummary | undefined): ModelOption[] {
+  // Antigravity, OpenCode and Cursor threads pick from the agent's own models, never the provider registry.
+  if (thread && isOwnLoginEngine(thread.engine)) return models.filter(m => m.providerId === thread.engine && m.engines?.includes(thread.engine!));
   return thread?.engine === "claude"
     ? models.filter(m => m.providerId === thread.modelProvider && m.engines?.includes("claude"))
     : models;

@@ -2,7 +2,7 @@ import { SettingsIconButton } from "@/features/design-system/components/settings
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, FileText, Pencil, Play, Plus, Puzzle, SlidersHorizontal, Sparkles, Terminal, Trash2, X } from "lucide-react";
 import type { AppSettings, EngineDefinition } from "@/types";
-import { engineRegistry } from "@settings/engines";
+import { engineRegistry, isOwnLoginEngine, ownLoginHints } from "@settings/engines";
 import { defaultAgentPolicy } from "@settings/registry";
 import { engineRuntime, pickEngineExecutable, testEngine, type EngineRuntimeStatus } from "@services/tauri";
 import { RowMenu } from "@/features/chat/RowMenu";
@@ -84,7 +84,8 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
     refresh(); const timer = setInterval(refresh, 1500);
     return () => { active = false; clearInterval(timer); };
   }, []);
-  const statusFor = (engine: EngineDefinition) => engine.builtIn ? runtimes.find(r => r.engine === runtimeId(engine)) : tested[engine.id];
+  // Self-signed-in CLIs report whether the binary exists; their handshake test, once run, replaces that.
+  const statusFor = (engine: EngineDefinition) => isOwnLoginEngine(engine.id) ? tested[engine.id] ?? runtimes.find(r => r.engine === engine.id) : engine.builtIn ? runtimes.find(r => r.engine === runtimeId(engine)) : tested[engine.id];
   const ready = registry.filter(e => e.enabled && statusFor(e)?.state === "ready");
   const save = async (engines: EngineDefinition[], defaultEngine = policy.defaultEngine) => { await onUpdateAppSettings({ ...appSettings, engines, agentPolicy: { ...policy, defaultEngine } }); };
   const run = async (action: () => Promise<unknown>) => { setMessage(""); try { await action(); } catch (e) { setMessage(String(e)); } };
@@ -98,11 +99,12 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
   };
   const check = async (engine: EngineDefinition) => {
     try {
-      const status = engine.builtIn ? (await engineRuntime("status")).find(r => r.engine === runtimeId(engine)) : await testEngine(engine);
+      const runtime = engine.builtIn && !isOwnLoginEngine(engine.id);
+      const status = runtime ? (await engineRuntime("status")).find(r => r.engine === runtimeId(engine)) : await testEngine(engine);
       if (!status) throw new Error("Runtime status unavailable");
-      if (!engine.builtIn) remember(status);
-      setDetails({ title: `${engine.name} · ${engine.builtIn ? "Runtime check" : "Test connection"}`, message: status.message });
-    } catch (error) { const message = String(error); if (!engine.builtIn) remember({ engine: engine.id, state: "error", message }); setDetails({ title: `${engine.name} · Test failed`, message }); }
+      if (!runtime) remember(status);
+      setDetails({ title: `${engine.name} · ${runtime ? "Runtime check" : "Test connection"}`, message: status.message });
+    } catch (error) { const message = String(error); if (!engine.builtIn || isOwnLoginEngine(engine.id)) remember({ engine: engine.id, state: "error", message }); setDetails({ title: `${engine.name} · Test failed`, message }); }
   };
   return <SettingsPage title="Engines" subtitle="Choose which agent runtimes are available and which one new threads use.">
     <SettingsGroup>
@@ -112,22 +114,25 @@ export function SettingsEnginesSection({ appSettings, onUpdateAppSettings, onOpe
       const status = statusFor(engine);
       const installing = busy === engine.id || status?.state === "installing" || status?.state === "preparing";
       const version = status?.version ?? status?.message.match(/\bv?(\d+\.\d+\.\d+[^\s]*)/)?.[1];
-      const label = !engine.enabled ? "Disabled" : installing ? `Installing${status?.progress === undefined ? "" : ` ${Math.round(status.progress)}%`}…` : status?.state === "ready" ? `Ready${version ? ` · v${version}` : ""}` : status?.state === "error" ? "Failed" : engine.builtIn ? "Not installed" : "Not tested";
+      const own = isOwnLoginEngine(engine.id);
+      const label = !engine.enabled ? "Disabled" : installing ? `Installing${status?.progress === undefined ? "" : ` ${Math.round(status.progress)}%`}…` : status?.state === "ready" ? `Ready${version ? ` · v${version}` : ""}` : status?.state === "error" ? "Failed" : status?.state === "found" ? "Found · Not tested" : engine.builtIn ? "Not installed" : "Not tested";
       const tone = !engine.enabled ? "idle" : installing ? "busy" : status?.state === "ready" ? "ready" : status?.state === "error" ? "error" : "idle";
-      const installable = engine.builtIn;
-      const Icon = !engine.builtIn ? Puzzle : engine.id === "codex" ? Terminal : engine.id === "claude" ? Sparkles : null;
+      const installable = engine.builtIn && !own;
+      const Icon = !engine.builtIn ? Puzzle : engine.id === "codex" || own ? Terminal : engine.id === "claude" ? Sparkles : null;
+      // nucode neither installs nor signs in these CLIs; say how, while the CLI is missing or failed to start.
+      const hint = own && (!status || status.state !== "ready") && status?.state !== "found" ? ownLoginHints[engine.id] : own ? engine.description : undefined;
       const menu = [
         { label: "Set as default", icon: <Check size={14} />, disabled: !engine.enabled || status?.state !== "ready" || engine.id === policy.defaultEngine, onClick: () => void run(() => save(registry, engine.id)) },
         { label: "Test connection", icon: <Play size={14} />, disabled: installing, onClick: () => void check(engine) },
         ...(!engine.builtIn ? [{ label: "Edit", icon: <Pencil size={14} />, onClick: () => setDraft(engine) }, { label: "Delete", icon: <Trash2 size={14} />, danger: true, disabled: engine.id === policy.defaultEngine, onClick: () => setDeleting(engine) }] : []),
         ...(engine.id === "codex" ? [{ label: "Codex flags", icon: <SlidersHorizontal size={14} />, onClick: onOpenCodexFlags }, { label: "Codex setup", icon: <Terminal size={14} />, onClick: onOpenCodexSetup }] : []),
-        { label: "View logs/details", icon: <FileText size={14} />, onClick: () => setDetails({ title: `${engine.name} · Details`, message: status?.message ?? (engine.builtIn ? "Runtime is not installed. Install it to get started." : "Test this engine to see its protocol handshake result."), note: engine.id === "claude" ? "Some Anthropic-compatible gateways reject Claude Code's anthropic-beta headers. Allow those headers on the gateway or use a different model route." : undefined }) },
+        { label: "View logs/details", icon: <FileText size={14} />, onClick: () => setDetails({ title: `${engine.name} · Details`, message: status?.message ?? (own ? ownLoginHints[engine.id] : engine.builtIn ? "Runtime is not installed. Install it to get started." : "Test this engine to see its protocol handshake result."), note: engine.id === "claude" ? "Some Anthropic-compatible gateways reject Claude Code's anthropic-beta headers. Allow those headers on the gateway or use a different model route." : undefined }) },
       ];
       return <SettingsRow key={engine.id} className={`settings-list-row engine-row${engine.enabled ? "" : " is-disabled is-off"}`} aria-label={`${engine.name} engine`}>
-        <div className="settings-list-identity engine-identity"><span className={`settings-list-icon engine-icon-${engine.id === "omp" ? "omp" : "standard"}`} aria-hidden>{Icon ? <Icon size={16} /> : "π"}</span><div className="settings-list-copy"><div className="settings-list-name"><strong>{engine.name}</strong>{engine.id === policy.defaultEngine && <SettingsBadge className="is-accent">Default</SettingsBadge>}</div><div className="settings-list-meta"><SettingsStatus tone={tone} role="status">{label}</SettingsStatus><span>{protocolLabel[engine.protocol]}</span>{engine.id === "omp" && <span>~1.1 GB</span>}</div></div></div>
+        <div className="settings-list-identity engine-identity"><span className={`settings-list-icon engine-icon-${engine.id === "omp" ? "omp" : "standard"}`} aria-hidden>{Icon ? <Icon size={16} /> : "π"}</span><div className="settings-list-copy"><div className="settings-list-name"><strong>{engine.name}</strong>{engine.id === policy.defaultEngine && <SettingsBadge className="is-accent">Default</SettingsBadge>}</div><div className="settings-list-meta"><SettingsStatus tone={tone} role="status">{label}</SettingsStatus><span>{protocolLabel[engine.protocol]}</span>{engine.id === "omp" && <span>~1.1 GB</span>}{hint && <span>{hint}</span>}</div></div></div>
         <div className="settings-list-actions engine-actions">
           {installing ? <><progress aria-label={`Installing ${engine.name}`} max={100} value={status?.progress} /><SettingsButton onClick={() => void run(async () => { await engineRuntime("cancel", runtimeId(engine)); setBusy(null); })}>Cancel</SettingsButton></> : status?.state === "error" ? <SettingsButton onClick={() => void run(() => installable ? install(engine) : check(engine))}>Retry</SettingsButton> : installable && status?.state !== "ready" ? <SettingsButton onClick={() => void run(() => install(engine))}>Install</SettingsButton> : null}
-          {engine.enabled && !installing && (label === "Not tested" || label === "Failed") && <SettingsButton aria-label={`Test ${engine.name}`} onClick={() => void check(engine)}>Test</SettingsButton>}
+          {engine.enabled && !installing && (label === "Not tested" || label === "Failed" || label === "Found · Not tested") && <SettingsButton aria-label={`Test ${engine.name}`} onClick={() => void check(engine)}>Test</SettingsButton>}
           <SettingsToggleSwitch aria-label={`Enable ${engine.name}`} pressed={engine.enabled} disabled={installing || engine.enabled && registry.filter(e => e.enabled).length === 1} onClick={() => void run(async () => {
             const engines = registry.map(e => e.id === engine.id ? { ...e, enabled: !e.enabled } : e);
             await save(engines, engine.id === policy.defaultEngine && engine.enabled ? ready.find(e => e.id !== engine.id)?.id ?? engines.find(e => e.enabled)!.id : policy.defaultEngine);
