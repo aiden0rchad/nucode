@@ -252,6 +252,16 @@ it("adds no tab for a page another thread's agent opened", async () => {
   expect(await screen.findByRole("tab", { name: "This thread" })).toBeTruthy();
   expect(screen.queryByRole("tab", { name: "Other thread" })).toBeNull();
 });
+it("drops a saved tab whose page belongs to another thread", async () => {
+  localStorage.setItem("nucode.panel.code:one", JSON.stringify({ open: true, active: "mine", browserActive: "mine", tabs: [{ id: "stale", kind: "browser", title: "Other thread", url: "http://127.0.0.1:8765/b", target: "other-page" }, { id: "mine", kind: "browser", title: "This thread", url: "http://127.0.0.1:8765/a", target: "own-page" }, { id: "draft", kind: "browser", title: "Draft", url: "http://127.0.0.1:8765/d", target: "draft-page" }] }));
+  const pages = [{ id: "other-page", owner: "thread-b", title: "Other thread", url: "http://127.0.0.1:8765/b", ready: true, loading: false }, { id: "own-page", owner: "thread-a", title: "This thread", url: "http://127.0.0.1:8765/a", ready: true, loading: false }, { id: "draft-page", owner: "", title: "Draft", url: "http://127.0.0.1:8765/d", ready: true, loading: false }];
+  host = { backend: "native", scope: "thread-a", tabs: pages, active: "own-page", activeByOwner: { "thread-b": "other-page", "thread-a": "own-page", "": "draft-page" }, agentActiveOwners: [] };
+  render(<WorkspaceShell scope="code:one" browserThread="thread-a" browserOwner="thread-a" title="A thread" tools={tools} onInterrupt={() => {}}><p>Conversation</p></WorkspaceShell>);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  // A draft's page ("") stays: it moves to the thread a moment after the panel does.
+  await waitFor(() => expect(JSON.parse(localStorage.getItem("nucode.panel.code:one") ?? "{}").tabs.map((tab: { id: string }) => tab.id)).toEqual(["mine", "draft"]));
+  expect(screen.queryByRole("tab", { name: "Other thread" })).toBeNull();
+});
 it("drops the tab of a page the agent closed instead of leaving a dead tab", async () => {
   render(shell());
   await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());

@@ -182,7 +182,10 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
           const page = value.tabs.find(t => t.id === tab.target) ?? (created && request?.scope === previous.scope && request.id === tab.id ? created : undefined);
           return page ? { ...tab, target: page.id, ...(restoring.current.has(page.id) ? {} : { url: page.url, title: page.title || "New page" }) } : tab;
         });
-        const closed = tabs.filter(tab => tab.kind === "browser" && tab.target && closedPages.has(tab.target));
+        // A tab whose page another thread owns can't be shown here (an older build added them); a draft's pages ("") are
+        // kept, since they move to its thread a moment after the panel does.
+        const foreign = (target: string) => previous.scope === currentScope.current && value.tabs.some(page => page.id === target && (page.owner ?? "") !== "" && !ownPage(page));
+        const closed = tabs.filter(tab => tab.kind === "browser" && tab.target && (closedPages.has(tab.target) || foreign(tab.target)));
         if (closed.length) {
           const remaining = closed.reduce((state, tab) => panelReducer(state, { type: "close", id: tab.id }), { ...previous.state, tabs });
           tabs.splice(0, tabs.length, ...remaining.tabs);
