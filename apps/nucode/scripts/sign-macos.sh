@@ -2,9 +2,9 @@
 set -euo pipefail
 APP=${1:?Usage: sign-macos.sh app}
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-IDENTITY=${NUCODE_SIGNING_IDENTITY:-nucode Dev}
+IDENTITY=$(bash "$SCRIPT_DIR/signing-identity.sh")
 STAMP=--timestamp=none
-if [[ "$IDENTITY" == "Developer ID Application:"* ]]; then STAMP=--timestamp; fi
+if [[ "$(bash "$SCRIPT_DIR/signing-identity.sh" --name)" == "Developer ID Application:"* ]]; then STAMP=--timestamp; fi
 sign() {
   local entitlements
   entitlements=$(node "$SCRIPT_DIR/entitlements.mjs" "$APP" "$1")
