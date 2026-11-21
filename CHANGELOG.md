@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **No approval card for leaving .git out:** in Full access, a command that names `.git` or `.env` only to exclude it (`rsync --exclude .git`, `grep --exclude-dir=.git`) no longer stops the thread for approval. A command that could write into them still asks, now whatever the letter case.
 - **Desktop widths in the in-app browser:** when an agent set a width wider than the pane, such as 1440 px, the page laid out at that width with text nearly twice its real size, so desktop checks showed overlaps a real window doesn't have. The page is now scaled down the way Safari's Responsive Design Mode does it, and text keeps its real size.
 - **Browser left over the home screen:** going home or to another view at the moment the in-app browser was being moved could leave the page drawn on top of the new view until the app restarted. Moves and hides now reach the browser in the order they were made.
 - **Browser at an agent-set width:** while an agent had narrowed the in-app browser to check a phone layout, a stretched copy of the page showed on both sides of it. The pane now draws only the page, centred.
