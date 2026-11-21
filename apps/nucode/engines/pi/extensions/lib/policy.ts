@@ -145,6 +145,12 @@ export function decide(access: Access, call: Call, home: string, interactive: bo
   if (access.sessionAllow.some(r => JSON.stringify(r) === rule)) return "allow";
   return interactive ? "ask" : "block";
 }
+// The agent reads this when a call is refused; a cause it can't tell apart led one to retry and to try other tools.
+export function blockReason(access: Access, child?: { toolAccess: string }): string {
+  if (access.accessMode === "read-only") return "Blocked: this thread is read-only. Ask the user to switch it to Ask first or Full access; don't work around it with other tools.";
+  if (child?.toolAccess === "read-only") return "Blocked: your role is read-only. Report the change you need to the agent that started you.";
+  return "Blocked by nucode access policy: the call touches a protected path (.git, .env or nucode's own settings), leaves the project folder, or needs an approval nobody can give here.";
+}
 export function commandRank(name: string, roles: Role[]): string | undefined {
   if (["colonel", "major", "enlisted"].includes(name)) return name;
   const rank = roles.find(role => role.name === name)?.commandRank;

@@ -997,6 +997,9 @@ impl PiEngine {
             if method == "thread/accessMode/set" && mode.is_none() {
                 return Err("Missing access mode".into());
             }
+            // "current" is the menu's Ask first. A send leaves an existing mode alone when it carries "current", but a
+            // choice made in the menu must take effect: a read-only thread switched to Ask first stayed read-only.
+            let mode = if method == "thread/accessMode/set" && mode == Some("current") { Some("ask") } else { mode };
             let home = self
                 .data
                 .as_ref()

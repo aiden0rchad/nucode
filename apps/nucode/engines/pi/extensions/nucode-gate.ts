@@ -2,8 +2,13 @@ import { mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+<<<<<<< HEAD
 import { decide, inside, normalizeRule, protectedPath, readOnlySandbox, safeReadOnlyCommand, sandboxedCommand, type Access } from "./lib/policy.ts";
 import { canonicalMcpName, connectorVerdict, type Connector } from "./lib/connectors.ts";
+=======
+import { blockReason, decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
+import { connectorDecision, type Connector } from "./lib/connectors.ts";
+>>>>>>> fix/project-run-access
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { registerScreenshotFiles } from "./lib/screenshotFile.ts";
 import { ownedCommand, userHome } from "./lib/commandGuard.ts";
@@ -229,7 +234,7 @@ export default function (pi: ExtensionAPI) {
       if (call.tool === "bash" && !preview) input.command = ownedCommand(userHome(safeReadOnlyCommand(call.command)));
       return;
     }
-    if (decision === "block") return { block: true, reason: "Blocked by nucode access policy (read-only, protected path, or no interactive approval)" };
+    if (decision === "block") return { block: true, reason: blockReason(read(), child) };
     const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, ...call, diffPreview: call.tool === "edit" ? JSON.stringify(event.input).slice(0, 4000) : undefined });
     // A session rule names one exact file, so an edit that writes several is approved once.
     const answer = await ctx.ui.select(title, read().kind === "work" || calls.length > 1 ? ["Allow", "Block"] : ["Allow", "Allow for session", "Block"]);

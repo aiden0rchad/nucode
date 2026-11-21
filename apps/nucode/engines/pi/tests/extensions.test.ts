@@ -4,7 +4,11 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpa
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+<<<<<<< HEAD
 import { canonicalModel, decide, modelChoices, normalizeRule, protectedPath, readOnlyCommand, readOnlySandbox, resolveTask, checkLimits, sandboxedCommand, type Policy } from "../extensions/lib/policy.ts";
+=======
+import { blockReason, decide, normalizeRule, protectedPath, readOnlyCommand, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
+>>>>>>> fix/project-run-access
 import gate from "../extensions/nucode-gate.ts";
 import subagents from "../extensions/nucode-subagents.ts";
 import { setInspect } from "../extensions/lib/toolPaths.ts";
@@ -427,6 +431,7 @@ test("Work preview starts share bash policy; cleanup stays available without rew
   } finally { for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; } }
 });
 
+<<<<<<< HEAD
 test("the gate hides connector tools whose policy decision is a fixed block, and restores them when the mode allows", async (t) => {
   const keys = ["NUCODE_OMP", "NUCODE_CHAT", "NUCODE_WORK", "PI_CODING_AGENT_DIR", "NUCODE_SESSION_KEY", "NUCODE_SUBAGENT_DEPTH", "NUCODE_TOOL_ACCESS"];
   const previous = keys.map(key => process.env[key]);
@@ -452,3 +457,12 @@ test("the gate hides connector tools whose policy decision is a fixed block, and
   const result = await handlers.tool_call({ toolName: "mcp__nucode_browser__browser_click", toolCallId: "x", input: {} }, noUi);
   assert.match(result.reason, /browser_click is unavailable.*browser_get_text/);
 });
+=======
+test("a refusal names its cause: a read-only thread, a read-only role, or the policy", () => {
+  const access = (accessMode: "read-only" | "ask" | "full-access") => ({ accessMode, sessionAllow: [] });
+  assert.match(blockReason(access("read-only")), /this thread is read-only/);
+  assert.match(blockReason(access("full-access"), { toolAccess: "read-only" }), /your role is read-only/);
+  assert.match(blockReason(access("ask")), /protected path/);
+});
+
+>>>>>>> fix/project-run-access

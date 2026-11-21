@@ -1,5 +1,6 @@
 import { useMemo, type RefObject } from "react";
 import type {
+  AccessMode,
   AppSettings,
   ConversationItem,
   DebugEntry,
@@ -62,6 +63,7 @@ type UseMainAppComposerWorkspaceStateArgs = {
     resolvedEffort: string | null;
     selectedServiceTier: ServiceTier | null | undefined;
     collaborationModePayload: Record<string, unknown> | null;
+    accessMode: AccessMode;
   };
   refs: {
     composerInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -130,6 +132,7 @@ export function useMainAppComposerWorkspaceState({
     resolvedEffort,
     selectedServiceTier,
     collaborationModePayload,
+    accessMode,
   } = models;
   const { composerInputRef, workspaceHomeTextareaRef } = refs;
   const {
@@ -258,6 +261,7 @@ export function useMainAppComposerWorkspaceState({
     effort: resolvedEffort,
     serviceTier: selectedServiceTier,
     collaborationMode: collaborationModePayload,
+    accessMode,
     seedThreadCodexParams,
     addWorktreeAgent,
     connectWorkspace,
