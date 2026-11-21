@@ -133,7 +133,9 @@ export function decide(access: Access, call: Call, home: string, interactive: bo
   // Naming .git or .env only to leave it out (rsync/tar --exclude, grep --exclude-dir) writes nothing there; a review
   // script's "rsync --exclude .git" stopped a Full access thread for approval. Any other mention still asks, in
   // any case, since the file system ignores case.
-  const unexcluded = command.replace(/--exclude(?:-dir)?(?:=|\s+)(['"]?)\.(?:git|env)[\w.-]*\1(?=[\s;|&)]|$)/gi, "");
+  // find's "-name .git -prune" (alone or in a "\( … -o -name .git \) -prune" group) skips the folder the same way.
+  const unexcluded = command.replace(/--exclude(?:-dir)?(?:=|\s+)(['"]?)\.(?:git|env)[\w.-]*\1(?=[\s;|&)]|$)/gi, "")
+    .replace(/-i?name\s+(['"]?)\.(?:git|env)[\w.-]*\1(?=(?:\s+-o\s+-i?(?:name|path)\s+\S+)*\s*(?:\\?\))?\s*-prune\b)/gi, "");
   const protectedWrite = call.tool === "bash"
     ? !readonly && /(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/i.test(unexcluded) || command.includes(home)
     : protectedPath(path, home);
