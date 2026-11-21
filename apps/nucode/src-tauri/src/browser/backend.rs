@@ -159,8 +159,13 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
 
 /// WebKit drops a script that is still running when its page goes away, and says so in its own terms.
 pub(crate) const EVALUATE_NAVIGATED: &str = "The page navigated or reloaded while the script was running, so the script returned nothing. If it reloaded the page on purpose, the reload happened. Wait for the page with browser_wait_for or take a browser_snapshot before evaluating again, and keep a reload out of a script whose result you need.";
+/// The native backend gives a page script 10 seconds. "Did not respond; reload the tab" sent an agent to reload a
+/// page that was fine after an async script that swept several routes with waits simply ran longer than that.
+pub(crate) const EVALUATE_TIMEOUT: &str = "The script did not finish within 10 seconds, so nothing came back. The page is probably fine and need not be reloaded; the script may still be running in it. Split long work (several pages, long waits) into separate browser_evaluate calls that each return within a few seconds.";
 fn evaluate_error(error: String) -> String {
-    if error.contains("no longer reachable") { EVALUATE_NAVIGATED.into() } else { error }
+    if error.contains("no longer reachable") { EVALUATE_NAVIGATED.into() }
+    else if error.contains("Native page did not respond") { EVALUATE_TIMEOUT.into() }
+    else { error }
 }
 pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Result<Value, String> {
     backend.authorize_tool(args.clone()).await?;
@@ -437,6 +442,7 @@ mod tests {
         let error = tool(&Navigated, "browser_evaluate", json!({"function":"() => location.reload()"})).await.unwrap_err();
         assert_eq!(error, EVALUATE_NAVIGATED);
         assert_eq!(evaluate_error("TypeError: x is undefined".into()), "TypeError: x is undefined");
+        assert_eq!(evaluate_error("Native page did not respond; reload the tab".into()), EVALUATE_TIMEOUT);
     }
     impl BrowserBackend for Fake {
         fn request(&self, params: Value) -> BoxFuture<'_, Result<Value, String>> {
