@@ -38,7 +38,7 @@ pub(super) struct Process {
     emit: Emit,
     graph: Option<CodegraphSetup>,
     omp: bool,
-    blobs: Option<std::path::PathBuf>,
+    pub(super) blobs: Option<std::path::PathBuf>,
 }
 impl Process {
     pub async fn spawn(

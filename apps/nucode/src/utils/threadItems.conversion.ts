@@ -161,7 +161,12 @@ export function buildConversationItem(
     const args = item.arguments ? JSON.stringify(item.arguments, null, 2) : "";
     const result = item.result as { content?: Array<Record<string, unknown>>; structuredContent?: unknown } | null;
     const content = Array.isArray(result?.content) ? result.content : [];
-    const images = content.flatMap(c => c.type === "image" && typeof c.data === "string" && typeof c.mimeType === "string" && /^image\/(png|jpeg|webp|gif)$/.test(c.mimeType) ? [`data:${c.mimeType};base64,${c.data}`] : []);
+    const image = (c: Record<string, unknown>) => c.type === "image" && typeof c.mimeType === "string" && /^image\/(png|jpeg|webp|gif)$/.test(c.mimeType);
+    // Only real base64 becomes a thumbnail; anything else (an unresolved "blob:sha256:" reference) would draw as a
+    // broken image, so it is named in the output instead.
+    const encoded = (c: Record<string, unknown>) => typeof c.data === "string" && c.data.length > 0 && /^[A-Za-z0-9+/=\r\n]+$/.test(c.data);
+    const images = content.flatMap(c => image(c) && encoded(c) ? [`data:${c.mimeType};base64,${c.data}`] : []);
+    const missing = content.some(c => image(c) && !encoded(c));
     return {
       id,
       kind: "tool",
@@ -170,7 +175,7 @@ export function buildConversationItem(
       detail: args,
       status: asString(item.status ?? ""),
       images,
-      output: content.length ? content.filter(c => c.type !== "image").map(c => c.type === "text" ? asString(c.text) : JSON.stringify(c)).join("\n") : item.result || item.error ? JSON.stringify(item.result ?? item.error, null, 2) : "",
+      output: content.length ? [...content.filter(c => c.type !== "image").map(c => c.type === "text" ? asString(c.text) : JSON.stringify(c)), ...(missing ? ["Image preview unavailable."] : [])].join("\n") : item.result || item.error ? JSON.stringify(item.result ?? item.error, null, 2) : "",
     };
   }
   if (type === "collabToolCall" || type === "collabAgentToolCall") {

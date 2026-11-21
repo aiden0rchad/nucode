@@ -16,6 +16,15 @@ import {
 } from "./threadItems";
 
 describe("threadItems", () => {
+  it("draws only real image data as a tool thumbnail and names an unresolved one", () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0uoAAAAASUVORK5CYII=";
+    const tool = (data: string) => buildConversationItem({ type: "mcpToolCall", id: "shot", server: "nucode_browser", tool: "browser_take_screenshot", arguments: {}, status: "completed", result: { content: [{ type: "image", mimeType: "image/png", data }, { type: "text", text: "Saved" }] } }) as Extract<ConversationItem, { kind: "tool" }>;
+    expect(tool(png).images).toEqual([`data:image/png;base64,${png}`]);
+    expect(tool(png).output).toBe("Saved");
+    const unresolved = tool(`blob:sha256:${"a".repeat(64)}`);
+    expect(unresolved.images).toEqual([]);
+    expect(unresolved.output).toBe("Saved\nImage preview unavailable.");
+  });
   it("keeps automatic titles consistent between listing and reopening without replacing manual names", () => {
     const thread = { id: "test", preview: "Progress and recovery check. Keep GPT 6.1 Sol and use full access.", turns: [] };
     const plan = (getCustomName: () => string | undefined) => buildResumeHydrationPlan({ thread, threadId: "test", workspaceId: "space", localItems: [], localStatus: undefined, localActiveTurnId: null, replaceLocal: false, getCustomName });
