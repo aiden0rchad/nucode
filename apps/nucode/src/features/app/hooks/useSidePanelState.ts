@@ -142,7 +142,9 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
     let disposed = false; let stop: (() => void) | undefined;
     void subscribeBrowser(value => {
       if (disposed) return;
-      const newPages = value.tabs.filter(page => !latest.current.tabs.some(old => old.id === page.id));
+      // Native pages belong to a thread; another thread's agent opening one must not add a tab to this panel.
+      const ownPage = (page: { owner?: string }) => value.backend !== "native" || ownerRef.current === undefined || (page.owner ?? "") === ownerRef.current;
+      const newPages = value.tabs.filter(page => ownPage(page) && !latest.current.tabs.some(old => old.id === page.id));
       const hadSnapshot = receivedBrowserState.current;
       receivedBrowserState.current = true;
       const previousActive = latest.current.active;

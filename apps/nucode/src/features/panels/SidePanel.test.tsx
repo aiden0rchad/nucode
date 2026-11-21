@@ -241,6 +241,17 @@ it("registers the first agent-created page as a tab without covering Task", asyn
   expect(screen.getByRole("tab", { name: "Task", selected: true })).toBeTruthy();
   expect(screen.queryByLabelText("Native browser page")).toBeNull();
 });
+it("adds no tab for a page another thread's agent opened", async () => {
+  render(<WorkspaceShell scope="code:one" browserThread="thread-a" browserOwner="thread-a" title="A thread" tools={tools} onInterrupt={() => {}}><p>Conversation</p></WorkspaceShell>);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const other = { id: "other-page", owner: "thread-b", title: "Other thread", url: "http://127.0.0.1:8765/b", ready: true, loading: false };
+  const own = { id: "own-page", owner: "thread-a", title: "This thread", url: "http://127.0.0.1:8765/a", ready: true, loading: false };
+  act(() => { host = { backend: "native", scope: "thread-a", tabs: [], active: "", activeByOwner: {}, agentActiveOwners: [] }; callbacks.forEach(callback => callback(host)); });
+  act(() => { host = { ...host, tabs: [other], activeByOwner: { "thread-b": "other-page" }, agentActiveOwners: ["thread-b"] }; callbacks.forEach(callback => callback(host)); });
+  act(() => { host = { ...host, tabs: [other, own], active: "own-page", agent: true, activeByOwner: { "thread-b": "other-page", "thread-a": "own-page" }, agentActiveOwners: ["thread-b", "thread-a"] }; callbacks.forEach(callback => callback(host)); });
+  expect(await screen.findByRole("tab", { name: "This thread" })).toBeTruthy();
+  expect(screen.queryByRole("tab", { name: "Other thread" })).toBeNull();
+});
 it("drops the tab of a page the agent closed instead of leaving a dead tab", async () => {
   render(shell());
   await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
