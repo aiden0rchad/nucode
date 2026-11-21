@@ -35,6 +35,11 @@ test("gate decision table, exact session rules, shell injection and protected pa
     assert.equal(decide({ accessMode: "full-access", sessionAllow: [] }, { ...write, path }, home, true), "ask");
     assert.equal(decide({ accessMode: "full-access", sessionAllow: [] }, { ...write, path }, home, false), "block");
   }
+  const full = { accessMode: "full-access" as const, sessionAllow: [] };
+  for (const command of ["rsync -a --exclude .git src/ /tmp/copy/", "rsync -a --exclude '.git' --exclude=.env.local a/ b/", "grep -rn x --exclude-dir=.git .", "tar --exclude .git -cf /tmp/a.tar ."])
+    assert.equal(decide(full, { ...bash, command }, home, true), "allow", command);
+  for (const command of ["rsync -a --exclude .git src/ .git/", "tar --exclude .git -cf .git/a.tar .", "echo x > .GIT/config", "cp a .Env", "rsync --exclude .gitx a .git/hooks", "rsync --exclude .git;echo x > .git/config"])
+    assert.equal(decide(full, { ...bash, command }, home, true), "ask", command);
   symlinkSync(home, join(cwd, "linked"));
   assert.equal(decide({ accessMode: "full-access", sessionAllow: [] }, { ...write, path: "linked/new-file" }, home, true), "ask");
   symlinkSync(join(home, "not-created"), join(cwd, "dangling"));
