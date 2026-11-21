@@ -5,7 +5,8 @@ import { matchesShortcut } from "@utils/shortcuts";
 import { isMacPlatform } from "@utils/platformPaths";
 
 type Turn = { workspace: string; thread: string; turn: string };
-export function useBrowserController(shortcut = true) {
+/** `thread` is the thread being viewed: only its browser calls count as "the agent is using the browser", and Take over stops only its turn. Without it every thread counts. */
+export function useBrowserController(shortcut = true, thread?: string) {
   const [open, setOpen] = useState(() => localStorage.getItem("nucode.browser.open") === "true");
   const [width, setWidth] = useState(() => Math.min(900, Math.max(320, Number(localStorage.getItem("nucode.browser.width")) || 520)));
   const [calls, setCalls] = useState<Record<string, Turn>>({});
@@ -31,9 +32,10 @@ export function useBrowserController(shortcut = true) {
       setCalls(previous => Object.fromEntries(Object.entries(previous).filter(([,v]) => v.workspace !== event.workspace_id || v.thread !== thread)));
     }
   }), []);
+  const viewed = Object.values(calls).filter(turn => thread === undefined || turn.thread === thread);
   const takeOver = useCallback(async () => {
-    const turns = new Map(Object.values(calls).map(turn => [`${turn.workspace}:${turn.thread}:${turn.turn}`, turn]));
+    const turns = new Map(Object.values(calls).filter(turn => thread === undefined || turn.thread === thread).map(turn => [`${turn.workspace}:${turn.thread}:${turn.turn}`, turn]));
     await Promise.all([...turns.values()].map(turn => interruptTurn(turn.workspace, turn.thread, turn.turn)));
-  }, [calls]);
-  return { open, setOpen, width, setWidth, toggle, agentActive: Object.keys(calls).length > 0, takeOver };
+  }, [calls, thread]);
+  return { open, setOpen, width, setWidth, toggle, agentActive: viewed.length > 0, takeOver };
 }

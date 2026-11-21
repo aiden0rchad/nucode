@@ -37,7 +37,7 @@ const position = (box: DockBox): CSSProperties => ({ "--dock-box-x": box.x / 100
 const lifted = (box: DockBox): CSSProperties => ({ ...position(box), top: `calc(${box.y}% - var(--titlebar-h))`, height: `calc(${box.h}% + var(--titlebar-h))` });
 
 type Controller = ReturnType<typeof useSidePanelState>;
-export function DockWorkspace({ children, scope, title, tools = [], searchUrl, onInterrupt, titleActions, actions = [], onNavigate, sessionRail, onBrowserContext, controller }: WorkspaceShellProps & { controller: Controller }) {
+export function DockWorkspace({ browserOwner, children, scope, title, tools = [], searchUrl, onInterrupt, titleActions, actions = [], onNavigate, sessionRail, onBrowserContext, controller }: WorkspaceShellProps & { controller: Controller }) {
   const { state, update, resize, layout, mainRef, openTool, openPage, close, browser, pageStatuses, busy, error, history, historyIndex, navigate } = controller;
   const features = useFeatures();
   const saved = state.dock ?? initialDock(state, Boolean(sessionRail));
@@ -194,7 +194,7 @@ export function DockWorkspace({ children, scope, title, tools = [], searchUrl, o
   const content = [
     ...(sessionRail ? [{ id: "session", label: "Session rail", content: sessionRail }] : []),
     ...tools,
-    ...(features.browser && mounted.current.ids.has("browser") ? [{ id: "browser", label: "Browser", content: <BrowserPane embedded tools={launchers} paneActions={browserPaneActions} onBrowserContext={addBrowserContext} searchUrl={searchUrl} agentActive={browser.agentActive} onTakeOver={browser.agentActive ? browser.takeOver : onInterrupt} onClose={() => hidePane("browser")} /> }] : []),
+    ...(features.browser && mounted.current.ids.has("browser") ? [{ id: "browser", label: "Browser", content: <BrowserPane embedded scope={browserOwner} tools={launchers} paneActions={browserPaneActions} onBrowserContext={addBrowserContext} searchUrl={searchUrl} agentActive={browser.agentActive} onTakeOver={browser.agentActive ? browser.takeOver : onInterrupt} onClose={() => hidePane("browser")} /> }] : []),
   ];
   const measurement = <div key="dock-measurement" className="dock-stage" ref={stage} aria-hidden="true" />;
   return <div className={`workspace-shell dock-workspace${titlebarPane ? " has-titlebar-pane" : ""}${sessionShown ? " has-session" : ""}${sessionFloating ? " session-floating" : ""}${compact ? " is-compact" : ""}${layout.sidebarOverlay ? " sidebar-overlay" : ""}${covered ? " panel-expanded" : ""}`} ref={resize.appRef} style={{

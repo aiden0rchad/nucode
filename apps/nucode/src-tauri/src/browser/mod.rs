@@ -255,8 +255,10 @@ impl Browser {
         if selected && !(cfg!(target_os = "windows") && p["action"] == "ensure") {
             if !crate::shared::engine_registry::features(Some(&self.data)).browser { return Err("Enable Browser in Settings → Features".into()); }
             let native = native.unwrap();
-            if p["action"] == "tool" { return backend::tool(native.as_ref(),p["name"].as_str().ok_or("Missing tool name")?,p["arguments"].clone()).await; }
-            return native.request(p).await;
+            // The helper tags every request with its thread; the CDP path below is global and ignores it.
+            let owner = p["owner"].as_str().unwrap_or("").to_string();
+            if p["action"] == "tool" { return backend::OWNER.scope(owner, backend::tool(native.as_ref(),p["name"].as_str().ok_or("Missing tool name")?,p["arguments"].clone())).await; }
+            return backend::OWNER.scope(owner, native.request(p)).await;
         }
         self.state.send_if_modified(|s| { if s["backend"] == "cdp" { false } else { s["backend"] = json!("cdp"); true } });
         match p["action"].as_str() {
@@ -301,6 +303,8 @@ impl Browser {
                 }
                 return Ok(self.state.borrow().clone());
             }
+            // Headless Chromium keeps one global set of tabs, so per-thread scoping has nothing to do.
+            Some("scope" | "adopt") => return Ok(Value::Null),
             _ => (),
         }
         let mut running = self.running.lock().await;

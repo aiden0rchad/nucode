@@ -40,3 +40,20 @@ it("persists layout and interrupts the owning turn, including a different worksp
   hook.unmount();
   const restored = renderHook(useBrowserController); expect(restored.result.current.open).toBe(true); expect(restored.result.current.width).toBe(640);
 });
+it("reports agent activity and takes over only for the viewed thread", async () => {
+  const call = (thread: string, id: string) => act(() => receive({workspace_id:"workspace",message:{method:"item/started",params:{threadId:thread,turnId:`turn-${thread}`,item:{id,type:"mcpToolCall",server:"Browser",tool:"browser_navigate"}}}}));
+  const hook = renderHook(({ thread }) => useBrowserController(false, thread), { initialProps: { thread: "a" } });
+  call("b", "call-b");
+  expect(hook.result.current.agentActive).toBe(false);
+  await act(() => hook.result.current.takeOver());
+  expect(interruptTurn).not.toHaveBeenCalled();
+  call("a", "call-a");
+  expect(hook.result.current.agentActive).toBe(true);
+  hook.rerender({ thread: "b" });
+  expect(hook.result.current.agentActive).toBe(true);
+  await act(() => hook.result.current.takeOver());
+  expect(interruptTurn).toHaveBeenCalledTimes(1);
+  expect(interruptTurn).toHaveBeenCalledWith("workspace","b","turn-b");
+  hook.rerender({ thread: "c" });
+  expect(hook.result.current.agentActive).toBe(false);
+});
