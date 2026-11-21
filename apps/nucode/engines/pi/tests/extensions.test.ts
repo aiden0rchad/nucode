@@ -36,9 +36,9 @@ test("gate decision table, exact session rules, shell injection and protected pa
     assert.equal(decide({ accessMode: "full-access", sessionAllow: [] }, { ...write, path }, home, false), "block");
   }
   const full = { accessMode: "full-access" as const, sessionAllow: [] };
-  for (const command of ["rsync -a --exclude .git src/ /tmp/copy/", "rsync -a --exclude '.git' --exclude=.env.local a/ b/", "grep -rn x --exclude-dir=.git .", "tar --exclude .git -cf /tmp/a.tar ."])
+  for (const command of ["rsync -a --exclude .git src/ /tmp/copy/", "rsync -a --exclude '.git' --exclude=.env.local a/ b/", "grep -rn x --exclude-dir=.git .", "tar --exclude .git -cf /tmp/a.tar .", "find . \\( -path ./tmp -o -name node_modules -o -name .git \\) -prune -o -type d -name target -print0 | xargs -0 du -sh", "find . -name .git -prune -o -name '*.dmg' -print"])
     assert.equal(decide(full, { ...bash, command }, home, true), "allow", command);
-  for (const command of ["rsync -a --exclude .git src/ .git/", "tar --exclude .git -cf .git/a.tar .", "echo x > .GIT/config", "cp a .Env", "rsync --exclude .gitx a .git/hooks", "rsync --exclude .git;echo x > .git/config"])
+  for (const command of ["rsync -a --exclude .git src/ .git/", "tar --exclude .git -cf .git/a.tar .", "echo x > .GIT/config", "cp a .Env", "rsync --exclude .gitx a .git/hooks", "rsync --exclude .git;echo x > .git/config", "find . -name .git -exec rm -rf {} +", "find . -name .git -delete", "find . -name .git -prune -o -print; rm -rf .git"])
     assert.equal(decide(full, { ...bash, command }, home, true), "ask", command);
   symlinkSync(home, join(cwd, "linked"));
   assert.equal(decide({ accessMode: "full-access", sessionAllow: [] }, { ...write, path: "linked/new-file" }, home, true), "ask");
