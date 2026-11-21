@@ -2226,3 +2226,11 @@ async fn notes_and_reminders_search_results_reach_the_planner_and_other_apps_ref
         }
     }
 }
+#[test]
+fn missing_permissions_name_what_macos_withholds() {
+    assert_eq!(super::missing_permissions(&json!({"screen":true,"accessibility":true})), None);
+    let both = super::missing_permissions(&json!({"screen":false,"accessibility":false})).unwrap();
+    assert!(both.contains("Screen Recording or Accessibility") && both.contains("earlier copy"), "{both}");
+    let one = super::missing_permissions(&json!({"screen":true,"accessibility":false})).unwrap();
+    assert!(one.contains("nucode Accessibility permission") && !one.contains("Screen Recording"), "{one}");
+}
