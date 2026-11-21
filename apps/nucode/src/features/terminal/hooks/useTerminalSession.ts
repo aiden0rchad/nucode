@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { stripTerminalQueries } from "./terminalQueries";
 import type { DebugEntry, TerminalStatus, WorkspaceInfo } from "../../../types";
 import { buildErrorDebugEntry } from "../../../utils/debugEntries";
 import {
@@ -143,6 +144,7 @@ export function useTerminalSession({
   const activeWorkspaceRef = useRef<WorkspaceInfo | null>(null);
   const activeTerminalIdRef = useRef<string | null>(null);
   const pendingFocusRef = useRef(false);
+  const replayingRef = useRef(false);
   const [status, setStatus] = useState<TerminalStatus>("idle");
   const [message, setMessage] = useState("Open a terminal to start a session.");
   const [hasSession, setHasSession] = useState(false);
@@ -208,7 +210,11 @@ export function useTerminalSession({
       term.reset();
       const buffered = outputBuffersRef.current.get(key);
       if (buffered) {
-        term.write(buffered);
+        // xterm answers queries in replayed history; drop them and mute onData until parsed.
+        replayingRef.current = true;
+        term.write(stripTerminalQueries(buffered), () => {
+          replayingRef.current = false;
+        });
       }
       refreshTerminal();
     },
@@ -277,6 +283,7 @@ export function useTerminalSession({
         theme: appearance.theme,
         scrollback: 5000,
       });
+      replayingRef.current = false;
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
       terminal.open(containerRef.current);
@@ -285,6 +292,9 @@ export function useTerminalSession({
       fitAddonRef.current = fitAddon;
 
       inputDisposableRef.current = terminal.onData((data: string) => {
+        if (replayingRef.current) {
+          return;
+        }
         const workspace = activeWorkspaceRef.current;
         const terminalId = activeTerminalIdRef.current;
         if (!workspace || !terminalId) {
