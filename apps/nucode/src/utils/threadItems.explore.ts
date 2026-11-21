@@ -34,7 +34,23 @@ const RG_FLAGS_WITH_VALUES = new Set([
   "--max-depth",
 ]);
 
+// prepareThreadItems runs on every streamed token over the whole thread. These caches return the same object for an
+// item that did not change (and for one that is already normalized), so memoized rows skip re-rendering and
+// re-parsing their Markdown. Normalizing is idempotent, so an output maps to itself.
+const normalized = new WeakMap<ConversationItem, ConversationItem>();
+const summaries = new WeakMap<ConversationItem, ReturnType<typeof summarizeCommandExecution> | null>();
+const trimmed = new WeakMap<ConversationItem, ConversationItem>();
+function remember(cache: WeakMap<ConversationItem, ConversationItem>, input: ConversationItem, output: ConversationItem) {
+  cache.set(input, output);
+  cache.set(output, output);
+  return output;
+}
 export function normalizeItem(item: ConversationItem): ConversationItem {
+  const cached = normalized.get(item);
+  if (cached) return cached;
+  return remember(normalized, item, normalizeItemUncached(item));
+}
+function normalizeItemUncached(item: ConversationItem): ConversationItem {
   if (item.kind === "message") {
     return { ...item, text: truncateText(item.text) };
   }
@@ -363,7 +379,11 @@ function summarizeExploration(items: ConversationItem[]) {
       continue;
     }
     if (item.kind === "tool" && item.toolType === "commandExecution") {
-      const summary = summarizeCommandExecution(item);
+      let summary = summaries.get(item);
+      if (summary === undefined) {
+        summary = summarizeCommandExecution(item) ?? null;
+        summaries.set(item, summary);
+      }
       if (!summary) {
         result.push(item);
         continue;
@@ -424,6 +444,8 @@ export function prepareThreadItems(
     if (index >= cutoff || item.kind !== "tool") {
       return item;
     }
+    const known = trimmed.get(item);
+    if (known) return known;
     const output = item.output ? truncateText(item.output) : item.output;
     const changes = item.changes
       ? item.changes.map((change) => ({
@@ -432,8 +454,8 @@ export function prepareThreadItems(
         }))
       : item.changes;
     if (output === item.output && changes === item.changes) {
-      return item;
+      return remember(trimmed, item, item);
     }
-    return { ...item, output, changes };
+    return remember(trimmed, item, { ...item, output, changes });
   });
 }

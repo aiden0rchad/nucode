@@ -1,3 +1,4 @@
+import { RewindAction } from "@/features/checkpoints/Checkpoints";
 import { MessagesSquare, CornerUpLeft, LoaderCircle, ChevronRight } from "lucide-react";
 import { ComputerApprovalStatus, ComputerRunItem } from "@/features/computer/ComputerRunItem";
 import { parseComputerRun } from "@/features/computer/computer";
@@ -53,7 +54,8 @@ type WorkingIndicatorProps = {
 };
 
 type MessageRowProps = MarkdownFileLinkProps & {
-  rewindAction?: React.ReactNode;
+  /** The rewind control for a user message, as plain values so an unchanged row can skip re-rendering. */
+  rewind?: { workspaceId: string; threadId: string; running: boolean; warning?: string };
   diagnosticThreadId?: string | null;
   onSideChat?: (itemId: string) => void;
   sideChatDisabledReason?: string;
@@ -333,7 +335,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
 });
 
 export const MessageRow = memo(function MessageRow({
-  rewindAction, diagnosticThreadId,
+  rewind, diagnosticThreadId,
   onSideChat, sideChatDisabledReason, onSendToMain,
   item,
   isCopied,
@@ -441,7 +443,7 @@ export const MessageRow = memo(function MessageRow({
             onClose={() => setLightboxIndex(null)}
           />
         )}
-        <div className="message-hover-actions">{rewindAction}
+        <div className="message-hover-actions">{rewind && <><RewindAction workspaceId={rewind.workspaceId} threadId={rewind.threadId} userItemId={item.id} running={rewind.running} />{rewind.warning && <span role="status">{rewind.warning}</span>}</>}
         {item.role === "assistant" && diagnosticsEnabled() && <details><summary aria-label="Response actions">⋯</summary><button type="button" onClick={() => openFeedback({ responseId: item.id, threadId: diagnosticThreadId })}>Flag this response</button></details>}
         {item.role === "assistant" && (onSideChat || onSendToMain) && <div className="message-side-actions">
           {onSideChat && <span title={sideChatDisabledReason}><button type="button" className="ghost icon-button" aria-label="Side chat" title={sideChatDisabledReason || "Side chat"} disabled={Boolean(sideChatDisabledReason)} onClick={() => onSideChat(item.id)}><MessagesSquare aria-hidden /></button></span>}
