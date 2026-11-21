@@ -79,6 +79,22 @@ it("sends legacy keyCode and code with pressed keys", () => {
   for (const key of ["Escape", "Enter", "Space", "a", "7", "Shift+Tab", "F5"]) bridge({ op: "press", key });
   expect(seen).toEqual([["Escape", "Escape", 27, 27], ["Enter", "Enter", 13, 13], [" ", "Space", 32, 32], ["a", "KeyA", 65, 65], ["7", "Digit7", 55, 55], ["Tab", "Tab", 9, 9], ["F5", "F5", 0, 0]]);
 });
+it("presses keys on the element focused inside a same-origin frame, and edits its fields", () => {
+  document.body.innerHTML = "<iframe></iframe>";
+  const frame = document.querySelector("iframe")!;
+  const inner = frame.contentDocument!;
+  inner.body.innerHTML = '<div role="tree"><div role="treeitem" tabindex="0">Group</div></div><input value="ab"/>';
+  const item = inner.querySelector<HTMLElement>("[role=treeitem]")!;
+  const keys: string[] = [];
+  item.addEventListener("keydown", e => keys.push(e.key));
+  frame.focus(); item.focus();
+  expect(bridge({ op: "press", key: "ArrowRight" }).error).toBeUndefined();
+  expect(keys).toEqual(["ArrowRight"]);
+  const input = inner.querySelector("input")!;
+  input.focus(); input.setSelectionRange(2, 2);
+  bridge({ op: "press", key: "c" });
+  expect(input.value).toBe("abc");
+});
 it.each(["stat1", "STAT-101 Intro Statistics", "Course text"])("selects an option by value, label or trimmed text: %s", value => {
   document.body.innerHTML = '<select><option value="other">Other</option><option value="stat1" label="STAT-101 Intro Statistics">  Course text  </option></select>';
   const select = document.querySelector("select")!;

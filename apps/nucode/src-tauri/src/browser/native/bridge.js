@@ -140,7 +140,21 @@
     for (const option of el.options) option.selected = selected.includes(option);
     el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true }));
   }
+  // A real key goes to the focused element inside a focused frame or shadow root, not to the <iframe> or host.
+  function focused() {
+    let el = document.activeElement || document.body;
+    for (;;) {
+      let inner = el.shadowRoot?.activeElement;
+      if (!inner && (el.tagName === "IFRAME" || el.tagName === "FRAME")) {
+        try { inner = el.contentDocument?.activeElement || el.contentDocument?.body; } catch { inner = null; }
+      }
+      if (!inner || inner === el) return el;
+      el = inner;
+    }
+  }
   function press(el, key) {
+    // A frame's element belongs to the frame's window; its constructors are the ones instanceof must test against.
+    const w = el.ownerDocument.defaultView || window;
     const parts = key.split("+");
     const last = parts.pop();
     key = ({ ESC: "Escape", RETURN: "Enter", SPACE: " ", ARROWDOWN: "ArrowDown", ARROWUP: "ArrowUp" })[last.toUpperCase()] || last;
@@ -149,10 +163,10 @@
     const keyCode = ({ Enter: 13, Escape: 27, Tab: 9, " ": 32, Backspace: 8, Delete: 46, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Home: 36, End: 35, PageUp: 33, PageDown: 34 })[key] ?? (/^[A-Z0-9]$/.test(upper) ? upper.charCodeAt(0) : 0);
     const code = key === " " ? "Space" : /^[A-Z]$/.test(upper) ? `Key${upper}` : /^[0-9]$/.test(key) ? `Digit${key}` : key.length > 1 ? key : "";
     const opts = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true, ctrlKey: parts.includes("Control"), metaKey: (parts.includes("Meta") || parts.includes("ControlOrMeta")), altKey: parts.includes("Alt"), shiftKey: parts.includes("Shift") };
-    const accepted = el.dispatchEvent(new KeyboardEvent("keydown", opts));
+    const accepted = el.dispatchEvent(new w.KeyboardEvent("keydown", opts));
     if (accepted && key === "Enter" && el.form) el.form.requestSubmit();
     if (accepted && key === " " && (el.tagName === "BUTTON" || ["checkbox", "radio"].includes(el.type))) el.click();
-    if (accepted && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && !el.readOnly && el.selectionStart !== null) {
+    if (accepted && (el instanceof w.HTMLInputElement || el instanceof w.HTMLTextAreaElement) && !el.readOnly && el.selectionStart !== null) {
       let start = el.selectionStart, end = el.selectionEnd;
       if ((opts.ctrlKey || opts.metaKey) && key.toLowerCase() === "a") el.select();
       else if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
@@ -162,18 +176,18 @@
         if (start === end && key === "Backspace") start = Math.max(0, start - 1);
         if (start === end && key === "Delete") end = Math.min(el.value.length, end + 1);
         const text = key.length === 1 ? key : "";
-        const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const proto = el.tagName === "TEXTAREA" ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype;
         Object.getOwnPropertyDescriptor(proto, "value").set.call(el, el.value.slice(0, start) + text + el.value.slice(end));
         el.setSelectionRange(start + text.length, start + text.length);
-        el.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: text ? "insertText" : "deleteContentBackward" }));
+        el.dispatchEvent(new w.InputEvent("input", { bubbles: true, data: text, inputType: text ? "insertText" : "deleteContentBackward" }));
       }
     }
     if (accepted && key === "Escape") el.blur();
     if (accepted && key === "Tab") {
-      const list = [...document.querySelectorAll('a[href],button,input,textarea,select,[tabindex="0"]')].filter(e => !e.disabled && e.getClientRects().length);
+      const list = [...el.ownerDocument.querySelectorAll('a[href],button,input,textarea,select,[tabindex="0"]')].filter(e => !e.disabled && e.getClientRects().length);
       list[(list.indexOf(el) + (opts.shiftKey ? -1 : 1) + list.length) % list.length]?.focus();
     }
-    el.dispatchEvent(new KeyboardEvent("keyup", opts));
+    el.dispatchEvent(new w.KeyboardEvent("keyup", opts));
   }
   globalThis.__nuBrowser = p => {
     try {
@@ -254,7 +268,7 @@
       } else if (p.op === "wait") {
         result = (!p.ref || nodes.get(p.ref)?.isConnected === true) && (!p.text || document.body?.innerText.includes(p.text)) && (!p.textGone || !document.body?.innerText.includes(p.textGone));
       } else {
-        const el = p.ref ? target(p.ref) : document.activeElement || document.body;
+        const el = p.ref ? target(p.ref) : p.op === "press" ? focused() : document.activeElement || document.body;
         if (el.matches(":disabled") || el.closest('[inert],[aria-disabled="true"]')) throw new Error("Element is disabled");
         if (p.op === "point") return JSON.stringify({ result: point(el) });
         if (p.op === "click") {
