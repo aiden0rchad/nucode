@@ -12,9 +12,8 @@ vi.hoisted(() => {
 });
 
 // jsdom has no Web Workers; render diffs on the main thread in these UI tests.
-vi.mock("@pierre/diffs/react", async () => ({
-  ...(await vi.importActual<typeof import("@pierre/diffs/react")>("@pierre/diffs/react")),
-  WorkerPoolContextProvider: ({ children }: { children: ReactNode }) => children,
+vi.mock("@/features/git/components/DiffWorkerPool", () => ({
+  DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 const { default: App } = await import("@/App");

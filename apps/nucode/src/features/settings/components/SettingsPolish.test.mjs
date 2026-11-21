@@ -11,9 +11,8 @@ import { SETTINGS_GROUPS } from "./SettingsNav";
 import { SETTINGS_SECTION_LABELS } from "./settingsViewConstants";
 
 const settingsStyles = readFileSync("src/styles/settings.css", "utf8");
-vi.mock("@pierre/diffs/react", async () => ({
-  ...await vi.importActual("@pierre/diffs/react"),
-  WorkerPoolContextProvider: ({ children }) => children,
+vi.mock("@/features/git/components/DiffWorkerPool", () => ({
+  DiffWorkerPoolProvider: ({ children }) => children,
 }));
 // Late event unlistens must run before the Tauri mocks go away (same wait as preview.test.tsx).
 afterEach(async () => { cleanup(); await new Promise(resolve => setTimeout(resolve, 50)); clearMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); localStorage.clear(); });
