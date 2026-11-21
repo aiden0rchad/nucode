@@ -101,6 +101,11 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
   }, [expanded, state.open, scope, windowWidth]);
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
+  // An error belongs to the view it happened in; it must not follow the user to another thread or project.
+  useEffect(() => { setError(""); }, [scope]);
+  // A native page another thread owns; a draft's pages ("") are not foreign, since they move to its thread a moment
+  // after the panel does.
+  const foreignPage = useCallback((page: { owner?: string }) => latest.current.backend === "native" && ownerRef.current !== undefined && (page.owner ?? "") !== "" && page.owner !== ownerRef.current, []);
   const [busy, setBusy] = useState(false);
   const opening = useRef(false);
   // A failed page open is shown until that browser recovers (for example through the page's Retry).
@@ -237,7 +242,10 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
       const url = normalizeBrowserUrl(input, searchUrl);
       await browserRequest({ action: "attach" });
       if (currentScope.current !== scope) return;
-      if (existing?.target && latest.current.tabs.some(t => t.id === existing.target)) { await browserRequest({ action: "activate", id: existing.target }); return; }
+      const target = existing?.target ? latest.current.tabs.find(t => t.id === existing.target) : undefined;
+      // A saved tab whose page another thread owns can't be shown here (the backend refuses it); drop it quietly.
+      if (existing && target && foreignPage(target)) { update(s => panelReducer(s, { type: "close", id: existing.id })); return; }
+      if (target) { await browserRequest({ action: "activate", id: target.id }); return; }
       const tab = existing ?? { id: crypto.randomUUID(), kind: "browser", title: "New page", url };
       requestedSelection.current = JSON.stringify([scope, tab.id]);
       pending.current = { id: tab.id, scope, previous: new Set(latest.current.tabs.map(t => t.id)), tab };
@@ -247,7 +255,7 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
       setAddress("");
     } catch (e) { orphan.current = pending.current; pending.current = null; pageOpenFailed.current = true; setError(String(e)); }
     finally { opening.current = false; setBusy(false); }
-  }, [scope, searchUrl, update, features.browser]);
+  }, [scope, searchUrl, update, features.browser, foreignPage]);
   const pageRef = useRef(openPage); pageRef.current = openPage;
   const selectedBrowser = state.tabs.find(tab => tab.kind === "browser" && tab.id === (state.browserActive ?? state.active)) ?? state.tabs.find(tab => tab.kind === "browser");
   const browserVisible = dock ? state.open && Boolean(state.dock && dockPanes(state.dock.tree).includes("browser")) : state.open && activeKind === "browser";
@@ -275,7 +283,8 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
   }, [openTool, update, reservedShortcuts]);
   const close = async (tab: PanelTab) => {
     try {
-      if (tab.kind === "browser" && tab.target && latest.current.tabs.some(t => t.id === tab.target)) await browserRequest({ action: "close", id: tab.target });
+      const page = tab.kind === "browser" && tab.target ? latest.current.tabs.find(t => t.id === tab.target) : undefined;
+      if (page && !foreignPage(page)) await browserRequest({ action: "close", id: page.id });
       toolRef.current.find(t => t.id === tab.kind)?.onClose?.();
       update(s => panelReducer(s, { type: "close", id: tab.id }));
     } catch (e) { setError(String(e)); }
