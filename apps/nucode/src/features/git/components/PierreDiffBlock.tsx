@@ -1,14 +1,11 @@
 import { useDiffTheme } from "@/features/design-system/diff/diffViewerTheme";
 import { useMemo } from "react";
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
-import { FileDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { FileDiff } from "@pierre/diffs/react";
 import { parseDiff } from "../../../utils/diff";
 import { highlightLine, languageFromPath } from "../../../utils/syntax";
-import { workerFactory } from "../../../utils/diffsWorker";
-import {
-  DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-  DIFF_VIEWER_SCROLL_CSS,
-} from "../../design-system/diff/diffViewerTheme";
+import { DIFF_VIEWER_SCROLL_CSS } from "../../design-system/diff/diffViewerTheme";
+import { DiffWorkerPoolProvider } from "./DiffWorkerPool";
 import {
   isFallbackRawDiffLineHighlightable,
   normalizePatchName,
@@ -30,12 +27,6 @@ export function PierreDiffBlock({
   newLines,
   diffStyle = "unified",
 }: PierreDiffBlockProps) {
-  const poolOptions = useMemo(() => ({ workerFactory }), []);
-  const highlighterOptions = useMemo(
-    () => DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-    [],
-  );
-
   const fileDiff = useMemo(() => {
     if (!diff.trim()) {
       return null;
@@ -89,10 +80,7 @@ export function PierreDiffBlock({
   }
 
   return (
-    <WorkerPoolContextProvider
-      poolOptions={poolOptions}
-      highlighterOptions={highlighterOptions}
-    >
+    <DiffWorkerPoolProvider>
       {fileDiff ? (
         <div className="diff-viewer-output diff-viewer-output-flat">
           <FileDiff
@@ -125,6 +113,6 @@ export function PierreDiffBlock({
           })}
         </div>
       )}
-    </WorkerPoolContextProvider>
+    </DiffWorkerPoolProvider>
   );
 }

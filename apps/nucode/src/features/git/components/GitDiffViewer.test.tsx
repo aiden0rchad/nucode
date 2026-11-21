@@ -53,7 +53,10 @@ vi.mock("@pierre/diffs/react", () => ({
         : null}
     </div>
   ),
-  WorkerPoolContextProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
+vi.mock("./DiffWorkerPool", () => ({
+  DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 beforeAll(() => {

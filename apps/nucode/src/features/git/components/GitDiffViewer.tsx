@@ -2,18 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { SelectedLineRange } from "@pierre/diffs";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import GitCommitHorizontal from "lucide-react/dist/esm/icons/git-commit-horizontal";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import type { ParsedDiffLine } from "../../../utils/diff";
-import { workerFactory } from "../../../utils/diffsWorker";
 import type {
   PullRequestReviewIntent,
   PullRequestSelectionRange,
 } from "../../../types";
-import {
-  DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
-} from "../../design-system/diff/diffViewerTheme";
+import { DiffWorkerPoolProvider } from "./DiffWorkerPool";
 import { ImageDiffCard } from "./ImageDiffCard";
 import { splitPath } from "./GitDiffPanel.utils";
 import { DiffCard } from "./GitDiffViewerDiffCard";
@@ -193,12 +189,6 @@ export function GitDiffViewer({
         return { path, range };
       });
     },
-    [],
-  );
-
-  const poolOptions = useMemo(() => ({ workerFactory }), []);
-  const highlighterOptions = useMemo(
-    () => DIFF_VIEWER_HIGHLIGHTER_OPTIONS,
     [],
   );
 
@@ -465,10 +455,7 @@ export function GitDiffViewer({
       };
 
   return (
-    <WorkerPoolContextProvider
-      poolOptions={poolOptions}
-      highlighterOptions={highlighterOptions}
-    >
+    <DiffWorkerPoolProvider>
       <div
         className={`diff-viewer ds-diff-viewer ${
           diffStyle === "unified" ? "is-unified" : "is-split"
@@ -617,6 +604,6 @@ export function GitDiffViewer({
           </div>
         )}
       </div>
-    </WorkerPoolContextProvider>
+    </DiffWorkerPoolProvider>
   );
 }

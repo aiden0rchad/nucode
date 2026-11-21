@@ -7,9 +7,8 @@ import App from "@/App";
 import { installUiPreview } from "./index";
 
 // jsdom has no Web Workers; render diffs on the main thread in these UI tests.
-vi.mock("@pierre/diffs/react", async () => ({
-  ...await vi.importActual<typeof import("@pierre/diffs/react")>("@pierre/diffs/react"),
-  WorkerPoolContextProvider: ({ children }: { children: ReactNode }) => children,
+vi.mock("@/features/git/components/DiffWorkerPool", () => ({
+  DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 // Code exposes both a named dock pane and the Browser's own region.
