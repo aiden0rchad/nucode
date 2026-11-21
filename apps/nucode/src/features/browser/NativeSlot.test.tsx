@@ -126,6 +126,22 @@ it("sends bounds right after layout and catches up once the previous call lands"
   await act(async () => land());
   expect(browserNativeBounds).toHaveBeenCalledTimes(2);
   expect(browserNativeBounds).toHaveBeenLastCalledWith("one", { x: 12, y: 61, w: 520, h: 300 }, true);
+  vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
+  await act(async () => land());
+});
+
+it("sends the unmount's hide only after a show still in flight has landed", async () => {
+  // Sent together, the backend could apply the hide first and the stale show second, leaving the page on screen.
+  const lands: (() => void)[] = [];
+  vi.mocked(browserNativeBounds).mockImplementation(() => new Promise(resolve => { lands.push(() => resolve(undefined)); }));
+  const view = render(<NativeSlot tabId="one" ready blocked={false} onError={error} />); await frame();
+  expect(browserNativeBounds).toHaveBeenCalledExactlyOnceWith("one", expect.anything(), true);
+  view.unmount();
+  expect(browserNativeBounds).toHaveBeenCalledTimes(1);
+  vi.mocked(browserNativeBounds).mockResolvedValue(undefined);
+  await act(async () => lands[0]());
+  expect(browserNativeBounds).toHaveBeenCalledTimes(2);
+  expect(browserNativeBounds).toHaveBeenLastCalledWith("one", expect.anything(), false);
 });
 
 it("preserves full page bounds while annotation blocking hides and restores the native view", async () => {
