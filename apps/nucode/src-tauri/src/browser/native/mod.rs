@@ -412,9 +412,9 @@ impl NativeBackend {
             // Child webviews sit above HTML; leave the window resize gutter reachable.
             rect.w = rect.w.min((frame.width - 8. - rect.x).max(1.));
             rect.h = rect.h.min((frame.height - 8. - rect.y).max(1.));
-            let zoom = match views.viewport {
-                Some((width, height)) => { let (fitted, zoom) = policy::fit_viewport(rect, width, height); rect = fitted; zoom }
-                None => views.user_zoom,
+            let (zoom, scale) = match views.viewport {
+                Some((width, height)) => { let (fitted, zoom) = policy::fit_viewport(rect, width, height); rect = fitted; (zoom, zoom) }
+                None => (views.user_zoom, 1.),
             };
             view.set_bounds(tauri::Rect {
                 position: LogicalPosition::new(rect.x, rect.y).into(),
@@ -422,7 +422,14 @@ impl NativeBackend {
             })
             .map_err(|e| e.to_string())?;
             if views.applied_zoom.as_ref().is_none_or(|(tab, applied)| tab != &id || (applied - zoom).abs() > 1e-6) {
-                view.set_zoom(zoom).map_err(|e| e.to_string())?;
+                // An agent's viewport wider than the pane is drawn with WebKit's view scale, which keeps CSS pixels.
+                // Page zoom scales them too, and WebKit's minimum font size then enlarged the shrunken text: 16 px
+                // body text laid out as 28 px at a third of the size, so desktop checks saw a different page.
+                #[cfg(target_os = "macos")]
+                let page_zoom = if macos::view_scale(&view, scale).await.is_ok() { zoom / scale } else { zoom };
+                #[cfg(not(target_os = "macos"))]
+                let page_zoom = { let _ = scale; zoom };
+                view.set_zoom(page_zoom).map_err(|e| e.to_string())?;
                 views.applied_zoom = Some((id.clone(), zoom));
             }
             if views.shown.as_deref() != Some(&id) {

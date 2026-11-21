@@ -1,6 +1,7 @@
 use base64::Engine;
 use block2::RcBlock;
-use objc2::{runtime::AnyObject, MainThreadOnly};
+use objc2::{msg_send, runtime::AnyObject, sel, MainThreadOnly};
+use objc2_core_foundation::CGSize;
 use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSView};
 use objc2_foundation::{NSDictionary, NSError, NSString, NSObjectProtocol};
 use objc2_web_kit::{WKContentWorld, WKWebView, WKScriptMessageHandler};
@@ -28,6 +29,29 @@ pub(super) async fn main_frame(view: &Webview) -> Result<super::MainFrame, Strin
         let _ = tx.send(super::MainFrame { zoom: wk.pageZoom(), visible, width: size.map_or(0., |s| s.width), height: size.map_or(0., |s| s.height) });
     }).map_err(|e| e.to_string())?;
     rx.await.map_err(|_| "Main webview closed".into())
+}
+/// Lay the page out 1/`scale` times wider than the view and draw it scaled down to fit, the way Safari's Responsive
+/// Design Mode does: an agent's 1440 px viewport in a 462 px pane. CSS pixels keep their size, so text and media
+/// queries match a real window that wide. A scale of 1 lays the page out at the view's own size again.
+pub(super) async fn view_scale(view: &Webview, scale: f64) -> Result<(), String> {
+    if !(scale.is_finite() && scale > 0. && scale <= 1.) { return Err("Invalid view scale".into()); }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    view.with_webview(move |platform| unsafe {
+        let wk = &*(platform.inner() as *const WKWebView);
+        let supported = wk.respondsToSelector(sel!(_setViewScale:)) && wk.respondsToSelector(sel!(_setLayoutMode:));
+        if supported {
+            // _WKLayoutModeDynamicSizeComputedFromViewScale (2) lays out at view size / view scale; _WKLayoutModeViewSize (0) at the view size.
+            let mode: isize = if scale < 1. { 2 } else { 0 };
+            let _: () = msg_send![wk, _setLayoutMode: mode];
+            let _: () = msg_send![wk, _setViewScale: scale];
+            // WebKit applies the new layout size on the next frame change; the bounds may not have changed.
+            let size = wk.frame().size;
+            wk.setFrameSize(CGSize::new(size.width + 1., size.height));
+            wk.setFrameSize(size);
+        }
+        let _ = tx.send(supported);
+    }).map_err(|e| e.to_string())?;
+    if rx.await.map_err(|_| "Browser page closed".to_string())? { Ok(()) } else { Err("This WebKit cannot scale the page view".into()) }
 }
 pub(super) fn parse_page_url(url: Option<String>) -> Result<tauri::Url, String> {
     url.and_then(|url| url.parse().ok()).ok_or_else(|| "The page is still loading; try again in a moment".into())
