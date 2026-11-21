@@ -39,3 +39,18 @@ it("shows Claude availability and limits an existing Claude thread to its provid
   rerender(<ComposerEngineControl {...props} engine="pi" onSelectEngine={vi.fn()} />);
   await waitFor(() => expect(screen.getByRole("option", { name: /Claude Code \(ACP\)/ }).textContent).toContain("Installing runtime"));
 });
+it("shows the agent's own models for Antigravity, OpenCode and Cursor instead of the pi registry", () => {
+  const props = {
+    disabled: false, models: [
+      { id: "opencode/m1", model: "opencode/m1", displayName: "Model One", providerId: "opencode", providerName: "OpenCode", engines: ["opencode"] as import("@/types").EngineKind[] },
+      { id: "a/model", model: "a/model", displayName: "A", providerId: "a", providerName: "Anthropic", engines: ["pi"] as import("@/types").EngineKind[] },
+    ], selectedModelId: "opencode/m1", onSelectModel: vi.fn(), selectedEffort: null, onSelectEffort: vi.fn(),
+  };
+  render(<ComposerMetaBar {...props} engine="opencode" />);
+  fireEvent.click(screen.getByRole("button", { name: /Model One/ }));
+  const own = within(screen.getByRole("group", { name: "OpenCode" })).getByRole("option") as HTMLOptionElement;
+  expect(own.disabled).toBe(false);
+  const registry = within(screen.getByRole("group", { name: "Anthropic" })).getByRole("option") as HTMLOptionElement;
+  expect(registry.disabled).toBe(true);
+  expect(registry.title).toContain("Unavailable for opencode");
+});

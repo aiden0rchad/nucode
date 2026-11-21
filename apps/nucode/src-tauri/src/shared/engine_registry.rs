@@ -3,16 +3,73 @@ use serde_json::{json, Value};
 use std::{collections::HashMap, path::{Path, PathBuf}, time::Duration};
 use tokio::{io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, process::Command};
 
+/// A CLI that speaks ACP, signs in on its own and owns its model list. nucode runs no login flow for it.
+pub(crate) struct Preset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub binaries: &'static [&'static str],
+    pub signin: &'static str,
+    pub install: &'static str,
+    pub no_browser: bool,
+}
+pub(crate) const PRESETS: [Preset; 3] = [
+    Preset { id: "antigravity", name: "Antigravity", binaries: &["agy"], signin: "agy", install: "Install Google's Antigravity CLI (`agy`)", no_browser: true },
+    Preset { id: "opencode", name: "OpenCode", binaries: &["opencode"], signin: "opencode auth login", install: "Install with `npm i -g opencode-ai` or from opencode.ai", no_browser: false },
+    Preset { id: "cursor", name: "Cursor", binaries: &["cursor-agent", "agent"], signin: "cursor-agent login", install: "Install the Cursor CLI from cursor.com/cli", no_browser: false },
+];
+pub(crate) fn preset(id: &str) -> Option<&'static Preset> { PRESETS.iter().find(|p| p.id == id) }
+impl Preset {
+    pub fn signin_error(&self) -> String { format!("{} isn't signed in. Run `{}` in Terminal, then try again.", self.name, self.signin) }
+}
 pub(crate) fn registry(settings: &AppSettings) -> Vec<EngineDefinition> {
-    let mut engines: Vec<_> = [("pi", "pi", EngineProtocol::PiRpc), ("omp", "oh-my-pi", EngineProtocol::PiRpc), ("codex", "Codex", EngineProtocol::CodexAppServer), ("claude", "Claude Code", EngineProtocol::Acp)].into_iter().map(|(id, name, protocol)| EngineDefinition {
-        id: id.into(), name: name.into(), protocol, built_in: true,
-        enabled: settings.engines.iter().find(|e| e.id == id).map_or(id != "omp", |e| e.enabled),
-        command: None, args: vec![], env: HashMap::new(), config_dir_env: None, description: None,
+    let mut engines: Vec<_> = [("pi", "pi", EngineProtocol::PiRpc), ("omp", "oh-my-pi", EngineProtocol::PiRpc), ("codex", "Codex", EngineProtocol::CodexAppServer), ("claude", "Claude Code", EngineProtocol::Acp)].into_iter()
+        .map(|(id, name, protocol)| (id, name.to_owned(), protocol))
+        .chain(PRESETS.iter().map(|p| (p.id, p.name.to_owned(), EngineProtocol::Acp))).map(|(id, name, protocol)| EngineDefinition {
+        id: id.into(), name, protocol, built_in: true,
+        enabled: settings.engines.iter().find(|e| e.id == id).map_or(id != "omp" && preset(id).is_none(), |e| e.enabled),
+        command: None, args: if preset(id).is_some() { vec!["acp".into()] } else { vec![] }, env: HashMap::new(), config_dir_env: None, description: None,
     }).collect();
     engines.extend(settings.engines.iter().filter(|e| !engines_id(&e.id)).cloned());
     engines
 }
-fn engines_id(id: &str) -> bool { matches!(id, "pi" | "omp" | "codex" | "claude") }
+fn engines_id(id: &str) -> bool { matches!(id, "pi" | "omp" | "codex" | "claude") || preset(id).is_some() }
+fn is_executable_file(p: &Path) -> bool {
+    p.is_file() && {
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; p.metadata().is_ok_and(|m| m.permissions().mode() & 0o111 != 0) }
+        #[cfg(not(unix))] { true }
+    }
+}
+/// PATH plus the directories a GUI launch usually lacks.
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
+    for extra in crate::backend::app_server::extra_path_dirs(None) { if !dirs.contains(&extra) { dirs.push(extra); } }
+    dirs
+}
+/// The first candidate binary found. The generic name `agent` only counts when it really is Cursor's.
+pub(crate) fn find_binary(preset: &Preset, dirs: &[PathBuf]) -> Option<PathBuf> {
+    preset.binaries.iter().find_map(|name| dirs.iter().map(|d| d.join(name)).find(|p| is_executable_file(p) && (*name != "agent" || p.canonicalize().is_ok_and(|c| c.to_string_lossy().to_ascii_lowercase().contains("cursor")))))
+}
+pub(crate) fn resolve_preset_binary(preset: &Preset) -> Result<PathBuf, String> {
+    find_binary(preset, &search_dirs()).ok_or_else(|| format!("Not installed. {}", preset.install))
+}
+/// Environment for a self-signed-in agent: the user's real HOME and nothing else secret.
+pub(crate) fn own_login_environment(parent: impl IntoIterator<Item=(String, String)>, path: &std::ffi::OsStr, preset: &Preset) -> HashMap<String, String> {
+    let mut env: HashMap<_, _> = parent.into_iter().filter(|(key, _)| {
+        let upper = key.to_ascii_uppercase();
+        let allowed = matches!(upper.as_str(), "HOME" | "USER" | "LOGNAME" | "SHELL" | "LANG" | "TMPDIR" | "TERM" | "SYSTEMROOT" | "WINDIR" | "USERPROFILE" | "APPDATA" | "LOCALAPPDATA") || upper.starts_with("LC_") || upper.starts_with("XDG_");
+        allowed && !upper.starts_with("OMP_AUTH_") && !["KEY", "TOKEN", "SECRET", "PASSWORD"].iter().any(|part| upper.contains(part))
+    }).collect();
+    env.insert("PATH".into(), path.to_string_lossy().into());
+    env.insert("OTEL_SDK_DISABLED".into(), "true".into());
+    if preset.no_browser { env.insert("NO_BROWSER".into(), "true".into()); }
+    env
+}
+pub(crate) fn own_login_path() -> std::ffi::OsString { std::env::join_paths(search_dirs()).unwrap_or_default() }
+/// Antigravity before 1.5.0 has no steering and rejects what nucode sends. Unparsable versions pass.
+pub(crate) fn antigravity_version_error(version: Option<&str>) -> Option<&'static str> {
+    let parts: Vec<u32> = version?.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty()).take(2).filter_map(|s| s.parse().ok()).collect();
+    (version?.starts_with(|c: char| c.is_ascii_digit()) && parts.len() == 2 && (parts[0], parts[1]) < (1, 5)).then_some("Update the Antigravity CLI to 1.5 or newer")
+}
 pub(crate) fn resolve(settings: &AppSettings, id: &str) -> Result<(EngineDefinition, Option<String>), String> {
     let engines = registry(settings);
     if let Some(engine) = engines.iter().find(|e| e.id == id) { return Ok((engine.clone(), None)); }
@@ -29,10 +86,7 @@ pub(crate) fn features(data: Option<&Path>) -> Features { settings(data).feature
 pub(crate) fn executable(command: &str) -> Result<PathBuf, String> {
     let candidates = if Path::new(command).components().count() > 1 { vec![PathBuf::from(command)] }
         else { std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).map(|p| p.join(command)).collect() };
-    candidates.into_iter().find(|p| p.is_file() && {
-        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; p.metadata().is_ok_and(|m| m.permissions().mode() & 0o111 != 0) }
-        #[cfg(not(unix))] { true }
-    }).ok_or_else(|| format!("Command must exist and be executable: {command}"))
+    candidates.into_iter().find(|p| is_executable_file(p)).ok_or_else(|| format!("Command must exist and be executable: {command}"))
 }
 fn env_name(key: &str) -> bool {
     !key.is_empty() && !key.as_bytes()[0].is_ascii_digit() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -67,6 +121,24 @@ pub(crate) fn environment(parent: impl IntoIterator<Item=(String, String)>, home
     env
 }
 pub(crate) async fn test(data: &Path, engine: &EngineDefinition) -> Result<Value, String> {
+    match preset(&engine.id) {
+        Some(preset) => test_own_login(engine, preset, &search_dirs(), std::env::vars().collect()).await,
+        None => test_isolated(data, engine).await,
+    }
+}
+/// Handshake with a self-signed-in agent: real HOME, `initialize` only, never a session.
+pub(crate) async fn test_own_login(engine: &EngineDefinition, preset: &Preset, dirs: &[PathBuf], parent: Vec<(String, String)>) -> Result<Value, String> {
+    let program = find_binary(preset, dirs).ok_or_else(|| format!("Not installed. {}", preset.install))?;
+    let mut command = Command::new(program);
+    command.args(["acp"]).env_clear().envs(own_login_environment(parent, &std::env::join_paths(dirs).unwrap_or_default(), preset))
+        .current_dir(std::env::temp_dir()).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    let result = handshake(engine, command).await?;
+    if preset.id == "antigravity" {
+        if let Some(error) = antigravity_version_error(result["version"].as_str()) { return Err(error.into()); }
+    }
+    Ok(result)
+}
+async fn test_isolated(data: &Path, engine: &EngineDefinition) -> Result<Value, String> {
     validate(engine)?;
     let home = data.join("engine-tests").join(uuid::Uuid::new_v4().to_string());
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
@@ -76,6 +148,13 @@ pub(crate) async fn test(data: &Path, engine: &EngineDefinition) -> Result<Value
             .env(engine.config_dir_env.as_deref().unwrap_or("PI_CODING_AGENT_DIR"), &home)
             .current_dir(&home).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
         if engine.protocol == EngineProtocol::PiRpc { command.args(["--mode", "rpc"]); }
+        handshake(engine, command).await
+    }.await;
+    let _ = std::fs::remove_dir_all(home);
+    result
+}
+async fn handshake(engine: &EngineDefinition, mut command: Command) -> Result<Value, String> {
+    {
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         let mut stderr = child.stderr.take().ok_or("Missing stderr")?;
         let mut diagnostics = tokio::spawn(async move {
@@ -115,9 +194,7 @@ pub(crate) async fn test(data: &Path, engine: &EngineDefinition) -> Result<Value
         let excerpt = tokio::time::timeout(Duration::from_millis(200), &mut diagnostics).await.ok().and_then(Result::ok).unwrap_or_default();
         diagnostics.abort();
         result.map_err(|error| if excerpt.is_empty() { error } else { format!("{error}\nStderr: {excerpt}") })
-    }.await;
-    let _ = std::fs::remove_dir_all(home);
-    result
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -177,5 +254,49 @@ mod integration_tests {
         assert!(!settings.features().worktrees); assert!(settings.features().checkpoints);
         let policy = crate::shared::engines::feature_policy(settings.agent_policy, &Features { subagents: false, ..Features::default() });
         assert!(!policy.subagents.enabled); assert_eq!(policy.subagents.max_concurrent,0);
+    }
+}
+
+#[cfg(test)]
+mod own_login_tests {
+    use super::*;
+    fn script(dir: &Path, name: &str, body: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        let file = dir.join(name);
+        std::fs::write(&file, format!("#!/usr/bin/env python3\n{body}")).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap(); }
+    }
+    fn builtin(id: &str) -> EngineDefinition { registry(&AppSettings::default()).into_iter().find(|e| e.id == id).unwrap() }
+    #[test] fn built_ins_are_listed_disabled_and_valid() {
+        let settings = AppSettings::default();
+        for (id, name) in [("antigravity", "Antigravity"), ("opencode", "OpenCode"), ("cursor", "Cursor")] {
+            let engine = builtin(id);
+            assert_eq!((engine.name.as_str(), engine.enabled, engine.built_in, engine.protocol, engine.args.as_slice()), (name, false, true, EngineProtocol::Acp, ["acp".to_string()].as_slice()));
+            validate(&engine).unwrap();
+            assert_eq!(registry(&settings).iter().filter(|e| e.id == id).count(), 1);
+        }
+        let mut saved = AppSettings::default();
+        saved.engines.push(EngineDefinition { enabled: true, ..builtin("opencode") });
+        assert!(registry(&saved).iter().find(|e| e.id == "opencode").unwrap().enabled);
+        assert_eq!(registry(&saved).iter().filter(|e| e.id == "opencode").count(), 1);
+        validate_settings(&saved).unwrap();
+    }
+    #[tokio::test] async fn handshake_uses_the_real_home_and_reports_missing_binaries() {
+        let root = std::env::temp_dir().join(format!("nucode-own-{}", uuid::Uuid::new_v4()));
+        let dirs = vec![root.clone(), "/usr/bin".into(), "/bin".into(), "/usr/local/bin".into(), "/opt/homebrew/bin".into()];
+        let parent = vec![("HOME".to_string(), "/home/real".to_string()), ("OPENAI_API_KEY".into(), "k".into()), ("PATH".into(), "/ambient".into())];
+        let opencode = preset("opencode").unwrap();
+        let missing = test_own_login(&builtin("opencode"), opencode, &dirs, parent.clone()).await.unwrap_err();
+        assert_eq!(missing, "Not installed. Install with `npm i -g opencode-ai` or from opencode.ai");
+        assert_eq!(test_own_login(&builtin("cursor"), preset("cursor").unwrap(), &dirs, parent.clone()).await.unwrap_err(), "Not installed. Install the Cursor CLI from cursor.com/cli");
+        let reply = |version: &str| format!("import json, os, sys\nassert sys.argv[1:] == ['acp']\nassert os.environ['HOME'] == '/home/real' and 'OPENAI_API_KEY' not in os.environ and 'XDG_CONFIG_HOME' not in os.environ\nrequest = json.loads(sys.stdin.readline())\nassert request['method'] == 'initialize'\nprint(json.dumps({{'jsonrpc':'2.0','id':request['id'],'result':{{'protocolVersion':1,'agentInfo':{{'version':'{version}'}}}}}}), flush=True)\nfor line in sys.stdin:\n    raise SystemExit('only initialize may be sent: ' + line)\n");
+        script(&root, "opencode", &reply("0.9.1"));
+        let ok = test_own_login(&builtin("opencode"), opencode, &dirs, parent.clone()).await.unwrap();
+        assert_eq!((ok["state"].as_str(), ok["version"].as_str()), (Some("ready"), Some("0.9.1")));
+        script(&root, "agy", &reply("1.4.2"));
+        assert_eq!(test_own_login(&builtin("antigravity"), preset("antigravity").unwrap(), &dirs, parent.clone()).await.unwrap_err(), "Update the Antigravity CLI to 1.5 or newer");
+        script(&root, "agy", &reply("1.5.3"));
+        assert_eq!(test_own_login(&builtin("antigravity"), preset("antigravity").unwrap(), &dirs, parent).await.unwrap()["version"], "1.5.3");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

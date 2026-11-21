@@ -549,11 +549,8 @@ impl CodexEngine {
     }
 }
 
-pub(crate) fn build_codex_path_env(codex_bin: Option<&str>) -> Option<String> {
-    let mut paths: Vec<PathBuf> = env::var_os("PATH")
-        .map(|value| env::split_paths(&value).collect())
-        .unwrap_or_default();
-
+/// Directories a GUI launch may be missing from PATH (Homebrew, mise, nvm, ~/.local/bin, ...).
+pub(crate) fn extra_path_dirs(codex_bin: Option<&str>) -> Vec<PathBuf> {
     let mut extras: Vec<PathBuf> = Vec::new();
 
     #[cfg(not(target_os = "windows"))]
@@ -617,7 +614,15 @@ pub(crate) fn build_codex_path_env(codex_bin: Option<&str>) -> Option<String> {
         }
     }
 
-    for extra in extras {
+    extras
+}
+
+pub(crate) fn build_codex_path_env(codex_bin: Option<&str>) -> Option<String> {
+    let mut paths: Vec<PathBuf> = env::var_os("PATH")
+        .map(|value| env::split_paths(&value).collect())
+        .unwrap_or_default();
+
+    for extra in extra_path_dirs(codex_bin) {
         if !paths.iter().any(|path| path == &extra) {
             paths.push(extra);
         }

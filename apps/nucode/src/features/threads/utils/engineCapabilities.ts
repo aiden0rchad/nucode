@@ -1,4 +1,5 @@
 import type { EngineKind, ThreadSummary } from "@/types";
+import { isOwnLoginEngine } from "@settings/engines";
 
 type EngineCapabilities = {
   forkLatest: boolean; forkAtItem: boolean; conversationRewind: boolean;
@@ -12,10 +13,12 @@ export const ENGINE_CAPABILITIES: Record<EngineKind, EngineCapabilities> = {
   codex: { forkLatest: true, forkAtItem: false, conversationRewind: true, sideChats: true, agentsTree: true, checkpoints: true, steer: true, compact: true },
   claude: { forkLatest: false, forkAtItem: false, conversationRewind: false, sideChats: false, agentsTree: true, checkpoints: true, steer: false, compact: false },
 };
+// Antigravity, OpenCode and Cursor are plain ACP agents: they get Claude's row, extended by what they advertise.
+for (const id of ["antigravity", "opencode", "cursor"]) ENGINE_CAPABILITIES[id] = ENGINE_CAPABILITIES.claude;
 
 export function engineCapabilities(engine: EngineKind, advertised?: ThreadSummary["capabilities"]): EngineCapabilities {
   const defaults = ENGINE_CAPABILITIES[engine] ?? ENGINE_CAPABILITIES.pi;
-  return engine === "claude" ? { ...defaults, forkLatest: advertised?.fork === true, sideChats: advertised?.fork === true, steer: advertised?.steer === true } : defaults;
+  return engine === "claude" || isOwnLoginEngine(engine) ? { ...defaults, forkLatest: advertised?.fork === true, sideChats: advertised?.fork === true, steer: advertised?.steer === true } : defaults;
 }
 
 export const CLAUDE_REWIND_REASON = "Conversation rewind isn't supported for Claude Code threads yet";

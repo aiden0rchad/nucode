@@ -1,5 +1,5 @@
 import { formatModelRef } from "@settings/registry";
-import { useEngines, resolveEngine } from "@settings/engines";
+import { useEngines, resolveEngine, isOwnLoginEngine } from "@settings/engines";
 import { useFeatureSettings } from "@settings/features";
 import { ReasoningControl } from "./ReasoningControl";
 import { useEffect, useState } from "react";
@@ -21,16 +21,17 @@ type ComposerMetaBarProps = {
 export function ComposerMetaBar({ disabled, engine = "codex", models, selectedModelId, defaultModelId, onSelectModel, selectedEffort, onSelectEffort, modelPickerRequest }: ComposerMetaBarProps) {
   const settings = useFeatureSettings();
   const protocol = useEngines().find(e => e.id === engine)?.protocol;
-  const modelEngine = protocol === "pi-rpc" || (protocol === "acp" && engine !== "claude") ? "pi" : engine;
+  const own = isOwnLoginEngine(engine);
+  const modelEngine = protocol === "pi-rpc" || (protocol === "acp" && engine !== "claude" && !own) ? "pi" : engine;
   const selected = models.find(model => model.id === selectedModelId);
   return <ReasoningControl engine={engine}
     modelPickerRequest={modelPickerRequest}
-    modelName={settings ? formatModelRef(settings, selectedModelId).name : selected?.displayName || selected?.model || "Select model"}
+    modelName={own ? selected?.displayName || "Agent default" : settings ? formatModelRef(settings, selectedModelId).name : selected?.displayName || selected?.model || "Select model"}
     models={models.map(model => ({ id: model.id, name: model.displayName || model.model, provider: model.providerName || model.providerId, disabled: !!model.engines && !model.engines.includes(modelEngine), disabledReason: model.engines && !model.engines.includes(modelEngine) ? "Unavailable for " + engine : undefined }))}
     selectedModelId={selectedModelId} defaultModelId={defaultModelId} onSelectModel={onSelectModel}
-    capability={engine === "claude" ? selected?.acpReasoning : selected?.reasoning}
+    capability={engine === "claude" || own ? selected?.acpReasoning : selected?.reasoning}
     value={selectedEffort} onChange={onSelectEffort} disabled={disabled}
-    unavailable={engine === "claude" && !selected?.acpReasoning ? "This Claude session does not advertise a reasoning option" : undefined}
+    unavailable={(engine === "claude" || own) && !selected?.acpReasoning ? `This ${own ? "agent" : "Claude"} session does not advertise a reasoning option` : undefined}
   />;
 }
 
