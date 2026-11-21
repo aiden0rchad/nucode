@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Agent pages that froze while nobody watched:** with the screen locked, the window covered, or the browser pane never opened, WebKit treated an agent's page as hidden and paused its animations and frame callbacks. Checks waiting on a frame timed out and panels stayed at their first keyframe. The agent's page now keeps running whether or not anyone is looking at it.
 - **No approval card for leaving .git out:** in Full access, a command that names `.git` or `.env` only to exclude it (`rsync --exclude .git`, `grep --exclude-dir=.git`) no longer stops the thread for approval. A command that could write into them still asks, now whatever the letter case.
 - **Desktop widths in the in-app browser:** when an agent set a width wider than the pane, such as 1440 px, the page laid out at that width with text nearly twice its real size, so desktop checks showed overlaps a real window doesn't have. The page is now scaled down the way Safari's Responsive Design Mode does it, and text keeps its real size.
 - **Browser left over the home screen:** going home or to another view at the moment the in-app browser was being moved could leave the page drawn on top of the new view until the app restarted. Moves and hides now reach the browser in the order they were made.
