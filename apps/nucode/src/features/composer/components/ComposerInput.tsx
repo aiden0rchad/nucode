@@ -33,6 +33,8 @@ type ComposerInputProps = {
   engine?: import("@/types").EngineKind;
   text: string;
   disabled: boolean;
+  /** Why the input is disabled, shown as its placeholder and on the send button. */
+  disabledReason?: string;
   sendLabel: string;
   canStop: boolean;
   canSend: boolean;
@@ -94,6 +96,7 @@ export function ComposerInput({
   toolbar, controls, addMenu,
   text,
   disabled,
+  disabledReason = "Review in progress",
   sendLabel,
   canStop,
   canSend,
@@ -259,7 +262,7 @@ export function ComposerInput({
                 <Mic aria-hidden />
               )}
             </IconButton>}
-            <ComposerSendButton runningHint={`Enter to ${sendLabel.toLowerCase()} a follow-up; Shift+Enter for a new line`} running={canStop} disabled={disabled || isDictationBusy || !canSend} disabledReason={disabled ? "Review in progress" : isDictationBusy ? "Finish dictation first" : "Write a message or add an attachment"} onSend={onSend} onStop={onStop} label={sendLabel} />
+            <ComposerSendButton runningHint={`Enter to ${sendLabel.toLowerCase()} a follow-up; Shift+Enter for a new line`} running={canStop} disabled={disabled || isDictationBusy || !canSend} disabledReason={disabled ? disabledReason : isDictationBusy ? "Finish dictation first" : "Write a message or add an attachment"} onSend={onSend} onStop={onStop} label={sendLabel} />
           </div>}>
         {isDragOver && <div className="composer-drop-overlay">Drop files to attach</div>}
         <ComposerAttachments
@@ -274,7 +277,7 @@ export function ComposerInput({
             ref={textareaRef}
             placeholder={
               disabled
-                ? "Review in progress. Chat will re-enable when it completes."
+                ? disabledReason === "Review in progress" ? "Review in progress. Chat will re-enable when it completes." : disabledReason
                 : "Ask anything. @ files, $ skills, / commands"
             }
             value={text}
