@@ -130,8 +130,12 @@ export function decide(access: Access, call: Call, home: string, interactive: bo
   const readonly = call.tool === "bash" && readOnlyCommand(call.command ?? "");
   if (access.accessMode === "read-only" || child?.toolAccess === "read-only") return readonly ? "allow" : "block";
   const command = (call.command ?? "").replace(/\$(?:NUCODE_WORK_PYTHON\b|\{NUCODE_WORK_PYTHON\})/g, "");
+  // Naming .git or .env only to leave it out (rsync/tar --exclude, grep --exclude-dir) writes nothing there; a review
+  // script's "rsync --exclude .git" stopped a Full access thread for approval. Any other mention still asks, in
+  // any case, since the file system ignores case.
+  const unexcluded = command.replace(/--exclude(?:-dir)?(?:=|\s+)(['"]?)\.(?:git|env)[\w.-]*\1(?=[\s;|&)]|$)/gi, "");
   const protectedWrite = call.tool === "bash"
-    ? !readonly && /(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/.test(command) || command.includes(home)
+    ? !readonly && /(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/i.test(unexcluded) || command.includes(home)
     : protectedPath(path, home);
   if (protectedWrite) return interactive && !child ? "ask" : "block";
   if (child && access.accessMode === "ask") return readonly || (call.tool !== "bash" && inside(path, child.workspace)) ? "allow" : "block";
