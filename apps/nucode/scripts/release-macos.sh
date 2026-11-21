@@ -3,7 +3,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 cd "$SCRIPT_DIR/.."
 export CARGO_NET_OFFLINE=true
-IDENTITY=$(bash "$SCRIPT_DIR/signing-identity.sh")
+# Release artifacts default to the local "nucode Dev" certificate: a personal certificate puts its
+# owner's name in the signature. Installed copies are re-signed with sign-dev.sh.
+IDENTITY=${NUCODE_SIGNING_IDENTITY:-nucode Dev}
 export NUCODE_SIGNING_IDENTITY="$IDENTITY"
 NAME=$(bash "$SCRIPT_DIR/signing-identity.sh" --name)
 DEVELOPER_ID=false
@@ -31,13 +33,6 @@ env -u APPLE_ID -u APPLE_PASSWORD -u APPLE_API_KEY -u APPLE_API_KEY_PATH \
 APP="$TARGET/release/bundle/macos/nucode.app"
 bash "$SCRIPT_DIR/sign-macos.sh" "$APP"
 node "$SCRIPT_DIR/check-bundle.mjs" "$APP"
-# macOS keeps permission grants only while this requirement stays the same; say so when it changes.
-REQUIREMENT=$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')
-LAST_REQUIREMENT="$TARGET/release/.designated-requirement"
-if [[ -f "$LAST_REQUIREMENT" && "$(<"$LAST_REQUIREMENT")" != "$REQUIREMENT" ]]; then
-  echo "warning: this build's signature identity differs from the last build's; macOS will ask again for Accessibility, Screen Recording and Keychain access." >&2
-fi
-printf '%s' "$REQUIREMENT" > "$LAST_REQUIREMENT"
 GATEKEEPER_OK=true
 if ! spctl -a -vv "$APP"; then
   GATEKEEPER_OK=false

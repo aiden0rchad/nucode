@@ -1,8 +1,8 @@
 #!/bin/bash
-# Prints the identity every macOS build and install signs with. macOS ties Accessibility,
-# Screen Recording and Keychain grants to the signature's designated requirement, so one
-# identity for every build keeps those grants across rebuilds and updates; switching
-# identities (even between two of your own) makes macOS treat the app as a new one.
+# Prints the identity sign-dev.sh signs installed copies with. macOS ties Accessibility,
+# Screen Recording and Keychain grants to the signature's designated requirement, so the
+# same identity on every install keeps those grants across rebuilds; switching identities
+# (even between two of your own) makes macOS treat the app as a new one.
 # Order: NUCODE_SIGNING_IDENTITY, then .signing-identity.local in this checkout or the
 # main checkout of a worktree, then the local "nucode Dev" certificate.
 # With --name, prints the certificate's name instead (the identity may be its SHA-1).
