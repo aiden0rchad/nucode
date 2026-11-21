@@ -493,7 +493,7 @@ impl ClaudeAcpEngine {
             })
         }),secrets).await?;
         // Antigravity before 1.5.1 hides non-Gemini models from every client but an editor it allowlists.
-        let info = if own.is_some_and(|p| p.id == "antigravity") { json!({"name":"zed","version":"0.0.0"}) } else { json!({"name":"nucode","version":env!("CARGO_PKG_VERSION")}) };
+        let info = json!({"name":"nucode","version":env!("CARGO_PKG_VERSION")});
         let initialized = client.request("initialize",json!({"protocolVersion":1,"clientInfo":info,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,"_meta":{"terminal_output_delta":true}}})).await;
         match initialized {
             Ok(mut capabilities) => {

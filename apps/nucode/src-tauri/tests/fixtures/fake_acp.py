@@ -70,7 +70,7 @@ def own_main():
         if method is not None:
             log.append({"method": method, "params": params})
         if method == "initialize":
-            assert params["clientInfo"]["name"] == ("zed" if agent == "antigravity" else "nucode")
+            assert params["clientInfo"]["name"] == "nucode"
             auth = [{"id": "oauth-personal", "name": "Log in with Google"}] if cfg.get("oauth") else []
             response(request, {"protocolVersion": 1, "agentCapabilities": {"loadSession": True, "promptCapabilities": {"image": True}, "mcpCapabilities": {"http": True}}, "authMethods": auth, "agentInfo": {"name": agent, "version": cfg.get("version", "1.5.12")}})
         elif method == "authenticate":
