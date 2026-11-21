@@ -95,8 +95,12 @@ pub(crate) fn acp(session: &Value) -> Option<(String, ReasoningCapability)> {
 pub(crate) async fn catalog(providers: &[crate::types::ProviderEntry], sessions: &tokio::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<super::engines::WorkspaceSession>>>, workspace: &str, thread: Option<&str>) -> Value {
     let mut catalog = super::providers::catalog(providers);
     let session = sessions.lock().await.get(workspace).cloned();
+    if let Some(session) = &session {
+        // Antigravity, OpenCode and Cursor bring their own models, outside the provider registry.
+        catalog["result"]["data"].as_array_mut().unwrap().extend(session.own_models());
+    }
     if let (Some(session), Some(thread)) = (session, thread) {
-        if let Some((provider, model, cap)) = session.claude.reasoning_options(thread).await {
+        if let Some((provider, model, cap)) = session.acp_reasoning(thread).await {
             for entry in catalog["result"]["data"].as_array_mut().unwrap() {
                 if entry["providerId"] == provider && entry["modelId"] == model { entry["acpReasoning"] = json!(cap); }
             }

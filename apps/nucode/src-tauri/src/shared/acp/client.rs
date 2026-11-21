@@ -22,10 +22,20 @@ type Handler = Arc<dyn Fn(Value) -> BoxFuture<'static, Option<Value>> + Send + S
 pub(super) struct RpcError {
     pub message: String,
     pub error_kind: Option<Value>,
+    /// The agent's own JSON-RPC code and message, before `message` is made friendly.
+    pub code: Option<i64>,
+    pub raw: String,
 }
 impl From<String> for RpcError {
     fn from(message: String) -> Self {
-        Self { message, error_kind: None }
+        Self { message, error_kind: None, code: None, raw: String::new() }
+    }
+}
+impl RpcError {
+    /// -32000 or an auth-required message: the agent wants a sign-in.
+    pub fn auth_required(&self) -> bool {
+        let text = self.raw.to_ascii_lowercase();
+        self.code == Some(-32000) || ["auth_required", "authentication required", "auth required", "not authenticated", "unauthenticated", "not logged in", "login required", "sign in"].iter().any(|p| text.contains(p))
     }
 }
 impl std::fmt::Display for RpcError {
@@ -125,7 +135,11 @@ impl Client {
                     let id = message.get("id").cloned();
                     if let Some(result) = handler(message).await {
                         if let Some(id) = id {
-                            let _ = reader.respond(id, result).await;
+                            // The handler marks a refusal of an unsupported request as `__rpcError`.
+                            let _ = match result.get("__rpcError") {
+                                Some(error) => reader.write(json!({"jsonrpc":"2.0","id":id,"error":error})).await,
+                                None => reader.respond(id, result).await,
+                            };
                         }
                     }
                 } else if let Some(id) = message["id"].as_u64() {
@@ -138,7 +152,8 @@ impl Client {
                                     .as_str()
                                     .unwrap_or("ACP request failed")
                                     .to_string()
-                            }, error_kind: message["error"]["data"].get("errorKind").cloned() })
+                            }, error_kind: message["error"]["data"].get("errorKind").cloned(),
+                            code: message["error"]["code"].as_i64(), raw: message["error"]["message"].as_str().unwrap_or("").to_string() })
                         } else {
                             Ok(message["result"].clone())
                         };
@@ -212,16 +227,20 @@ impl Client {
         Ok((id, rx))
     }
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_rpc(method, params).await.map_err(|e| e.to_string())
+    }
+    /// Like `request`, but keeps the agent's error code so callers can tell a sign-in failure.
+    pub async fn request_rpc(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         let (id, rx) = self.begin(method, params).await?;
         // Prompts can wait indefinitely for the user's approval; other RPCs are bounded.
         if method == "session/prompt" {
-            return rx.await.map_err(|_| "ACP response channel closed")?.map_err(|e| e.to_string());
+            return rx.await.map_err(|_| RpcError::from("ACP response channel closed".to_string()))?;
         }
         let result = match tokio::time::timeout(Duration::from_secs(120), rx).await {
-            Ok(result) => result.map_err(|_| "ACP response channel closed")?.map_err(|e| e.to_string()),
+            Ok(result) => result.map_err(|_| RpcError::from("ACP response channel closed".to_string()))?,
             Err(_) => {
                 self.pending.lock().await.remove(&id);
-                Err(format!("ACP {method} timed out"))
+                Err(format!("ACP {method} timed out").into())
             }
         };
         if method == "initialize" && result.is_ok() {

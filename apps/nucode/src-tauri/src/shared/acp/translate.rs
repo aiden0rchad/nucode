@@ -7,6 +7,8 @@ pub(super) struct Translator {
     pub cwd: String,
     pub turns: Vec<Value>,
     pub active: bool,
+    /// Updates that arrive after a turn ended join that turn instead of starting an empty one.
+    pub attach_late: bool,
     tools: HashMap<String, Value>,
     completed: HashSet<String>,
     text_item: Option<(String, String)>,
@@ -178,7 +180,7 @@ impl Translator {
         ) {
             return out;
         }
-        if !self.active {
+        if !self.active && !(self.attach_late && !self.turns.is_empty()) {
             out.extend(self.start(Value::Null));
         }
         match kind {

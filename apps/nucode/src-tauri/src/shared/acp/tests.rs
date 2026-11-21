@@ -323,7 +323,7 @@ async fn single_model_policy_disables_acp_delegation_and_reloads_when_changed() 
     let previous = engine.runtimes.lock().await["workspace"].client.id.clone();
     policy.subagents.enabled = true;
     engine.configure("workspace", vec![provider.clone()], policy).await;
-    let client = engine.spawn("workspace", data.to_str().unwrap(), &provider, "model").await.unwrap();
+    let client = engine.spawn("workspace", data.to_str().unwrap(), Some(&provider), "model").await.unwrap();
     assert_ne!(client.id, previous);
     let params = engine.session_params("workspace", id, data.to_str().unwrap(), "model").await.unwrap();
     assert!(!params["_meta"]["claudeCode"]["options"]["disallowedTools"].as_array().unwrap().contains(&json!("Task")));
@@ -733,6 +733,333 @@ async fn advertised_effort_is_clamped_and_applied_before_prompt() {
     assert_eq!(engine.reasoning_options(id).await.unwrap().2.levels, ["low", "high"]);
     engine.request("workspace", "turn/start", json!({"threadId":id,"effort":"max","input":[{"type":"text","text":"reasoning-high"}]})).await.unwrap();
     assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "completed");
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+
+// Antigravity, OpenCode and Cursor: ACP agents that sign in on their own and bring their own models.
+fn own_engine(data: &Path, id: &str) -> ClaudeAcpEngine {
+    let mut definition = super::super::engine_registry::registry(&crate::types::AppSettings::default()).into_iter().find(|e| e.id == id).unwrap();
+    definition.enabled = true;
+    let mut own = engine(data).with_definition(definition);
+    own.grace = std::time::Duration::from_millis(300);
+    own
+}
+fn agent(data: &Path, config: Value) { std::fs::write(data.join("fake-agent.json"), config.to_string()).unwrap(); }
+async fn start_own(engine: &ClaudeAcpEngine, data: &Path, params: Value) -> Result<Value, String> {
+    let mut params = params;
+    params["cwd"] = json!(data);
+    engine.request("workspace", "thread/start", params).await
+}
+async fn fixture(engine: &ClaudeAcpEngine, method: &str) -> Value {
+    let client = engine.runtimes.lock().await["workspace"].client.clone();
+    client.request(method, json!({})).await.unwrap()
+}
+fn calls(log: &Value, method: &str) -> Vec<Value> {
+    log["log"].as_array().unwrap().iter().filter(|c| c["method"] == method).map(|c| c["params"].clone()).collect()
+}
+async fn say(engine: &ClaudeAcpEngine, id: &str, text: &str) {
+    engine.request("workspace", "turn/start", json!({"threadId":id,"input":[{"type":"text","text":text}]})).await.unwrap();
+}
+fn thread_text(history: &Value) -> String {
+    history["result"]["thread"]["turns"].as_array().unwrap().iter().flat_map(|t| t["items"].as_array().unwrap().clone()).filter_map(|i| i["text"].as_str().map(str::to_owned)).collect::<Vec<_>>().join("|")
+}
+
+#[test]
+fn own_login_environment_has_the_real_home_and_no_secrets() {
+    use super::super::engine_registry::{own_login_environment, preset};
+    let parent = || vec![
+        ("HOME".to_string(), "/home/user".to_string()), ("USER".into(), "user".into()), ("LC_ALL".into(), "C".into()), ("XDG_DATA_HOME".into(), "/data".into()),
+        ("OPENAI_API_KEY".into(), "k".into()), ("OPENAI_BASE_URL".into(), "http://proxy".into()), ("OMP_AUTH_BROKER".into(), "b".into()), ("GITHUB_TOKEN".into(), "t".into()),
+        ("AWS_SECRET_ACCESS_KEY".into(), "s".into()), ("DB_PASSWORD".into(), "p".into()), ("PATH".into(), "/ambient".into()), ("UNRELATED".into(), "u".into()),
+    ];
+    let env = own_login_environment(parent(), std::ffi::OsStr::new("/bin:/extra"), preset("opencode").unwrap());
+    assert_eq!(env["HOME"], "/home/user");
+    assert_eq!(env["PATH"], "/bin:/extra");
+    assert_eq!(env["OTEL_SDK_DISABLED"], "true");
+    assert_eq!(env["XDG_DATA_HOME"], "/data");
+    assert!(env.contains_key("LC_ALL") && env.contains_key("USER"));
+    assert!(!env.contains_key("NO_BROWSER"));
+    for key in ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OMP_AUTH_BROKER", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "DB_PASSWORD", "UNRELATED", "XDG_CONFIG_HOME"] { assert!(!env.contains_key(key), "{key}"); }
+    assert_eq!(own_login_environment(parent(), std::ffi::OsStr::new("/bin"), preset("antigravity").unwrap())["NO_BROWSER"], "true");
+}
+#[test]
+fn antigravity_older_than_1_5_is_refused() {
+    use super::super::engine_registry::antigravity_version_error as refused;
+    assert!(refused(Some("1.4.9")).unwrap().contains("1.5"));
+    assert!(refused(Some("0.9.0")).is_some());
+    for ok in [Some("1.5.0"), Some("1.5.12"), Some("2.0.1"), Some("agy_acp_server_20260101_1"), None] { assert!(refused(ok).is_none(), "{ok:?}"); }
+}
+#[test]
+fn cursor_binary_resolution_follows_the_cursor_path_rule() {
+    use super::super::engine_registry::{find_binary, preset};
+    let root = temp();
+    let make = |dir: &str, name: &str| {
+        let dir = root.join(dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(name);
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap(); }
+        file
+    };
+    let cursor = preset("cursor").unwrap();
+    let generic = make("tools", "agent");
+    assert_eq!(find_binary(cursor, &[root.join("tools")]), None, "a generic `agent` is not Cursor");
+    let owned = make("Cursor-Agent-Install", "agent");
+    assert_eq!(find_binary(cursor, &[root.join("tools"), root.join("Cursor-Agent-Install")]), Some(owned.clone()));
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(&generic).unwrap();
+        std::os::unix::fs::symlink(&owned, &generic).unwrap();
+        assert_eq!(find_binary(cursor, &[root.join("tools")]), Some(generic.clone()), "a link into a cursor path counts");
+    }
+    let named = make("other", "cursor-agent");
+    assert_eq!(find_binary(cursor, &[root.join("tools"), root.join("other")]), Some(named), "cursor-agent wins over agent");
+    assert_eq!(find_binary(preset("opencode").unwrap(), &[root.join("tools")]), None);
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[tokio::test]
+async fn own_login_agent_runs_with_real_home_and_no_provider_keys() {
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    agent(&data, json!({}));
+    start_own(&engine, &data, json!({})).await.unwrap();
+    let env = fixture(&engine, "_fixture/env").await["env"].clone();
+    assert_eq!(env["HOME"], std::env::var("HOME").unwrap());
+    assert_eq!(env["NO_BROWSER"], "true");
+    assert_eq!(env["OTEL_SDK_DISABLED"], "true");
+    assert!(env.get("XDG_CONFIG_HOME") == std::env::var("XDG_CONFIG_HOME").ok().map(Value::from).as_ref());
+    for key in env.as_object().unwrap().keys() {
+        let upper = key.to_ascii_uppercase();
+        assert!(!["KEY", "TOKEN", "SECRET", "PASSWORD", "OPENAI", "ANTHROPIC", "OMP_AUTH"].iter().any(|p| upper.contains(p)), "{key}");
+    }
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn own_models_come_from_the_session_and_switching_sends_set_model_or_config_option() {
+    for (mode, method, key) in [("models", "session/set_model", "modelId"), ("config", "session/set_config_option", "value")] {
+        let data = temp();
+        let engine = own_engine(&data, "opencode");
+        agent(&data, json!({"models":mode}));
+        // Before any session there is only the agent default.
+        let before = engine.request("workspace", "model/list", json!({})).await.unwrap();
+        assert_eq!(before["result"]["data"][0]["displayName"], "Agent default");
+        let mut events = engine.events();
+        let started = start_own(&engine, &data, json!({})).await.unwrap();
+        assert_eq!(started["result"]["thread"]["modelProvider"], "opencode");
+        assert_eq!(started["result"]["thread"]["model"], "m1");
+        let id = started["result"]["thread"]["id"].as_str().unwrap().to_owned();
+        let listed = engine.request("workspace", "model/list", json!({"threadId":id})).await.unwrap();
+        let rows = listed["result"]["data"].as_array().unwrap();
+        assert_eq!(rows.iter().map(|r| r["id"].as_str().unwrap()).collect::<Vec<_>>(), ["opencode/m1", "opencode/m2"]);
+        assert!(rows.iter().all(|r| r["providerId"] == "opencode" && r["engines"] == json!(["opencode"])));
+        assert_eq!(rows[0]["isDefault"], true);
+        // The current model is not re-sent; a different one is.
+        engine.request("workspace", "turn/start", json!({"threadId":id,"model":"opencode/m1","input":[{"type":"text","text":"hello"}]})).await.unwrap();
+        event(&mut events, "turn/completed").await;
+        assert!(calls(&fixture(&engine, "_fixture/log").await, method).is_empty());
+        engine.request("workspace", "turn/start", json!({"threadId":id,"model":"opencode/m2","input":[{"type":"text","text":"hello"}]})).await.unwrap();
+        event(&mut events, "turn/completed").await;
+        let sent = calls(&fixture(&engine, "_fixture/log").await, method);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0][key], "m2");
+        assert!(calls(&fixture(&engine, "_fixture/log").await, if mode == "models" { "session/set_config_option" } else { "session/set_model" }).is_empty());
+        assert_eq!(engine.request("workspace", "thread/read", json!({"threadId":id})).await.unwrap()["result"]["thread"]["model"], "m2");
+        engine.shutdown().await.unwrap();
+        // A new run has the list from disk before its first session, and the thread reloads.
+        let again = own_engine(&data, "opencode");
+        let cached = again.request("workspace", "model/list", json!({})).await.unwrap();
+        assert_eq!(cached["result"]["data"].as_array().unwrap().len(), 2);
+        assert_eq!(super::own_catalog(&data, super::super::engine_registry::preset("opencode").unwrap()).len(), 2);
+        let list = again.request("workspace", "thread/list", json!({})).await.unwrap();
+        assert_eq!(list["result"]["data"][0]["id"], id.as_str());
+        again.request("workspace", "thread/resume", json!({"threadId":id})).await.unwrap();
+        assert_eq!(calls(&fixture(&again, "_fixture/log").await, "session/load").len(), 1);
+        again.shutdown().await.unwrap();
+        std::fs::remove_dir_all(data).unwrap();
+    }
+}
+#[tokio::test]
+async fn late_model_updates_and_reasoning_options_are_picked_up() {
+    let data = temp();
+    let engine = own_engine(&data, "cursor");
+    agent(&data, json!({"models":"config","lateModels":true,"thought":true}));
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    let wait = async { loop {
+        let listed = engine.request("workspace", "model/list", json!({})).await.unwrap();
+        if listed["result"]["data"].as_array().unwrap().len() == 3 { return listed; }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    } };
+    let listed = tokio::time::timeout(std::time::Duration::from_secs(10), wait).await.unwrap();
+    assert_eq!(listed["result"]["data"][2]["modelId"], "late");
+    let (provider, model, capability) = engine.reasoning_options(id).await.unwrap();
+    assert_eq!((provider.as_str(), model.as_str(), capability.levels.clone()), ("cursor", "m1", vec!["low".to_string(), "high".to_string()]));
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn sign_in_failures_name_the_terminal_command_and_authenticate_only_for_antigravity() {
+    for (id, config, hint, authenticates) in [
+        ("opencode", json!({"signedOut":true,"oauth":true,"authOk":true}), "OpenCode isn't signed in. Run `opencode auth login` in Terminal, then try again.", 0),
+        ("cursor", json!({"signedOut":true,"oauth":true,"authOk":true}), "Cursor isn't signed in. Run `cursor-agent login` in Terminal, then try again.", 0),
+        ("antigravity", json!({"signedOut":true}), "Antigravity isn't signed in. Run `agy` in Terminal, then try again.", 0),
+        ("antigravity", json!({"signedOut":true,"oauth":true}), "Antigravity isn't signed in. Run `agy` in Terminal, then try again.", 1),
+    ] {
+        let data = temp();
+        let engine = own_engine(&data, id);
+        agent(&data, config);
+        assert_eq!(start_own(&engine, &data, json!({})).await.unwrap_err(), hint);
+        assert_eq!(calls(&fixture(&engine, "_fixture/log").await, "authenticate").len(), authenticates, "{id}");
+        engine.shutdown().await.unwrap();
+        std::fs::remove_dir_all(data).unwrap();
+    }
+    // A cached Antigravity sign-in is loaded once and the session retried.
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    agent(&data, json!({"signedOut":true,"oauth":true,"authOk":true}));
+    start_own(&engine, &data, json!({})).await.unwrap();
+    let log = fixture(&engine, "_fixture/log").await;
+    assert_eq!(calls(&log, "authenticate"), [json!({"methodId":"oauth-personal"})]);
+    assert_eq!(calls(&log, "session/new").len(), 2);
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+    // A prompt that finds the agent signed out says the same.
+    let data = temp();
+    let engine = own_engine(&data, "opencode");
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    say(&engine, started["result"]["thread"]["id"].as_str().unwrap(), "auth").await;
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["error"]["message"], "OpenCode isn't signed in. Run `opencode auth login` in Terminal, then try again.");
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn antigravity_before_1_5_is_refused_at_start() {
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    agent(&data, json!({"version":"1.4.5"}));
+    assert_eq!(start_own(&engine, &data, json!({})).await.unwrap_err(), "Update the Antigravity CLI to 1.5 or newer");
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn updates_after_end_turn_stay_in_the_finished_turn() {
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    say(&engine, id, "late").await;
+    // The late update may land just before or just after the turn is closed; it is emitted either way.
+    let (mut completed, mut delta, mut usage) = (false, false, None);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !(completed && delta && usage.is_some()) {
+            let e = events.recv().await.unwrap();
+            match e["method"].as_str().unwrap() {
+                "turn/completed" => { assert_eq!(e["params"]["turn"]["status"], "completed"); completed = true; }
+                "item/agentMessage/delta" => delta |= e["params"]["delta"] == "late chunk",
+                "thread/tokenUsage/updated" => usage = Some(e),
+                _ => (),
+            }
+        }
+    }).await.expect("turn end, late chunk and usage");
+    let usage = usage.unwrap();
+    assert_eq!(usage["params"]["tokenUsage"]["last"]["totalTokens"], 7);
+    assert_eq!(usage["params"]["threadId"], id);
+    let history = engine.request("workspace", "thread/read", json!({"threadId":id})).await.unwrap();
+    assert_eq!(history["result"]["thread"]["turns"].as_array().unwrap().len(), 1, "no empty turn is started");
+    assert!(thread_text(&history).contains("late chunk"));
+    assert_eq!(engine.threads.lock().await[id].history.active, false);
+    // The file on disk has it too, so a restart keeps it.
+    assert!(std::fs::read_to_string(&engine.threads.lock().await[id].file).unwrap().contains("late chunk"));
+    // The thread is not stuck: the next turn runs.
+    say(&engine, id, "hello").await;
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "completed");
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn requests_nucode_cannot_serve_are_answered_at_once() {
+    let data = temp();
+    let engine = own_engine(&data, "opencode");
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    say(&engine, id, "elicit").await;
+    let notice = event(&mut events, "codex/stderr").await;
+    assert!(notice["params"]["message"].as_str().unwrap().contains("elicitation/create"));
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "completed");
+    say(&engine, id, "unknown").await;
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "completed");
+    let text = thread_text(&engine.request("workspace", "thread/read", json!({"threadId":id})).await.unwrap());
+    assert!(text.contains(r#"answer: {"action": "cancel"}"#), "{text}");
+    assert!(text.contains("-32601"), "{text}");
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn quota_and_token_limits_fail_the_turn_with_a_clear_message() {
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    for (prompt, message) in [("quota", "Antigravity quota exhausted"), ("length", "Antigravity stopped at its output token limit")] {
+        say(&engine, id, prompt).await;
+        let done = event(&mut events, "turn/completed").await;
+        assert_eq!(done["params"]["turn"]["status"], "failed");
+        assert_eq!(done["params"]["turn"]["error"]["message"], message);
+    }
+    engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn antigravity_steers_with_a_second_prompt_and_others_do_not_steer() {
+    let data = temp();
+    let engine = own_engine(&data, "antigravity");
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    assert_eq!(started["result"]["thread"]["capabilities"]["steer"], true);
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    say(&engine, id, "wait").await;
+    event(&mut events, "turn/started").await;
+    engine.request("workspace", "turn/steer", json!({"threadId":id,"input":[{"type":"text","text":"go left"}]})).await.unwrap();
+    // The superseded prompt answers end_turn, yet the turn only ends with the steering prompt.
+    let done = event(&mut events, "turn/completed").await;
+    assert_eq!(done["params"]["turn"]["status"], "completed");
+    assert!(thread_text(&engine.request("workspace", "thread/read", json!({"threadId":id})).await.unwrap()).contains("steered: go left"));
+    assert_eq!(calls(&fixture(&engine, "_fixture/log").await, "session/prompt").len(), 2);
+    engine.shutdown().await.unwrap();
+    let other = own_engine(&data, "opencode");
+    let started = start_own(&other, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    assert_eq!(started["result"]["thread"]["capabilities"]["steer"], false);
+    say(&other, id, "wait").await;
+    assert_eq!(other.request("workspace", "turn/steer", json!({"threadId":id,"input":[{"type":"text","text":"x"}]})).await.unwrap_err(), "Steering is unsupported for this engine");
+    other.request("workspace", "turn/interrupt", json!({"threadId":id})).await.unwrap();
+    other.shutdown().await.unwrap();
+    std::fs::remove_dir_all(data).unwrap();
+}
+#[tokio::test]
+async fn an_unanswered_cancel_restarts_the_agent_and_ends_the_turn_as_interrupted() {
+    let data = temp();
+    let engine = own_engine(&data, "cursor");
+    agent(&data, json!({"ignoreCancel":true}));
+    let mut events = engine.events();
+    let started = start_own(&engine, &data, json!({})).await.unwrap();
+    let id = started["result"]["thread"]["id"].as_str().unwrap();
+    say(&engine, id, "stuck").await;
+    event(&mut events, "turn/started").await;
+    let first = engine.runtimes.lock().await["workspace"].client.clone();
+    engine.request("workspace", "turn/interrupt", json!({"threadId":id})).await.unwrap();
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "interrupted");
+    tokio::time::timeout(std::time::Duration::from_secs(10), async { while first.alive.load(Ordering::SeqCst) { tokio::time::sleep(std::time::Duration::from_millis(20)).await; } }).await.unwrap();
+    // The next turn starts a clean process and reloads the session.
+    say(&engine, id, "hello").await;
+    assert_eq!(event(&mut events, "turn/completed").await["params"]["turn"]["status"], "completed");
+    assert_ne!(engine.runtimes.lock().await["workspace"].client.id, first.id);
     engine.shutdown().await.unwrap();
     std::fs::remove_dir_all(data).unwrap();
 }

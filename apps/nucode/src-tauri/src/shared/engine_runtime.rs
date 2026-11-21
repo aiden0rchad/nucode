@@ -165,6 +165,14 @@ pub(crate) async fn status(data: &Path) -> Value {
         _ => ("error", "Codex version check failed".into(), None),
     };
     status.as_array_mut().unwrap().push(json!({"engine":"codex","state":state,"message":message,"version":version}));
+    // Self-signed-in agents are not installed by nucode: report whether their CLI exists; the handshake test gives the version.
+    for preset in super::engine_registry::PRESETS.iter() {
+        let row = match super::engine_registry::find_binary(preset, &super::engine_registry::search_dirs()) {
+            Some(path) => json!({"engine":preset.id,"state":"found","message":format!("Found {}. Run Test to check that it starts. If it is not signed in, run `{}` in Terminal.", path.display(), preset.signin)}),
+            None => json!({"engine":preset.id,"state":"pending","message":format!("Not installed. {}", preset.install)}),
+        };
+        status.as_array_mut().unwrap().push(row);
+    }
     status
 }
 

@@ -1,5 +1,6 @@
 mod client;
 mod config;
+mod own;
 mod permissions;
 #[cfg(test)]
 mod tests;
@@ -22,9 +23,11 @@ use std::{
 };
 use tokio::{
     process::Command,
-    sync::{broadcast, Mutex},
+    sync::{broadcast, oneshot, Mutex},
 };
 use translate::Translator;
+pub(crate) use own::catalog_for as own_catalog;
+use std::time::Duration;
 
 type Sink = Arc<dyn Fn(&str, Value) + Send + Sync>;
 struct Thread {
@@ -37,6 +40,8 @@ struct Thread {
     replaying: bool,
     grants: HashSet<String>,
     file: PathBuf,
+    /// `session/prompt` requests in flight; a steered Antigravity turn ends with the last one.
+    prompts: usize,
 }
 impl Thread {
     fn save(&mut self) -> Result<(), String> {
@@ -78,6 +83,12 @@ pub(crate) struct ClaudeAcpEngine {
     sink: Sink,
     graph: Option<CodegraphSetup>,
     keys: Arc<dyn KeyStore>,
+    /// Latest model list of a self-signed-in agent (None-equivalent: `Null` until first read).
+    models: Arc<std::sync::Mutex<Value>>,
+    /// Bumped by every model update the agent pushes, so a slower session response never overwrites a newer list.
+    models_seen: Arc<std::sync::atomic::AtomicU64>,
+    /// How long a cancelled prompt may stay unanswered before the agent process is restarted.
+    grace: Duration,
     #[cfg(test)]
     fake: bool,
 }
@@ -96,6 +107,9 @@ impl Default for ClaudeAcpEngine {
             sink: Arc::new(|_, _| {}),
             graph: None,
             keys: Arc::new(Keychain),
+            models: Arc::new(std::sync::Mutex::new(Value::Null)),
+            models_seen: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            grace: Duration::from_secs(15),
             #[cfg(test)]
             fake: false,
         }
@@ -103,7 +117,7 @@ impl Default for ClaudeAcpEngine {
 }
 impl ClaudeAcpEngine {
     pub fn with_definition(&self, definition: crate::types::EngineDefinition) -> Self {
-        Self { data: self.data.clone(), definition: Some(definition), sink: self.sink.clone(), graph: self.graph.clone(), keys: self.keys.clone(), ..Self::default() }
+        Self { data: self.data.clone(), definition: Some(definition), sink: self.sink.clone(), graph: self.graph.clone(), keys: self.keys.clone(), #[cfg(test)] fake: self.fake, ..Self::default() }
     }
     pub fn new(
         data: PathBuf,
@@ -125,6 +139,44 @@ impl ClaudeAcpEngine {
         let thread = threads.get(id)?;
         let (_, cap) = super::reasoning::acp(&thread.capabilities)?;
         Some((thread.metadata["modelProvider"].as_str()?.into(), thread.metadata["model"].as_str()?.into(), cap))
+    }
+    /// The built-in preset when this backend runs a self-signed-in agent.
+    fn own(&self) -> Option<&'static super::engine_registry::Preset> {
+        self.definition.as_ref().and_then(|d| super::engine_registry::preset(&d.id))
+    }
+    fn history(&self, id: String, cwd: String, turns: Vec<Value>) -> Translator {
+        let mut history = Translator::new(id, cwd, turns);
+        // Such agents keep sending updates after a prompt ends; they belong to the turn that just ended.
+        history.attach_late = self.own().is_some();
+        history
+    }
+    fn models_file(&self, preset: &super::engine_registry::Preset) -> Option<PathBuf> {
+        self.data.as_deref().map(|data| own::cache_file(data, preset.id))
+    }
+    /// Remembers the agent's model list from a session response or update.
+    fn absorb_models(&self, source: &Value) {
+        if let Some(file) = self.own().and_then(|p| self.models_file(p)) { own::store(&self.models, &file, source); }
+    }
+    /// Runs a session request. A sign-in failure becomes the Terminal hint; Antigravity alone may load an
+    /// existing cached sign-in once, with no browser, before that.
+    async fn session_request(&self, client: &Client, method: &str, params: Value) -> Result<Value, String> {
+        let Some(preset) = self.own() else { return client.request(method, params).await };
+        let seen = self.models_seen.load(Ordering::SeqCst);
+        let mut result = client.request_rpc(method, params.clone()).await;
+        if result.as_ref().is_err_and(|e| e.auth_required()) && preset.id == "antigravity"
+            && client.capabilities.lock().await["authMethods"].as_array().into_iter().flatten().any(|m| m["id"] == "oauth-personal")
+        {
+            let signed_in = tokio::time::timeout(Duration::from_secs(15), client.request("authenticate", json!({"methodId":"oauth-personal"}))).await;
+            if matches!(signed_in, Ok(Ok(_))) { result = client.request_rpc(method, params).await; }
+        }
+        match result {
+            Ok(result) => {
+                if self.models_seen.load(Ordering::SeqCst) == seen { self.absorb_models(&result); }
+                Ok(result)
+            }
+            Err(e) if e.auth_required() => Err(preset.signin_error()),
+            Err(e) => Err(e.to_string()),
+        }
     }
     pub async fn configure(
         &self,
@@ -204,13 +256,14 @@ impl ClaudeAcpEngine {
             threads.entry(id.clone()).or_insert(Thread {
                 workspace: workspace.into(),
                 metadata,
-                history: Translator::new(id, cwd, turns),
+                history: self.history(id, cwd, turns),
                 loaded: String::new(),
                 mode,
                 capabilities: Value::Null,
                 replaying: false,
                 grants: HashSet::new(),
                 file,
+                prompts: 0,
             });
         }
         Ok(())
@@ -288,7 +341,7 @@ impl ClaudeAcpEngine {
         &self,
         workspace: &str,
         cwd: &str,
-        provider: &ProviderEntry,
+        provider: Option<&ProviderEntry>,
         model: &str,
     ) -> Result<Arc<Client>, String> {
         let data = self
@@ -304,7 +357,7 @@ impl ClaudeAcpEngine {
             if runtime.client.alive.load(Ordering::SeqCst) && runtime.fingerprint == fingerprint {
                 return Ok(runtime.client.clone());
             }
-            if runtime.client.running.load(Ordering::SeqCst) > 0 {
+            if runtime.client.alive.load(Ordering::SeqCst) && runtime.client.running.load(Ordering::SeqCst) > 0 {
                 return Err("Provider settings changed. Finish or interrupt running Claude Code turns, then retry.".into());
             }
             runtime.client.shutdown().await?;
@@ -314,8 +367,13 @@ impl ClaudeAcpEngine {
         let home = self.directory(workspace)?;
         config::private_directory(&home)?;
         config::private_directory(&home.join("threads"))?;
-        let token = providers::token(provider, self.keys.as_ref()).await?;
-        let env = if self.definition.is_some() {
+        let own = self.own();
+        let token = match provider { Some(provider) => providers::token(provider, self.keys.as_ref()).await?, None => None };
+        let env = if let Some(preset) = own {
+            // The agent signs in on its own: real HOME, no provider keys, nothing secret from the parent.
+            super::engine_registry::own_login_environment(std::env::vars(), &super::engine_registry::own_login_path(), preset).into_iter().collect()
+        } else if self.definition.is_some() {
+            let provider = provider.ok_or(config::PROVIDER_ERROR)?;
             let mut env: std::collections::BTreeMap<_,_> = super::engine_registry::environment(std::env::vars(), &home).into_iter().collect();
             if let Some(token) = &token {
                 env.insert(super::engines::key_env(&provider.id), token.clone());
@@ -324,7 +382,7 @@ impl ClaudeAcpEngine {
             }
             env.insert("OPENAI_BASE_URL".into(), providers::base_url(provider).to_owned());
             env
-        } else { config::environment(std::env::vars(), &home, provider, token.as_deref().ok_or("Save an API key for this provider in Settings")?, model)? };
+        } else { config::environment(std::env::vars(), &home, provider.ok_or(config::PROVIDER_ERROR)?, token.as_deref().ok_or("Save an API key for this provider in Settings")?, model)? };
         let (_, mut secrets) = config::mcp_servers(&connectors, self.keys.as_ref(), workspace)?;
         secrets.extend(token);
         let node = super::engine_runtime::node_path();
@@ -344,18 +402,28 @@ impl ClaudeAcpEngine {
         #[cfg(not(test))]
         let cli = if self.definition.is_some() { PathBuf::new() } else { super::engine_runtime::prepare(data, "claude-acp", None)
             .await?.join("node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js") };
-        let mut command = if let Some(definition) = &self.definition {
+        let mut command = if let Some(preset) = own {
+            #[cfg(test)]
+            let command = if self.fake { let mut command = Command::new("python3"); command.arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_acp.py")).args(["--own-login", "--agent", preset.id]); command } else { Command::new(super::engine_registry::resolve_preset_binary(preset)?) };
+            #[cfg(not(test))]
+            let command = Command::new(super::engine_registry::resolve_preset_binary(preset)?);
+            let mut command = command;
+            #[cfg(test)]
+            if !self.fake { command.arg("acp"); }
+            #[cfg(not(test))]
+            command.arg("acp");
+            command
+        } else if let Some(definition) = &self.definition {
             super::engine_registry::validate(definition)?;
             let mut command = Command::new(super::engine_registry::executable(definition.command.as_deref().ok_or("Missing engine command")?)?);
             command.args(&definition.args);
             command
         } else { let mut command = Command::new(node); command.arg(cli).arg("--hide-claude-auth"); command };
-        command
-            .env_clear()
-            .envs(env)
-            .env("PATH", super::engine_runtime::node_path_env(&super::engine_runtime::node_path())?)
-            .current_dir(cwd);
-        if let Some(definition) = &self.definition {
+        command.env_clear().envs(env).current_dir(cwd);
+        if own.is_none() { command.env("PATH", super::engine_runtime::node_path_env(&super::engine_runtime::node_path())?); }
+        if own.is_some() {
+            // Nothing else: no definition env, no isolated HOME or config dir.
+        } else if let Some(definition) = &self.definition {
             command.envs(&definition.env).env("HOME", &home).env("XDG_CONFIG_HOME", &home).env("OTEL_SDK_DISABLED", "true");
             if let Some(key) = &definition.config_dir_env { command.env(key, &home); }
         }
@@ -365,9 +433,11 @@ impl ClaudeAcpEngine {
         let events = self.events.clone();
         let ws = workspace.to_string();
         let gates = connectors.clone();
+        let own_cache = own.and_then(|p| self.models_file(p).map(|file| (p, file, self.models.clone(), self.models_seen.clone())));
         let client = Client::spawn(command, Arc::new(move |message| {
             let (threads,dialogs,sink,events,workspace,gates) = (threads.clone(),dialogs.clone(),sink.clone(),events.clone(),ws.clone(),gates.clone());
             let features = features.clone();
+            let own_cache = own_cache.clone();
             Box::pin(async move {
                 let emit = |event: Value| { let _ = events.send(event.clone()); sink(&workspace,event); };
                 let method = message["method"].as_str().unwrap_or("");
@@ -378,10 +448,20 @@ impl ClaudeAcpEngine {
                     return None;
                 }
                 let params = &message["params"];
+                // Some agents (OpenCode) announce their models seconds after the session is set up.
+                if let (Some((_, file, cache, seen)), "session/update") = (&own_cache, method) {
+                    if own::parse_models(&params["update"]).is_some() { seen.fetch_add(1, Ordering::SeqCst); own::store(cache, file, &params["update"]); }
+                }
                 let mut threads = threads.lock().await;
                 let thread = threads.values_mut().find(|t| t.workspace==workspace && t.metadata["sessionId"]==params["sessionId"]);
-                let Some(thread) = thread else { return message.get("id").map(|_|json!({"outcome":{"outcome":"cancelled"}})); };
+                let Some(thread) = thread else {
+                    if message.get("id").is_none() { return None; }
+                    return Some(if own_cache.is_some() && method != "session/request_permission" { own::unsupported(method) } else { json!({"outcome":{"outcome":"cancelled"}}) });
+                };
                 if method == "session/update" {
+                    if params["update"]["sessionUpdate"] == "config_option_update" && params["update"]["configOptions"].is_array() {
+                        thread.capabilities["configOptions"] = params["update"]["configOptions"].clone();
+                    }
                     // Live prompts already have a user item; load replay creates its own turns.
                     if params["update"]["sessionUpdate"] == "user_message_chunk" && !thread.replaying { return None; }
                     let updates = thread.history.update(&params["update"]);
@@ -403,14 +483,30 @@ impl ClaudeAcpEngine {
                     dialogs.lock().await.insert(id.clone(),Dialog{workspace:workspace.clone(),thread:thread.history.thread.clone(),request_id:message["id"].clone(),params:params.clone()});
                     emit(permissions::approval(&id,&thread.history.thread,thread.history.turn_id(),&thread.history.cwd,params));
                 } else if message.get("id").is_some() {
+                    if own_cache.is_some() {
+                        emit(thread.history.event("codex/stderr",json!({"message":format!("The agent asked for {method}, which nucode does not support; declined.")})));
+                        return Some(own::unsupported(method));
+                    }
                     return Some(json!({"outcome":{"outcome":"cancelled"}}));
                 }
                 None
             })
         }),secrets).await?;
-        let initialized = client.request("initialize",json!({"protocolVersion":1,"clientInfo":{"name":"nucode","version":env!("CARGO_PKG_VERSION")},"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,"_meta":{"terminal_output_delta":true}}})).await;
+        // Antigravity before 1.5.1 hides non-Gemini models from every client but an editor it allowlists.
+        let info = if own.is_some_and(|p| p.id == "antigravity") { json!({"name":"zed","version":"0.0.0"}) } else { json!({"name":"nucode","version":env!("CARGO_PKG_VERSION")}) };
+        let initialized = client.request("initialize",json!({"protocolVersion":1,"clientInfo":info,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false,"_meta":{"terminal_output_delta":true}}})).await;
         match initialized {
-            Ok(capabilities) => *client.capabilities.lock().await = capabilities,
+            Ok(mut capabilities) => {
+                if own.is_some_and(|p| p.id == "antigravity") {
+                    if let Some(error) = super::engine_registry::antigravity_version_error(capabilities["agentInfo"]["version"].as_str()) {
+                        client.shutdown().await?;
+                        return Err(error.into());
+                    }
+                    // From 1.5.0 a second prompt sent mid-turn steers it; the agent does not advertise that.
+                    capabilities["_meta"]["steering"] = json!({"supported":true,"viaPrompt":true});
+                }
+                *client.capabilities.lock().await = capabilities
+            }
             Err(e) => {
                 client.shutdown().await?;
                 return Err(e);
@@ -452,6 +548,10 @@ impl ClaudeAcpEngine {
                 != Some(&json!(true))
         {
             return Err("This ACP agent does not support HTTP connectors".into());
+        }
+        if self.own().is_some() {
+            // The agent has its own model and tools; Claude's session options do not apply to it.
+            return Ok(json!({"cwd":cwd,"mcpServers":servers}));
         }
         let mut params = config::session_params(cwd, servers, model);
         let features = self.policy_features(workspace).await;
@@ -505,8 +605,8 @@ impl ClaudeAcpEngine {
         if load {
             params["sessionId"] = session;
         }
-        let result = client
-            .request(if load { "session/load" } else { "session/new" }, params)
+        let result = self
+            .session_request(client, if load { "session/load" } else { "session/new" }, params)
             .await;
         let mut threads = self.threads.lock().await;
         let t = threads.get_mut(id).unwrap();
@@ -583,6 +683,77 @@ impl ClaudeAcpEngine {
         t.mode = mode.into();
         t.save()
     }
+    /// Ends the turn when the prompt response arrives. A steered Antigravity turn ends with its last prompt:
+    /// the superseded one answers `end_turn` while the agent carries on.
+    fn settle(&self, workspace: &str, id: &str, client: Arc<Client>, response: Result<oneshot::Receiver<Result<Value, client::RpcError>>, String>) {
+        let (threads, dialogs, sink, events, ws, id, own) = (self.threads.clone(), self.dialogs.clone(), self.sink.clone(), self.events.clone(), workspace.to_string(), id.to_string(), self.own());
+        tokio::spawn(async move {
+            let result = match response {
+                Ok(rx) => rx.await.unwrap_or_else(|_| Err("ACP response channel closed".to_string().into())),
+                Err(e) => Err(e.into()),
+            };
+            let emit = |event: Value| {
+                let _ = events.send(event.clone());
+                sink(&ws, event);
+            };
+            let mut finished = true;
+            let mut threads = threads.lock().await;
+            if let Some(t) = threads.get_mut(&id) {
+                t.prompts = t.prompts.saturating_sub(1);
+                if t.prompts > 0 && matches!(&result, Ok(v) if v["stopReason"] == "end_turn") {
+                    finished = false;
+                } else {
+                    t.prompts = 0;
+                    let updates = match result {
+                        Ok(v) if v["stopReason"] == "error" => t.history.fail_prompt("ACP prompt failed".to_string().into()),
+                        Ok(v) => {
+                            let reason = v["stopReason"].as_str().unwrap_or("end_turn");
+                            let error = own.and_then(|preset| own::stop_error(preset, reason));
+                            t.history.finish(reason, error.as_deref())
+                        }
+                        Err(mut e) => {
+                            if let Some(preset) = own.filter(|_| e.auth_required()) { e.message = preset.signin_error(); }
+                            t.history.fail_prompt(e)
+                        }
+                    };
+                    if let Err(e) = t.save() {
+                        emit(t.history.event("error", json!({"error":{"message":e}})));
+                    }
+                    for event in updates {
+                        emit(event);
+                    }
+                }
+            }
+            drop(threads);
+            if finished {
+                dialogs.lock().await.retain(|request,d|{if d.thread!=id{return true;}emit(json!({"method":"serverRequest/resolved","params":{"threadId":id,"requestId":request}}));false});
+            }
+            client.running.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
+    /// A cancelled prompt the agent never answers would hang the thread: after `grace`, end the turn as
+    /// interrupted and stop the agent process so the next turn starts clean.
+    fn watch_cancel(&self, workspace: &str, id: &str, client: Arc<Client>) {
+        let (threads, sink, events, ws, id, grace) = (self.threads.clone(), self.sink.clone(), self.events.clone(), workspace.to_string(), id.to_string(), self.grace);
+        tokio::spawn(async move {
+            let turn = threads.lock().await.get(&id).filter(|t| t.history.active).map(|t| t.history.turn_id().to_string());
+            let Some(turn) = turn else { return };
+            tokio::time::sleep(grace).await;
+            let updates = {
+                let mut threads = threads.lock().await;
+                let Some(t) = threads.get_mut(&id).filter(|t| t.history.active && t.history.turn_id() == turn) else { return };
+                t.prompts = 0;
+                let updates = t.history.finish("cancelled", None);
+                let _ = t.save();
+                updates
+            };
+            for event in updates {
+                let _ = events.send(event.clone());
+                sink(&ws, event);
+            }
+            let _ = client.shutdown().await;
+        });
+    }
     async fn dispatch(
         &self,
         workspace: &str,
@@ -625,26 +796,23 @@ impl ClaudeAcpEngine {
                         .await?;
                     self.emit(workspace,json!({"method":"serverRequest/resolved","params":{"threadId":id,"requestId":request}}));
                 }
+                drop(dialogs);
+                if self.own().is_some() { self.watch_cancel(workspace, id, client.clone()); }
             } else {
-                if client
-                    .capabilities
-                    .lock()
-                    .await
-                    .pointer("/_meta/steering/supported")
-                    != Some(&json!(true))
-                {
+                let capabilities = client.capabilities.lock().await.clone();
+                if capabilities.pointer("/_meta/steering/supported") != Some(&json!(true)) {
                     return Err("Steering is unsupported for this engine".into());
                 }
-                let prompt = prompt_input(
-                    &params["input"],
-                    client
-                        .capabilities
-                        .lock()
-                        .await
-                        .pointer("/agentCapabilities/promptCapabilities/image")
-                        == Some(&json!(true)),
-                )?;
-                client.request("_session/steering",json!({"sessionId":session,"prompt":prompt,"_meta":{"steering":{"idleBehavior":"promptRequired"}}})).await?;
+                let prompt = prompt_input(&params["input"], capabilities.pointer("/agentCapabilities/promptCapabilities/image") == Some(&json!(true)))?;
+                if capabilities.pointer("/_meta/steering/viaPrompt") == Some(&json!(true)) {
+                    // Antigravity 1.5+: a second prompt while one runs steers the turn.
+                    self.threads.lock().await.get_mut(id).ok_or("Unknown thread")?.prompts += 1;
+                    client.running.fetch_add(1, Ordering::SeqCst);
+                    let response = client.begin("session/prompt", json!({"sessionId":session,"prompt":prompt})).await.map(|(_, rx)| rx);
+                    self.settle(workspace, id, client.clone(), response);
+                } else {
+                    client.request("_session/steering",json!({"sessionId":session,"prompt":prompt,"_meta":{"steering":{"idleBehavior":"promptRequired"}}})).await?;
+                }
             }
             return Ok(json!({"result":{}}));
         }
@@ -706,7 +874,12 @@ impl ClaudeAcpEngine {
             self.emit(workspace, json!({"method":"thread/archived","params":{"threadId":id}}));
             return Ok(json!({"result":{}}));
         }
+        let own = self.own();
         if method == "model/list" {
+            if let Some(preset) = own {
+                let cache = self.models_file(preset).map_or(Value::Null, |file| own::cached(&self.models, &file));
+                return Ok(json!({"result":{"data":own::entries(preset, &cache)}}));
+            }
             let (provider, _) = self.model(&registry, &policy, &params, current.as_ref())?;
             return Ok(providers::catalog(std::slice::from_ref(provider)));
         }
@@ -754,7 +927,16 @@ impl ClaudeAcpEngine {
             t.save()?;
             return Ok(json!({"result":{}}));
         }
-        let (provider, model) = self.model(&registry, &policy, &params, current.as_ref())?;
+        let (provider, model) = match own {
+            Some(preset) => {
+                // The agent's own model: the user's pick, the thread's, or "default" (the agent decides).
+                let prefix = format!("{}/", preset.id);
+                let picked = params["model"].as_str().map(|m| m.strip_prefix(&prefix).unwrap_or(m).to_owned())
+                    .or_else(|| current.as_ref().and_then(|t| t["model"].as_str().map(str::to_owned)));
+                (None, picked.unwrap_or_else(|| "default".into()))
+            }
+            None => { let (provider, model) = self.model(&registry, &policy, &params, current.as_ref())?; (Some(provider), model) }
+        };
         let cwd = current
             .as_ref()
             .and_then(|t| t["cwd"].as_str())
@@ -766,8 +948,9 @@ impl ClaudeAcpEngine {
         let _client_operation = client.operation.lock().await;
         if method == "thread/start" {
             let id = format!("claude-{}", uuid::Uuid::new_v4());
-            let result = client
-                .request(
+            let result = self
+                .session_request(
+                    &client,
                     "session/new",
                     self.session_params(workspace, &id, &cwd, &model).await?,
                 )
@@ -776,16 +959,18 @@ impl ClaudeAcpEngine {
                 return Err("ACP did not return a session ID".into());
             }
             let now = chrono::Utc::now().timestamp();
-            let metadata = json!({"id":id,"sessionId":result["sessionId"],"engine":self.definition.as_ref().map_or("claude", |d| d.id.as_str()),"cwd":cwd,"modelProvider":provider.id,"model":model,"preview":"","name":null,"createdAt":now,"updatedAt":now,"status":{"type":"idle"},"turns":[],"source":{"custom":"nucode-claude"},"capabilities":engine_capabilities(&*client.capabilities.lock().await)});
+            let (provider_id, model) = match own { Some(preset) => (preset.id.to_owned(), own::initial_model(&model, &result)), None => (provider.map_or_else(String::new, |p| p.id.clone()), model.clone()) };
+            let metadata = json!({"id":id,"sessionId":result["sessionId"],"engine":self.definition.as_ref().map_or("claude", |d| d.id.as_str()),"cwd":cwd,"modelProvider":provider_id,"model":model,"preview":"","name":null,"createdAt":now,"updatedAt":now,"status":{"type":"idle"},"turns":[],"source":{"custom":"nucode-claude"},"capabilities":engine_capabilities(&*client.capabilities.lock().await)});
             let mut thread = Thread {
                 workspace: workspace.into(),
                 metadata,
-                history: Translator::new(id.clone(), cwd, vec![]),
+                history: self.history(id.clone(), cwd, vec![]),
                 loaded: client.id.clone(),
                 mode: "ask".into(),
                 capabilities: result,
                 replaying: false,
                 grants: HashSet::new(),
+                prompts: 0,
                 file: self
                     .directory(workspace)?
                     .join("threads")
@@ -825,12 +1010,13 @@ impl ClaudeAcpEngine {
             let mut thread = Thread {
                 workspace: workspace.into(),
                 metadata,
-                history: Translator::new(new_id.clone(), cwd, turns),
+                history: self.history(new_id.clone(), cwd, turns),
                 loaded: String::new(),
                 mode: if params["sandbox"] == "read-only" { "read-only" } else { "ask" }.into(),
                 capabilities: result,
                 replaying: false,
                 grants: HashSet::new(),
+                prompts: 0,
                 file: self
                     .directory(workspace)?
                     .join("threads")
@@ -871,7 +1057,23 @@ impl ClaudeAcpEngine {
             .find(|o| o["category"] == "model" || o["id"] == "model")
             .and_then(|o| o["id"].as_str())
             .map(str::to_string);
-        if let Some(config_id) = config_id {
+        if own.is_some() {
+            // The agent's own model: set_model when it advertised `models`, else its model config option.
+            let (current, uses_models) = { let t = &self.threads.lock().await[id]; (own::current_model(&t.capabilities), t.capabilities["models"]["availableModels"].is_array()) };
+            if model != "default" && current.as_deref() != Some(model.as_str()) {
+                if uses_models {
+                    client.request("session/set_model", json!({"sessionId":session,"modelId":model})).await?;
+                    self.threads.lock().await.get_mut(id).unwrap().capabilities["models"]["currentModelId"] = json!(model);
+                } else if let Some(config_id) = config_id {
+                    let result = client.request("session/set_config_option", json!({"sessionId":session,"configId":config_id,"value":model})).await?;
+                    if result["configOptions"].is_array() {
+                        self.threads.lock().await.get_mut(id).unwrap().capabilities["configOptions"] = result["configOptions"].clone();
+                    }
+                } else {
+                    return Err("This agent cannot change models; start a new thread with the selected model".into());
+                }
+            }
+        } else if let Some(config_id) = config_id {
             let result = client
                 .request(
                     "session/set_config_option",
@@ -921,58 +1123,21 @@ impl ClaudeAcpEngine {
             let updates = t.history.start(params["input"].clone());
             t.save()?;
             for mut event in updates {
-                if nucode_diag_mcp::writer::enabled() && event["method"]=="turn/started" { event["params"]["engine"]=t.metadata["engine"].clone();event["params"]["model"]=t.metadata["model"].clone();event["params"]["providerKind"]=serde_json::to_value(&provider.kind).unwrap_or_default(); }
+                if nucode_diag_mcp::writer::enabled() && event["method"]=="turn/started" { event["params"]["engine"]=t.metadata["engine"].clone();event["params"]["model"]=t.metadata["model"].clone();event["params"]["providerKind"]=provider.map_or(Value::Null,|p|serde_json::to_value(&p.kind).unwrap_or_default()); }
                 self.emit(workspace, event);
             }
             t.history.turns.last().unwrap().clone()
         };
         client.running.fetch_add(1, Ordering::SeqCst);
+        self.threads.lock().await.get_mut(id).unwrap().prompts = 1;
         let response = client
             .begin(
                 "session/prompt",
                 json!({"sessionId":session,"prompt":prompt}),
             )
-            .await;
-        let (threads, dialogs, sink, events, ws, id) = (
-            self.threads.clone(),
-            self.dialogs.clone(),
-            self.sink.clone(),
-            self.events.clone(),
-            workspace.to_string(),
-            id.to_string(),
-        );
-        let running = client.clone();
-        tokio::spawn(async move {
-            let result = match response {
-                Ok((_, rx)) => rx
-                    .await
-                    .unwrap_or_else(|_| Err("ACP response channel closed".to_string().into())),
-                Err(e) => Err(e.into()),
-            };
-            let emit = |event: Value| {
-                let _ = events.send(event.clone());
-                sink(&ws, event);
-            };
-            let mut threads = threads.lock().await;
-            if let Some(t) = threads.get_mut(&id) {
-                let updates = match result {
-                    Ok(v) if v["stopReason"] == "error" => t.history.fail_prompt("ACP prompt failed".to_string().into()),
-                    Ok(v) => t
-                        .history
-                        .finish(v["stopReason"].as_str().unwrap_or("end_turn"), None),
-                    Err(e) => t.history.fail_prompt(e),
-                };
-                if let Err(e) = t.save() {
-                    emit(t.history.event("error", json!({"error":{"message":e}})));
-                }
-                for event in updates {
-                    emit(event);
-                }
-            }
-            drop(threads);
-            dialogs.lock().await.retain(|request,d|{if d.thread!=id{return true;}emit(json!({"method":"serverRequest/resolved","params":{"threadId":id,"requestId":request}}));false});
-            running.running.fetch_sub(1, Ordering::SeqCst);
-        });
+            .await
+            .map(|(_, rx)| rx);
+        self.settle(workspace, id, client.clone(), response);
         Ok(json!({"result":{"turn":turn}}))
     }
 }

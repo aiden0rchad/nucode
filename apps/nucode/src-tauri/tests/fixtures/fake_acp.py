@@ -4,10 +4,12 @@ import os
 import sys
 import uuid
 
-assert "--hide-claude-auth" in sys.argv
-assert os.environ["ANTHROPIC_API_KEY"] == "fixture-api-secret"
-assert "fixture-api-secret" not in " ".join(sys.argv)
-assert {key for key in os.environ if key.startswith("CLAUDE_")} == {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"}
+OWN = "--own-login" in sys.argv
+if not OWN:
+    assert "--hide-claude-auth" in sys.argv
+    assert os.environ["ANTHROPIC_API_KEY"] == "fixture-api-secret"
+    assert "fixture-api-secret" not in " ".join(sys.argv)
+    assert {key for key in os.environ if key.startswith("CLAUDE_")} == {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"}
 sessions = {}
 pending = {}
 serial = 0
@@ -29,6 +31,122 @@ def capabilities(session):
     return {"sessionId": session, "modes": {"currentModeId": "default", "availableModes": [{"id": "default", "name": "Default"}, {"id": "plan", "name": "Plan"}]}, "configOptions": [{"id": "model", "category": "model", "currentValue": "model", "type": "select", "options": [{"value": "model", "name": "Model"}, {"value": "other", "name": "Other"}]}, {"id": "effort", "category": "thought_level", "currentValue": "low", "type": "select", "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]}]}
 
 
+def own_main():
+    """A self-signed-in agent (Antigravity, OpenCode, Cursor). Behaviour comes from fake-agent.json in the cwd."""
+    agent = sys.argv[sys.argv.index("--agent") + 1]
+    log, sessions, pending = [], {}, {}
+    authed = False
+
+    def config():
+        try:
+            with open("fake-agent.json") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+
+    def error(request, code, message):
+        send({"id": request["id"], "error": {"code": code, "message": message}})
+
+    def model_option(models):
+        return {"id": "model", "category": "model", "type": "select", "currentValue": "m1", "options": [{"groupId": "g", "name": "G", "options": [{"value": m, "name": "Model " + m} for m in models]}]}
+
+    def session_result(session, cfg):
+        mode = cfg.get("models", "models")
+        result = {"sessionId": session, "modes": {"currentModeId": "default", "availableModes": [{"id": "default", "name": "Default"}]}}
+        if mode == "models":
+            result["models"] = {"currentModelId": "m1", "availableModels": [{"modelId": "m1", "name": "Model One", "description": "first"}, {"modelId": "m2", "name": "Model Two"}]}
+        elif mode == "config":
+            result["configOptions"] = [model_option(["m1", "m2"])]
+        if cfg.get("thought"):
+            result.setdefault("configOptions", []).append({"id": "thought_level", "category": "thought_level", "type": "select", "currentValue": "low", "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]})
+        return result
+
+    for line in sys.stdin:
+        request = json.loads(line)
+        method = request.get("method")
+        params = request.get("params", {})
+        session = params.get("sessionId")
+        cfg = config()
+        if method is not None:
+            log.append({"method": method, "params": params})
+        if method == "initialize":
+            assert params["clientInfo"]["name"] == ("zed" if agent == "antigravity" else "nucode")
+            auth = [{"id": "oauth-personal", "name": "Log in with Google"}] if cfg.get("oauth") else []
+            response(request, {"protocolVersion": 1, "agentCapabilities": {"loadSession": True, "promptCapabilities": {"image": True}, "mcpCapabilities": {"http": True}}, "authMethods": auth, "agentInfo": {"name": agent, "version": cfg.get("version", "1.5.12")}})
+        elif method == "authenticate":
+            if cfg.get("authOk"):
+                authed = True
+                response(request, {})
+            else:
+                error(request, -32603, "No browser is available here to sign in")
+        elif method in ("session/new", "session/load"):
+            if cfg.get("signedOut") and not authed:
+                error(request, -32000, "Authentication required")
+                continue
+            assert "claudeCode" not in params.get("_meta", {})
+            session = session or str(uuid.uuid4())
+            sessions[session] = params
+            response(request, session_result(session, cfg))
+            if cfg.get("lateModels"):
+                # A config update always carries the complete option set.
+                options = [model_option(["m1", "m2", "late"])] + [o for o in session_result(session, cfg).get("configOptions", []) if o["category"] != "model"]
+                update(session, "config_option_update", configOptions=options)
+        elif method in ("session/set_model", "session/set_config_option"):
+            response(request, {})
+        elif method == "session/set_mode":
+            assert params["modeId"] not in ("yolo", "auto_edit")
+            response(request, {})
+        elif method == "session/prompt":
+            text = " ".join(p.get("text", "") for p in params["prompt"])
+            if session in pending:
+                # A second prompt while one runs steers the turn (Antigravity 1.5+).
+                response(pending.pop(session), {"stopReason": "end_turn"})
+                update(session, "agent_message_chunk", content={"type": "text", "text": "steered: " + text})
+                response(request, {"stopReason": "end_turn"})
+            elif text == "auth":
+                error(request, -32000, "Authentication required")
+            elif text == "quota":
+                response(request, {"stopReason": "refusal"})
+            elif text == "length":
+                response(request, {"stopReason": "max_tokens"})
+            elif text == "late":
+                update(session, "agent_message_chunk", content={"type": "text", "text": "first"})
+                response(request, {"stopReason": "end_turn"})
+                update(session, "agent_message_chunk", content={"type": "text", "text": "late chunk"})
+                update(session, "usage_update", used=7, size=1000)
+            elif text == "elicit":
+                pending["elicit"] = request
+                send({"id": "elicit", "method": "elicitation/create", "params": {"sessionId": session, "mode": "form", "message": "Pick"}})
+            elif text == "unknown":
+                pending["unknown"] = request
+                send({"id": "unknown", "method": "fs/read_text_file", "params": {"sessionId": session, "path": "x"}})
+            elif text in ("wait", "stuck"):
+                pending[session] = request
+            else:
+                update(session, "agent_message_chunk", content={"type": "text", "text": "Hello"})
+                response(request, {"stopReason": "end_turn"})
+        elif method == "session/cancel":
+            if cfg.get("ignoreCancel"):
+                continue
+            original = pending.pop(session, None)
+            if original:
+                response(original, {"stopReason": "cancelled"})
+        elif method is None and request["id"] in ("elicit", "unknown"):
+            original = pending.pop(request["id"])
+            outcome = request.get("result") or request.get("error")
+            update(original["params"]["sessionId"], "agent_message_chunk", content={"type": "text", "text": "answer: " + json.dumps(outcome)})
+            response(original, {"stopReason": "end_turn"})
+        elif method == "_fixture/log":
+            response(request, {"log": log[:-1]})
+        elif method == "_fixture/env":
+            response(request, {"env": dict(os.environ)})
+        else:
+            error(request, -32601, "Method not found")
+
+
+if OWN:
+    own_main()
+    sys.exit(0)
 for line in sys.stdin:
     request = json.loads(line)
     method = request.get("method")

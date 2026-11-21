@@ -267,6 +267,19 @@ impl WorkspaceSession {
         }
         (self.providers.clone(), self.policy.clone())
     }
+    /// Model rows of the enabled engines that bring their own model list.
+    pub(crate) fn own_models(&self) -> Vec<Value> {
+        let Some(data) = self.pi.data.as_deref() else { return vec![] };
+        let settings = super::engine_registry::settings(Some(data));
+        super::engine_registry::registry(&settings).into_iter().filter(|e| e.enabled)
+            .filter_map(|e| super::engine_registry::preset(&e.id)).flat_map(|preset| super::acp::own_catalog(data, preset)).collect()
+    }
+    pub(crate) async fn acp_reasoning(&self, thread: &str) -> Option<(String, String, ReasoningCapability)> {
+        if let Some(found) = self.claude.reasoning_options(thread).await { return Some(found); }
+        let backends: Vec<_> = self.extra_acp.lock().await.values().cloned().collect();
+        for backend in backends { if let Some(found) = backend.reasoning_options(thread).await { return Some(found); }}
+        None
+    }
     async fn prepare_engines(&self, workspace: &str, settings: &AppSettings) -> Result<(), String> {
         let path = self.pi.paths.lock().await.get(workspace).cloned();
         for definition in super::engine_registry::registry(settings).into_iter().filter(|e| !matches!(e.id.as_str(), "pi" | "claude" | "codex")) {
@@ -418,6 +431,10 @@ impl WorkspaceSession {
         if method == "model/list" {
             if claude_thread || params["engine"] == "claude" {
                 return self.claude.request(workspace, method, params).await;
+            }
+            if let Some(engine) = params["engine"].as_str().filter(|e| super::engine_registry::preset(e).is_some()) {
+                let backend = self.extra_acp.lock().await.get(engine).cloned().ok_or("Missing ACP engine")?;
+                return backend.request(workspace, method, json!({})).await;
             }
             return Ok(providers::catalog(&providers));
         }
