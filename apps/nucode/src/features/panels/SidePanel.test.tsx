@@ -262,6 +262,29 @@ it("drops a saved tab whose page belongs to another thread", async () => {
   await waitFor(() => expect(JSON.parse(localStorage.getItem("nucode.panel.code:one") ?? "{}").tabs.map((tab: { id: string }) => tab.id)).toEqual(["mine", "draft"]));
   expect(screen.queryByRole("tab", { name: "Other thread" })).toBeNull();
 });
+it("switching to a thread whose saved tab shows another thread's page drops it instead of asking the backend", async () => {
+  localStorage.setItem("nucode.panel.code:one", JSON.stringify({ open: true, active: "stale", tabs: [{ id: "stale", kind: "browser", title: "Other thread", url: "http://127.0.0.1:8765/b", target: "other-page" }] }));
+  host = { backend: "native", scope: "thread-a", tabs: [{ id: "other-page", owner: "thread-b", title: "Other thread", url: "http://127.0.0.1:8765/b", ready: true, loading: false }], active: "", activeByOwner: { "thread-b": "other-page" }, agentActiveOwners: [] };
+  const request = vi.mocked(browserRequest).getMockImplementation()!;
+  vi.mocked(browserRequest).mockImplementation(async params => { if (params.action === "activate" && params.id === "other-page") throw "Unknown browser tab"; return request(params); });
+  const view = (scope: string) => <WorkspaceShell scope={scope} browserThread="thread-a" browserOwner="thread-a" title="A thread" tools={tools} onInterrupt={() => {}}><p>Conversation</p></WorkspaceShell>;
+  const { rerender } = render(view("code:two"));
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  rerender(view("code:one"));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem("nucode.panel.code:one") ?? "{}").tabs).toEqual([]));
+  expect(browserRequest).not.toHaveBeenCalledWith(expect.objectContaining({ action: "activate", id: "other-page" }));
+  expect(screen.queryByText("Unknown browser tab")).toBeNull();
+});
+it("does not carry a panel error to another thread", async () => {
+  localStorage.setItem("nucode.panel.code:one", JSON.stringify({ open: true, active: "mine", tabs: [{ id: "mine", kind: "browser", title: "Mine", url: "http://127.0.0.1:8765/a", target: "own-page" }] }));
+  host = { backend: "native", tabs: [{ id: "own-page", title: "Mine", url: "http://127.0.0.1:8765/a", ready: true, loading: false }], active: "own-page" };
+  const request = vi.mocked(browserRequest).getMockImplementation()!;
+  vi.mocked(browserRequest).mockImplementation(async params => { if (params.action === "activate") throw "The page could not be shown"; return request(params); });
+  const { rerender } = render(shell("code:one"));
+  expect(await screen.findByText("The page could not be shown")).toBeTruthy();
+  rerender(shell("code:two"));
+  await waitFor(() => expect(screen.queryByText("The page could not be shown")).toBeNull());
+});
 it("drops the tab of a page the agent closed instead of leaving a dead tab", async () => {
   render(shell());
   await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
