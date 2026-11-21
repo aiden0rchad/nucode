@@ -38,20 +38,33 @@ pub(super) async fn view_scale(view: &Webview, scale: f64) -> Result<(), String>
     let (tx, rx) = tokio::sync::oneshot::channel();
     view.with_webview(move |platform| unsafe {
         let wk = &*(platform.inner() as *const WKWebView);
-        let supported = wk.respondsToSelector(sel!(_setViewScale:)) && wk.respondsToSelector(sel!(_setLayoutMode:));
+        let supported = scalable(wk);
         if supported {
-            // _WKLayoutModeDynamicSizeComputedFromViewScale (2) lays out at view size / view scale; _WKLayoutModeViewSize (0) at the view size.
-            let mode: isize = if scale < 1. { 2 } else { 0 };
-            let _: () = msg_send![wk, _setLayoutMode: mode];
             let _: () = msg_send![wk, _setViewScale: scale];
-            // WebKit applies the new layout size on the next frame change; the bounds may not have changed.
-            let size = wk.frame().size;
-            wk.setFrameSize(CGSize::new(size.width + 1., size.height));
-            wk.setFrameSize(size);
+            relayout(wk, scale);
         }
         let _ = tx.send(supported);
     }).map_err(|e| e.to_string())?;
     if rx.await.map_err(|_| "Browser page closed".to_string())? { Ok(()) } else { Err("This WebKit cannot scale the page view".into()) }
+}
+unsafe fn scalable(wk: &WKWebView) -> bool {
+    wk.respondsToSelector(sel!(_setViewScale:)) && wk.respondsToSelector(sel!(_viewScale)) && wk.respondsToSelector(sel!(_setLayoutMode:))
+}
+/// _WKLayoutModeDynamicSizeComputedFromViewScale (2) lays out at view size / view scale; _WKLayoutModeViewSize (0)
+/// at the view size. WebKit applies a new layout size on the next frame change, and the bounds may not have changed.
+unsafe fn relayout(wk: &WKWebView, scale: f64) {
+    let mode: isize = if scale < 1. { 2 } else { 0 };
+    let _: () = msg_send![wk, _setLayoutMode: mode];
+    let size = wk.frame().size;
+    wk.setFrameSize(CGSize::new(size.width + 1., size.height));
+    wk.setFrameSize(size);
+}
+/// A navigation to another site swaps WebKit's page process; the view scale carries over but the layout falls back to
+/// the view's own width, so an agent's 1440 px page laid out at the pane's width after following a link.
+pub(super) unsafe fn keep_view_scale(wk: &WKWebView) {
+    if !scalable(wk) { return; }
+    let scale: f64 = msg_send![wk, _viewScale];
+    if scale < 1. { relayout(wk, scale); }
 }
 pub(super) fn parse_page_url(url: Option<String>) -> Result<tauri::Url, String> {
     url.and_then(|url| url.parse().ok()).ok_or_else(|| "The page is still loading; try again in a moment".into())
