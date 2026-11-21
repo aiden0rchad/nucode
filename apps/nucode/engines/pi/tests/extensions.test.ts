@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decide, normalizeRule, protectedPath, readOnlyCommand, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
+import { blockReason, decide, normalizeRule, protectedPath, readOnlyCommand, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
 import gate from "../extensions/nucode-gate.ts";
 import subagents from "../extensions/nucode-subagents.ts";
 
@@ -338,3 +338,11 @@ test("Work preview starts share bash policy; cleanup stays available without rew
     assert.equal((await handler(event, ctx)).block, true);
   } finally { for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; } }
 });
+
+test("a refusal names its cause: a read-only thread, a read-only role, or the policy", () => {
+  const access = (accessMode: "read-only" | "ask" | "full-access") => ({ accessMode, sessionAllow: [] });
+  assert.match(blockReason(access("read-only")), /this thread is read-only/);
+  assert.match(blockReason(access("full-access"), { toolAccess: "read-only" }), /your role is read-only/);
+  assert.match(blockReason(access("ask")), /protected path/);
+});
+

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
+import { blockReason, decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
 import { connectorDecision, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
@@ -150,7 +150,7 @@ export default function (pi: ExtensionAPI) {
       if (call.tool === "bash" && !preview) input.command = ownedCommand(safeReadOnlyCommand(call.command));
       return;
     }
-    if (decision === "block") return { block: true, reason: "Blocked by nucode access policy (read-only, protected path, or no interactive approval)" };
+    if (decision === "block") return { block: true, reason: blockReason(read(), child) };
     const title = "nucode:approval:" + JSON.stringify({ toolCallId: event.toolCallId, ...call, diffPreview: call.tool === "edit" ? JSON.stringify(event.input).slice(0, 4000) : undefined });
     const answer = await ctx.ui.select(title, read().kind === "work" ? ["Allow", "Block"] : ["Allow", "Allow for session", "Block"]);
     // A mode change while the dialog was open must take effect before execution.

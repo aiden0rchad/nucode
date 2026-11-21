@@ -137,6 +137,32 @@ describe("useWorkspaceHome", () => {
     });
   });
 
+  it("starts a thread with the project page's access mode and shows that mode on it", async () => {
+    const startThreadForWorkspace = vi.fn().mockResolvedValue("thread-1");
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const seedThreadCodexParams = vi.fn();
+    vi.mocked(generateRunMetadata).mockResolvedValue({ title: "Run", worktreeName: "feat/run" });
+    const { result } = renderHook(() =>
+      useWorkspaceHome({
+        activeWorkspace: workspace,
+        models,
+        selectedModelId: "id-1",
+        accessMode: "read-only",
+        seedThreadCodexParams,
+        addWorktreeAgent: vi.fn(),
+        connectWorkspace: vi.fn().mockResolvedValue(undefined),
+        startThreadForWorkspace,
+        sendUserMessageToThread,
+      }),
+    );
+    act(() => result.current.setDraft("Clean up"));
+    await act(async () => {
+      expect(await result.current.startRun()).toBe(true);
+    });
+    expect(seedThreadCodexParams).toHaveBeenCalledWith("ws-1", "thread-1", expect.objectContaining({ accessMode: "read-only" }));
+    expect(sendUserMessageToThread).toHaveBeenCalledWith(workspace, "thread-1", "Clean up", [], expect.objectContaining({ accessMode: "read-only" }));
+  });
+
   it("blocks worktree runs without model selections", async () => {
     const addWorktreeAgent = vi.fn();
     const connectWorkspace = vi.fn();

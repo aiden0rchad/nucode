@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  AccessMode,
   ModelOption,
   SendMessageResult,
   ServiceTier,
@@ -38,6 +39,8 @@ type UseWorkspaceHomeOptions = {
   effort?: string | null;
   serviceTier?: ServiceTier | null | undefined;
   collaborationMode?: Record<string, unknown> | null;
+  /** The project page's access mode; each thread it starts runs with it and shows it. */
+  accessMode?: AccessMode;
   seedThreadCodexParams?: (
     workspaceId: string,
     threadId: string,
@@ -45,6 +48,7 @@ type UseWorkspaceHomeOptions = {
       modelId: string | null;
       effort: string | null;
       serviceTier: ServiceTier | null | undefined;
+      accessMode?: AccessMode;
     },
   ) => void;
   addWorktreeAgent: (
@@ -66,6 +70,7 @@ type UseWorkspaceHomeOptions = {
       model?: string | null;
       effort?: string | null;
       serviceTier?: ServiceTier | null | undefined;
+      accessMode?: AccessMode;
       collaborationMode?: Record<string, unknown> | null;
     },
   ) => Promise<void | SendMessageResult>;
@@ -191,6 +196,7 @@ export function useWorkspaceHome({
   effort = null,
   serviceTier = undefined,
   collaborationMode = null,
+  accessMode,
   seedThreadCodexParams,
   addWorktreeAgent,
   connectWorkspace,
@@ -494,6 +500,7 @@ export function useWorkspaceHome({
             modelId: selectedModelId,
             effort,
             serviceTier,
+            accessMode,
           });
           const localModel = selectedModelId
             ? modelLookup.get(selectedModelId)?.model ?? null
@@ -502,6 +509,7 @@ export function useWorkspaceHome({
             model: localModel,
             effort,
             serviceTier,
+            accessMode,
             collaborationMode,
           });
           const model =
@@ -561,6 +569,7 @@ export function useWorkspaceHome({
                 modelId: selection.modelId,
                 effort,
                 serviceTier,
+                accessMode,
               });
               await sendUserMessageToThread(
                 worktreeWorkspace,
@@ -571,6 +580,7 @@ export function useWorkspaceHome({
                   model: selection.model?.model ?? selection.modelId,
                   effort,
                   serviceTier,
+                  accessMode,
                   collaborationMode,
                 },
               );

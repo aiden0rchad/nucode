@@ -1575,6 +1575,10 @@ async fn engine_switches_in_place_clones_and_respawns_after_idle() {
     .unwrap();
     assert_eq!(access["accessMode"], "read-only");
     assert_eq!(original.translator.lock().await.access_mode, "read-only");
+    // Ask first in the menu is "current"; it must move a read-only thread to ask, not leave it read-only.
+    engine.request("workspace", "thread/accessMode/set", json!({"threadId":id,"accessMode":"current"})).await.unwrap();
+    let access: Value = serde_json::from_slice(&std::fs::read(dir.join("pi/agent/workspace/nucode/threads").join(format!("{id}.json"))).unwrap()).unwrap();
+    assert_eq!(access["accessMode"], "ask");
     engine
         .request("workspace", "turn/interrupt", json!({"threadId":id}))
         .await

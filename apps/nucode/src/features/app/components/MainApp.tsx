@@ -1179,6 +1179,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
       resolvedEffort,
       selectedServiceTier,
       collaborationModePayload,
+      accessMode,
     },
     refs: {
       composerInputRef,
