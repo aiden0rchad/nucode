@@ -343,6 +343,7 @@ impl NativeBackend {
                 let _ = offer_capture(&path, &pending, &index, &state, capture);
             })).await?;
             macos::install_accessibility(&view).await?;
+            macos::keep_page_visible(&view).await?;
             self.sessions.remember(&view);
         }
         *stage = "layout";
@@ -354,6 +355,9 @@ impl NativeBackend {
             if let Ok(size) = window.inner_size() { let _ = main.set_size(size); }
             crate::window_layout::check(&main, "browser layout");
         }
+        // On macOS the view waits parked offscreen, as hide() leaves it later. NSView.setHidden made WebKit treat the
+        // page as hidden until a person first opened the pane, so an agent's page in a closed pane never animated.
+        #[cfg(not(target_os = "macos"))]
         view.hide().map_err(|e| e.to_string())?;
         #[cfg(target_os = "macos")]
         {
