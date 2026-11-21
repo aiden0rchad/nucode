@@ -17,12 +17,14 @@ type HarnessProps = {
   activeThreadId: string | null;
   activeWorkspaceId: string | null;
   disabled?: boolean;
+  disabledReason?: string;
 };
 
 function ComposerHarness({
   activeThreadId,
   activeWorkspaceId,
   disabled = false,
+  disabledReason,
 }: HarnessProps) {
   const { activeImages, attachImages, removeImage, clearActiveImages } =
     useComposerImages({ activeThreadId, activeWorkspaceId });
@@ -35,6 +37,7 @@ function ComposerHarness({
       <ComposerInput
         text={text}
         disabled={disabled}
+        disabledReason={disabledReason}
         sendLabel="Send"
         canStop={false}
         canSend={false}
@@ -345,5 +348,14 @@ describe("Composer attachments integration", () => {
     expect(getAttachmentNames(harness.container)).toEqual(["draft-one.png"]);
 
     harness.unmount();
+  });
+
+  it("says why it is disabled: a review by default, or the reason it is given", () => {
+    const rendered = renderComposerHarness({ activeThreadId: null, activeWorkspaceId: "ws-1", disabled: true });
+    const placeholder = () => rendered.container.querySelector("textarea")!.placeholder;
+    expect(placeholder()).toBe("Review in progress. Chat will re-enable when it completes.");
+    rendered.rerender({ activeThreadId: null, activeWorkspaceId: "ws-1", disabled: true, disabledReason: "Starting the thread…" });
+    expect(placeholder()).toBe("Starting the thread…");
+    rendered.unmount();
   });
 });

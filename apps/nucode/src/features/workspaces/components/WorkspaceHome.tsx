@@ -398,6 +398,7 @@ export function WorkspaceHome({
             engine={engine ?? workspace.settings.agentPolicy?.defaultEngine ?? settings?.agentPolicy?.defaultEngine ?? "pi"}
             text={prompt}
             disabled={isSubmitting}
+            disabledReason="Starting the thread…"
             sendLabel="Send"
             canStop={false}
             canSend={prompt.trim().length > 0 || activeImages.length > 0}
