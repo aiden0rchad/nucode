@@ -1,6 +1,14 @@
 use futures_util::future::BoxFuture;
 use serde_json::{json, Value};
 
+tokio::task_local! {
+    /// The thread an agent request belongs to; "" is the unscoped set of tabs. Set around the whole request so the
+    /// backend methods that tools call (navigate, snapshot, click, ...) need no extra parameter.
+    pub static OWNER: String;
+}
+/// The owner of the agent request being served (see `OWNER`); "" outside one.
+pub fn agent_owner() -> String { OWNER.try_with(|owner| owner.clone()).unwrap_or_default() }
+
 /// The local socket and MCP adapter use the same backend as the pane.
 pub trait BrowserBackend: Send + Sync {
     fn authorize_tool(&self, _args: Value) -> BoxFuture<'_, Result<(), String>> { Box::pin(async { Ok(()) }) }

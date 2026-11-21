@@ -1,11 +1,11 @@
 import { NativeSlot } from "./NativeSlot";
 import { RowMenu } from "@/features/chat/RowMenu";
 import { ArrowLeft, ArrowRight, CircleAlert, Download, KeyRound, LockKeyhole, Pencil, Plus, RotateCw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, openBrowserDownloads, openBrowserUrl, exportBrowserScreenshot } from "@services/tauri";
 import { isMacPlatform } from "@utils/platformPaths";
-import { defaultBrowserSettings, drawBrowserFrame, modifiers, normalizeBrowserUrl } from "./browser";
+import { defaultBrowserSettings, drawBrowserFrame, modifiers, normalizeBrowserUrl, scopeBrowserState } from "./browser";
 import type { BrowserState } from "./browser";
 import { BrowserAnnotations } from "./BrowserAnnotations";
 import type { BrowserCapture, BrowserPageGeometry } from "./BrowserAnnotations";
@@ -15,9 +15,10 @@ export type BrowserContext = { text: string; image?: string };
 export type BrowserLauncher = { id: string; label: string; icon: import("react").ComponentType<{ size?: number; "aria-hidden"?: boolean }>; shortcut?: string; onOpen: () => void };
 /** Pane layout actions from the host (move, fill, tile), listed after the page actions so the pane needs one overflow menu, not two. */
 export type BrowserPaneAction = { label: string; onClick: () => void };
-type Props = { embedded?: boolean; tools?: BrowserLauncher[]; paneActions?: BrowserPaneAction[]; searchUrl?: string; agentActive?: boolean; onBrowserContext?: (context: BrowserContext) => void; onTakeOver: () => void | Promise<void>; onClose: () => void };
-export function BrowserPane({ embedded = false, tools = [], paneActions = [], searchUrl = defaultBrowserSettings.searchUrl, agentActive = false, onBrowserContext, onTakeOver, onClose }: Props) {
-  const [state, setState] = useState<BrowserState>({ tabs: [], active: "" });
+type Props = { /** The thread whose tabs this pane shows (native browser); "" is a draft or an engine without a thread id. */ scope?: string; embedded?: boolean; tools?: BrowserLauncher[]; paneActions?: BrowserPaneAction[]; searchUrl?: string; agentActive?: boolean; onBrowserContext?: (context: BrowserContext) => void; onTakeOver: () => void | Promise<void>; onClose: () => void };
+export function BrowserPane({ scope = "", embedded = false, tools = [], paneActions = [], searchUrl = defaultBrowserSettings.searchUrl, agentActive = false, onBrowserContext, onTakeOver, onClose }: Props) {
+  const [published, setState] = useState<BrowserState>({ tabs: [], active: "" });
+  const state = useMemo(() => scopeBrowserState(published, scope), [published, scope]);
   const native = state.backend === "native";
   const backend = useRef(state.backend); backend.current = state.backend;
   const [confirmClear, setConfirmClear] = useState<{ tabId: string; expectedUrl: string } | null>(null);
@@ -48,6 +49,8 @@ export function BrowserPane({ embedded = false, tools = [], paneActions = [], se
     if (["navigate", "back", "forward", "reload", "activate", "close", "zoom"].includes(String(params.action))) { captureId.current++; setCapture(null); setCapturing(false); }
     void browserRequest(params).then(() => setError("")).catch(e => setError(String(e)));
   }, []);
+  // Tell the backend which thread's pane is on screen so it shows that thread's page and acts for it.
+  useEffect(() => { send({ action: "scope", owner: scope }); }, [scope, send]);
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;

@@ -44,6 +44,12 @@ where
     }
 }
 
+/// Tag a request with the thread this helper serves. omp is spawned with NUCODE_SESSION_KEY=<thread id>; engines
+/// without it (codex app-server, Claude ACP) send "" and share one unscoped set of tabs.
+fn owned(owner: &str, mut request: Value) -> Value {
+    request["owner"] = json!(owner);
+    request
+}
 pub fn arguments(cli: &Path, data: &Path, port: u16, settings: &Settings) -> Vec<String> {
     let mut args = vec![
         cli.to_string_lossy().into(),
@@ -141,7 +147,8 @@ async fn proxy(
     let tab_id = format!("nu-browser-tabs-{}", uuid::Uuid::new_v4());
     let mut pending = HashMap::new();
     let mut sequence = 0;
-    let mut activity = NativeActivity::new(|params| browser.request(params));
+    let owner = std::env::var("NUCODE_SESSION_KEY").unwrap_or_default();
+    let mut activity = NativeActivity::new(|params| browser.request(owned(&owner, params)));
     let client = super::web::client()?;
     let mut web_requests = FuturesUnordered::new();
     let mut web_cancellations: HashMap<String, AbortHandle> = HashMap::new();
@@ -176,7 +183,7 @@ async fn proxy(
                             }
                             calls.remove(&v["params"]["requestId"].to_string());
                             if port.is_some() {
-                                let _ = browser.request(json!({"action":"activity","active":!calls.is_empty()})).await;
+                                let _ = browser.request(owned(&owner, json!({"action":"activity","active":!calls.is_empty()}))).await;
                             }
                         }
                         if v["method"] == "tools/call" {
@@ -186,7 +193,7 @@ async fn proxy(
                                 web_requests.push(Abortable::new(web_call(client.clone(), browser.settings(), v), registration));
                                 continue;
                             }
-                            let endpoint = match browser.request(json!({"action":"ensure"})).await {
+                            let endpoint = match browser.request(owned(&owner, json!({"action":"ensure"}))).await {
                                 Ok(endpoint) => endpoint,
                                 Err(error) => {
                                     emit(&json!({"jsonrpc":"2.0","id":v["id"],"result":{"isError":true,"content":[{"type":"text","text":error}]}}).to_string())?;
@@ -195,7 +202,7 @@ async fn proxy(
                             };
                             if endpoint["native"] == true {
                                 activity.set(true).await;
-                                let result = browser.request(json!({"action":"tool","name":v["params"]["name"],"arguments":v["params"]["arguments"]})).await;
+                                let result = browser.request(owned(&owner, json!({"action":"tool","name":v["params"]["name"],"arguments":v["params"]["arguments"]}))).await;
                                 activity.finish();
                                 let result = result.unwrap_or_else(|error|json!({"isError":true,"content":[{"type":"text","text":error}]}));
                                 emit(&json!({"jsonrpc":"2.0","id":v["id"],"result":result}).to_string())?;
@@ -231,7 +238,7 @@ async fn proxy(
                                 port = Some(current_port);
                             }
                             calls.insert(v["id"].to_string());
-                            let _ = browser.request(json!({"action":"activity","active":true})).await;
+                            let _ = browser.request(owned(&owner, json!({"action":"activity","active":true}))).await;
                             sequence += 1;
                             let id = format!("{tab_id}-{sequence}");
                             let query = json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"browser_tabs","arguments":{"action":"list"}}});
@@ -261,7 +268,7 @@ async fn proxy(
                                     continue;
                                 }
                             }
-                            if let Some(url) = current_url(&v["result"]) { let _ = browser.request(json!({"action":"agentTab","url":url})).await; }
+                            if let Some(url) = current_url(&v["result"]) { let _ = browser.request(owned(&owner, json!({"action":"agentTab","url":url}))).await; }
                             input.write_all(format!("{original}\n").as_bytes()).await.map_err(|e| e.to_string())?;
                             continue;
                         }
@@ -272,14 +279,14 @@ async fn proxy(
                             continue;
                         }
                         if v["id"] == format!("{tab_id}-select") {
-                            if let Some(url) = current_url(&v["result"]) { let _ = browser.request(json!({"action":"agentTab","url":url})).await; }
+                            if let Some(url) = current_url(&v["result"]) { let _ = browser.request(owned(&owner, json!({"action":"agentTab","url":url}))).await; }
                             continue;
                         }
                         if v["id"].as_str().is_some_and(|id| id.starts_with(&tab_id)) { continue; }
                         if calls.remove(&v["id"].to_string()) {
                             let query = json!({"jsonrpc":"2.0","id":tab_id,"method":"tools/call","params":{"name":"browser_tabs","arguments":{"action":"list"}}});
                             input.write_all(format!("{query}\n").as_bytes()).await.map_err(|e| e.to_string())?;
-                            let _ = browser.request(json!({"action":"activity","active":!calls.is_empty()})).await;
+                            let _ = browser.request(owned(&owner, json!({"action":"activity","active":!calls.is_empty()}))).await;
                         }
                     }
                     emit(&line)?;
@@ -291,7 +298,7 @@ async fn proxy(
     activity.set(false).await;
     if port.is_some() {
         let _ = browser
-            .request(json!({"action":"activity","active":false}))
+            .request(owned(&owner, json!({"action":"activity","active":false})))
             .await;
     }
     let _ = child.kill().await;

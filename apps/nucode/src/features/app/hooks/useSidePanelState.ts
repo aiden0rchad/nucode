@@ -14,7 +14,7 @@ import { dockPanes, initialDock, panelReducer, readPanel, workspaceLayout, type 
 import type { WorkspaceShellProps } from "@/features/panels/SidePanel";
 import type { PageStatuses } from "@/features/panels/PanelTabList";
 
-export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowserSettings.searchUrl, onNavigate, reservedShortcuts = [], dock = false, sessionRail }: Pick<WorkspaceShellProps, "scope" | "tools" | "searchUrl" | "onNavigate" | "reservedShortcuts" | "dock" | "sessionRail">) {
+export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowserSettings.searchUrl, onNavigate, reservedShortcuts = [], dock = false, sessionRail, browserThread, browserOwner }: Pick<WorkspaceShellProps, "scope" | "tools" | "searchUrl" | "onNavigate" | "reservedShortcuts" | "browserThread" | "browserOwner" | "dock" | "sessionRail">) {
   const features = useFeatures();
   const load = (scope: string) => {
     const state = readPanel(scope, tools.some(t => t.id === "task"));
@@ -38,7 +38,8 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
     preservePanelFocus.current = false;
     setSaved(previous => ({ ...previous, state: fn(previous.state) }));
   }, []);
-  const browser = useBrowserController(false);
+  const browser = useBrowserController(false, browserThread);
+  const ownerRef = useRef(browserOwner); ownerRef.current = browserOwner;
   const [expanded, setExpanded] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const resize = useResizablePanels(windowWidth);
@@ -127,6 +128,8 @@ export function useSidePanelState({ scope, tools = [], searchUrl = defaultBrowse
       localStorage.setItem(`nucode.panel.${saved.scope}`, JSON.stringify(saved.state));
       if (saved.draftScope) {
         localStorage.setItem(`nucode.panel.${saved.draftScope}`, JSON.stringify({ tabs: [], active: null, open: false }));
+        // The draft's native pages belong to the thread it became.
+        if (ownerRef.current) void browserRequest({ action: "adopt", from: "", to: ownerRef.current }).catch(() => {});
         setSaved(previous => previous === saved ? { scope: previous.scope, state: previous.state } : previous);
       }
     } catch (e) { setError(`Could not save panel tabs: ${e}`); }

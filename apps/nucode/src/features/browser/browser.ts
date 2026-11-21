@@ -4,13 +4,27 @@ export const defaultBrowserSettings: BrowserSettings = { engine: "native", priva
 export type BrowserState = {
   passwordOffer?: { origin: string; username: string; update: boolean } | null;
   capabilities?: { screenshot: boolean; evaluate: boolean };
-  tabs: { credentialsPaused?: boolean; savedLogins?: { id: string; username: string }[]; id: string; title: string; url: string; favicon?: string | null; loading: boolean; ready?: boolean; snapshot?: string; progress?: number; canGoBack?: boolean; canGoForward?: boolean; error?: string }[];
+  tabs: { owner?: string; credentialsPaused?: boolean; savedLogins?: { id: string; username: string }[]; id: string; title: string; url: string; favicon?: string | null; loading: boolean; ready?: boolean; snapshot?: string; progress?: number; canGoBack?: boolean; canGoForward?: boolean; error?: string }[];
   active: string; frame?: string | null; frameTarget?: string; width?: number; height?: number; dpr?: number;
   backend?: "native" | "cdp"; takeover?: number; externalRequest?: string; newWindow?: string; downloadRequest?: string;
   agent?: boolean; cursor?: string; error?: string;
+  /** Native only: each thread (owner) has its own tabs and active tab; `scope` is the owner whose pane is on screen. "" is a draft, or an engine that has no thread id. */
+  scope?: string; activeByOwner?: Record<string, string>; agentActiveOwners?: string[];
   /** A width (and height) the agent set with browser_resize; the page lays out at it until reset. */
   viewport?: { width: number; height?: number | null } | null;
 };
+/** The part of the browser state one pane shows: its thread's tabs, active tab and agent state. Headless Chromium keeps one global set. */
+export function scopeBrowserState(state: BrowserState, scope: string): BrowserState {
+  if (state.backend !== "native") return state;
+  // Until the backend has switched to this scope its `active` belongs to another thread, so none is shown yet.
+  const synced = state.scope === undefined || state.scope === scope;
+  return {
+    ...state,
+    tabs: (state.tabs ?? []).filter(tab => (tab.owner ?? "") === scope),
+    active: !synced ? "" : state.activeByOwner ? state.activeByOwner[scope] ?? "" : state.active,
+    agent: state.agentActiveOwners ? state.agentActiveOwners.includes(scope) : state.agent,
+  };
+}
 export function normalizeBrowserUrl(input: string, searchUrl: string): string {
   const value = input.trim();
   if (!value) throw new Error("Enter a URL or search term");

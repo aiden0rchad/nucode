@@ -20,6 +20,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const state: BrowserState = { tabs: [{ id: "one", title: "Example", url: "https://example.test/", loading: false }], active: "one", capabilities: { screenshot: true, evaluate: true } };
 describe("Browser pane", () => {
+  it("shows only its thread's tabs and active tab, and tells the backend which thread is on screen", async () => {
+    const page = (id: string, owner: string) => ({ id, owner, title: `Page ${id}`, url: `https://example.test/${id}`, loading: false, ready: true });
+    const both: BrowserState = { backend: "native", scope: "a", tabs: [page("a1", "a"), page("b1", "b"), page("b2", "b")], active: "a1", activeByOwner: { a: "a1", b: "b2" }, agentActiveOwners: ["b"] };
+    const view = render(<BrowserPane scope="a" onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    expect(browserRequest).toHaveBeenCalledWith({ action: "scope", owner: "a" });
+    act(() => receive(both));
+    expect(screen.queryByText("Page a1")).toBeTruthy();
+    expect(screen.queryByText("Page b1")).toBeNull();
+    // Thread b's agent is working, not a's: no banner in a's pane.
+    expect(screen.queryByText("Agent is using the browser")).toBeNull();
+    vi.mocked(browserRequest).mockClear();
+    view.rerender(<BrowserPane scope="b" onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    expect(browserRequest).toHaveBeenCalledWith({ action: "scope", owner: "b" });
+    // The backend has not switched yet: no tab is active, so no page is placed from another thread's state.
+    expect(screen.queryByText("Page a1")).toBeNull();
+    expect(screen.queryAllByRole("tab", { selected: true })).toHaveLength(0);
+    act(() => receive({ ...both, scope: "b", active: "b2" }));
+    expect(screen.queryByText("Page b1")).toBeTruthy();
+    expect(screen.getAllByRole("tab", { selected: true }).map(tab => tab.textContent)).toEqual(["Page b2"]);
+    expect(screen.queryByText("Agent is using the browser")).toBeTruthy();
+  });
   it("selects the URL on focus and first click, leaving subsequent clicks to place the caret", async () => {
     render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
     await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());

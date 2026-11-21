@@ -91,8 +91,20 @@ impl NativeBackend {
     fn settings(&self) -> Result<super::Settings, String> {
         Ok(crate::storage::read_settings(&self.settings_path)?.browser)
     }
+    /// The tab on screen: the active tab of the viewed scope.
     fn active(&self) -> String {
         self.state.borrow()["active"].as_str().unwrap_or("").into()
+    }
+    /// The owner whose pane is on screen, set by the UI with the `scope` action.
+    fn scope(&self) -> String {
+        self.state.borrow()["scope"].as_str().unwrap_or("").into()
+    }
+    /// Agent requests act for their own thread; pane requests act for the viewed one.
+    fn owner(&self, agent: bool) -> String {
+        if agent { super::backend::agent_owner() } else { self.scope() }
+    }
+    fn active_of(&self, owner: &str) -> String {
+        active_in(&self.state.borrow(), owner)
     }
     fn tab(&self, id: &str) -> Option<Value> {
         self.state.borrow()["tabs"]
@@ -104,7 +116,7 @@ impl NativeBackend {
     fn update(&self, id: &str, values: Value) {
         update(&self.state, id, values);
     }
-    fn add_tab(&self, url: &str) -> String {
+    fn add_tab(&self, url: &str, owner: &str) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         self.state.send_modify(|s| {
             if !s["tabs"].is_array() {
@@ -113,8 +125,8 @@ impl NativeBackend {
             s["tabs"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!({"id":id,"url":url,"title":"New tab","loading":true,"ready":false}));
-            s["active"] = json!(id);
+                .push(json!({"id":id,"owner":owner,"url":url,"title":"New tab","loading":true,"ready":false}));
+            set_active(s, owner, Some(&id));
         });
         id
     }
@@ -196,6 +208,7 @@ impl NativeBackend {
         let nav_state = self.state.clone();
         let nav_id = id.to_string();
         let new_state = self.state.clone();
+        let new_owner = tab["owner"].as_str().unwrap_or("").to_string();
         let new_settings = settings.clone();
         let new_app = self.app.clone();
         let download_state = self.state.clone();
@@ -236,6 +249,7 @@ impl NativeBackend {
                                 let nav_settings = new_settings.clone();
                                 let current = Mutex::new(url.to_string());
                                 let nested_state = new_state.clone();
+                                let nested_owner = new_owner.clone();
                                 let nested_settings = new_settings.clone();
                                 let mut builder = tauri::WebviewWindowBuilder::new(
                                     &new_app, format!("browser-popup-{}", uuid::Uuid::new_v4().simple()),
@@ -264,7 +278,7 @@ impl NativeBackend {
                                     })
                                     .on_new_window(move |url, _| {
                                         match navigation(url.as_str(), url.as_str()) {
-                                            Navigation::Allow if allowed_origin(&url, &nested_settings) => { nested_state.send_modify(|s|s["newWindow"] = json!(url.as_str())); },
+                                            Navigation::Allow if allowed_origin(&url, &nested_settings) => { request_window(&nested_state, url.as_str(), &nested_owner); },
                                             Navigation::External => { nested_state.send_modify(|s|s["externalRequest"] = json!(url.as_str())); },
                                             _ => (),
                                         }
@@ -285,7 +299,7 @@ impl NativeBackend {
                                 Err(_) => nucode_diag_mcp::writer::metadata("error", "browser", "browser.native.popup_failed", json!({})),
                             }
                         }
-                        new_state.send_modify(|s|s["newWindow"] = json!(url.as_str()));
+                        request_window(&new_state, url.as_str(), &new_owner);
                     },
                     Navigation::External => { new_state.send_modify(|s|s["externalRequest"] = json!(url.as_str())); },
                     _ => (),
@@ -347,8 +361,10 @@ impl NativeBackend {
             let pending = self.pending.clone();
             let index = self.password_index.clone();
             let state = self.state.clone();
+            let capture_tab = id.to_string();
             macos::hide_app_bridge(&view).await?;
-            macos::install_passwords(&view, Box::new(move |capture| {
+            macos::install_passwords(&view, Box::new(move |mut capture| {
+                capture["tab"] = json!(capture_tab);
                 let _ = offer_capture(&path, &pending, &index, &state, capture);
             })).await?;
             macos::install_accessibility(&view).await?;
@@ -447,7 +463,7 @@ impl NativeBackend {
     }
     async fn action_and_settle(&self, p: Value) -> Result<Value, String> {
         let events = self.state.subscribe();
-        let id = self.active();
+        let id = self.active_of(&super::backend::agent_owner());
         let before = self.tab(&id);
         let before_popup = events.borrow()["lastPopup"].clone();
         let history = matches!(p["action"].as_str(), Some("back" | "forward"));
@@ -469,6 +485,7 @@ impl NativeBackend {
     async fn dispatch(&self, p: Value, agent: bool) -> Result<Value, String> {
         super::passwords::reject_action(&p)?;
         let mut views = self.views.lock().await;
+        let owner = self.owner(agent);
         self.check_paused(&p, agent)?;
         self.state.send_if_modified(|s| {
             let capabilities = json!({"screenshot":cfg!(target_os = "macos"),"evaluate":cfg!(target_os = "macos")});
@@ -495,13 +512,31 @@ impl NativeBackend {
         if action == "ensure" {
             return Ok(json!({"native":cfg!(target_os = "macos")}));
         }
+        if action == "scope" || action == "adopt" {
+            if agent { return Err("Unknown browser action".into()); }
+            if action == "scope" {
+                let scope = p["owner"].as_str().ok_or("Missing scope owner")?.to_string();
+                if self.scope() != scope {
+                    self.hide(&mut views).await?;
+                    self.state.send_modify(|s| { s["scope"] = json!(scope); sync_active(s); });
+                }
+            } else {
+                // A draft's tabs follow it into the thread it became.
+                let (from, to) = (p["from"].as_str().unwrap_or(""), p["to"].as_str().ok_or("Missing adopt target")?);
+                self.state.send_modify(|s| adopt(s, from, to));
+            }
+            self.place(&mut views).await?;
+            return Ok(Value::Null);
+        }
         // Process popup requests for agent-only sessions too, without requiring a pane subscription.
         {
             let new_url = self.state.borrow()["newWindow"].as_str().map(String::from);
             if let Some(url) = new_url {
+                // The popup belongs to the thread of the page that opened it, not to whoever is on screen.
+                let opener = self.state.borrow()["newWindowOwner"].as_str().unwrap_or("").to_string();
                 self.state.send_modify(|s| s["newWindow"] = Value::Null);
-                self.hide(&mut views).await?;
-                let id = self.add_tab(&url);
+                if opener == self.scope() { self.hide(&mut views).await?; }
+                let id = self.add_tab(&url, &opener);
                 self.view(&id, &mut views).await?;
             }
         }
@@ -526,7 +561,8 @@ impl NativeBackend {
                                 if meta["userInput"] == true && self.state.borrow()["agent"] == true
                                 {
                                     self.state.send_modify(|s| {
-                                        s["agent"] = json!(false);
+                                        let scope = s["scope"].as_str().unwrap_or("").to_string();
+                                        set_agent_active(s, &scope, false);
                                         s["takeover"] =
                                             json!(s["takeover"].as_u64().unwrap_or(0) + 1);
                                     });
@@ -545,7 +581,7 @@ impl NativeBackend {
             return Ok(self.state.borrow().clone());
         }
         if action == "activity" {
-            self.state.send_modify(|s| s["agent"] = p["active"].clone());
+            self.state.send_modify(|s| set_agent_active(s, &owner, p["active"] == true));
             return Ok(Value::Null);
         }
         if action == "detach" {
@@ -563,8 +599,7 @@ impl NativeBackend {
                 }
             }
             views.hook_keys.clear();
-            self.state
-                .send_replace(json!({"tabs":[],"active":"","agent":false}));
+            self.state.send_replace(empty_state(&self.scope(), false));
             return Ok(Value::Null);
         }
         if action == "clear" {
@@ -576,10 +611,10 @@ impl NativeBackend {
             #[cfg(target_os = "macos")]
             self.clear_sessions().await?;
             // Materialize a view so persistent storage can also be cleared after restart.
-            if self.active().is_empty() {
-                self.add_tab("about:blank");
+            if self.active_of(&owner).is_empty() {
+                self.add_tab("about:blank", &owner);
             }
-            let view = self.view(&self.active(), &mut views).await?;
+            let view = self.view(&self.active_of(&owner), &mut views).await?;
             view.clear_all_browsing_data().map_err(|e| e.to_string())?;
             for id in views.live.drain(..) {
                 if let Some(view) = self.app.get_webview(&label(&id)?) {
@@ -587,8 +622,7 @@ impl NativeBackend {
                 }
             }
             views.hook_keys.clear();
-            self.state
-                .send_replace(json!({"backend":"native","tabs":[],"active":"","agent":false}));
+            self.state.send_replace(empty_state(&self.scope(), true));
             return Ok(Value::Null);
         }
         if action == "viewport" {
@@ -639,11 +673,7 @@ impl NativeBackend {
         if action == "tabs" {
             action = match p["params"]["action"].as_str().unwrap_or("list") {
                 "list" => {
-                    let state = self.state.borrow();
-                    let mut tabs = state["tabs"].clone();
-                    // Other browser tools act on the active tab.
-                    for tab in tabs.as_array_mut().into_iter().flatten() { tab["active"] = json!(tab["id"] == state["active"]); }
-                    return Ok(tabs);
+                    return Ok(tabs_list(&self.state.borrow(), &owner));
                 }
                 "new" => "new",
                 "select" => "activate",
@@ -651,18 +681,15 @@ impl NativeBackend {
                 _ => return Err("Unknown tabs action".into()),
             };
             if let Some(index) = p["params"]["index"].as_u64() {
-                id = Some(
-                    self.state.borrow()["tabs"][index as usize]["id"]
-                        .as_str()
-                        .ok_or("Unknown tab index")?
-                        .into(),
-                );
+                // An index counts within the caller's own tabs.
+                id = Some(tab_at(&self.state.borrow(), &owner, index as usize).ok_or("Unknown tab index")?);
             }
         }
         if action == "new" {
             let url = new_tab_url(&p)?;
-            self.hide(&mut views).await?;
-            let id = self.add_tab(url);
+            // A tab for a thread that is not on screen must not disturb the page that is.
+            if owner == self.scope() { self.hide(&mut views).await?; }
+            let id = self.add_tab(url, &owner);
             self.view(&id, &mut views).await?;
             self.place(&mut views).await?;
             if agent {
@@ -675,17 +702,18 @@ impl NativeBackend {
         if action == "activate" {
             let id = id.ok_or("Missing tab ID")?;
             label(&id)?;
-            if self.tab(&id).is_none() {
+            if self.tab(&id).is_none_or(|tab| tab_owner(&tab) != owner) {
                 return Err("Unknown browser tab".into());
             }
-            self.hide(&mut views).await?;
-            self.state.send_modify(|s| s["active"] = json!(id));
+            if owner == self.scope() { self.hide(&mut views).await?; }
+            self.state.send_modify(|s| set_active(s, &owner, Some(&id)));
             self.place(&mut views).await?;
             return Ok(Value::Null);
         }
         if action == "close" {
-            let id = id.unwrap_or_else(|| self.active());
+            let id = id.unwrap_or_else(|| self.active_of(&owner));
             label(&id)?;
+            if self.tab(&id).is_some_and(|tab| tab_owner(&tab) != owner) { return Err("Unknown browser tab".into()); }
             if id == self.active() { views.placement.detach(); }
             if views.shown.as_deref() == Some(&id) {
                 self.hide(&mut views).await?;
@@ -699,11 +727,9 @@ impl NativeBackend {
                 if let Some(tabs) = s["tabs"].as_array_mut() {
                     tabs.retain(|t| t["id"] != id);
                 }
-                if s["active"] == id {
-                    s["active"] = s["tabs"][0]["id"]
-                        .as_str()
-                        .map(|s| json!(s))
-                        .unwrap_or(json!(""));
+                if active_in(s, &owner) == id {
+                    let next = owned_tabs(s, &owner).first().and_then(|tab| tab["id"].as_str().map(String::from));
+                    set_active(s, &owner, next.as_deref());
                 }
             });
             self.place(&mut views).await?;
@@ -717,13 +743,13 @@ impl NativeBackend {
             }
             return Ok(Value::Null);
         }
-        if self.active().is_empty() {
+        if self.active_of(&owner).is_empty() {
             if action != "navigate" {
                 return Err("No browser page is open. Navigate to a URL first.".into());
             }
-            self.add_tab("about:blank");
+            self.add_tab("about:blank", &owner);
         }
-        let id = self.active();
+        let id = self.active_of(&owner);
         if matches!(action, "screenshot" | "evaluate") { policy::check_target(&p, &id, None)?; }
         let mut view = self.view(&id, &mut views).await?;
         if agent && needs_ready_page(&p) {
@@ -735,7 +761,7 @@ impl NativeBackend {
                 wait_for_page(events, &id, true, deadline.saturating_duration_since(tokio::time::Instant::now())).await?;
                 views = self.views.lock().await;
                 self.check_paused(&p, agent)?;
-                if self.active() != id { return Err("Browser page changed; retry on the current page".into()); }
+                if self.active_of(&owner) != id { return Err("Browser page changed; retry on the current page".into()); }
                 // A concurrent command may have evicted the view while we waited.
                 view = self.view(&id, &mut views).await?;
                 if self.tab(&id).is_some_and(|tab| tab["ready"] == true && tab["error"].is_null()) { break; }
@@ -928,7 +954,9 @@ impl NativeBackend {
         self.sessions.clear().await.map_err(|_| "Cannot clear browser sessions".into())
     }
     fn check_paused(&self, p: &Value, agent: bool) -> Result<(), String> {
-        password_gate(&self.state.borrow(), p, agent)
+        let mut p = p.clone();
+        p["owner"] = json!(self.owner(agent));
+        password_gate(&self.state.borrow(), &p, agent)
     }
     fn password_path(&self) -> Result<std::path::PathBuf, String> {
         Ok(self.settings_path.parent().ok_or("Missing app data directory")?.join("browser/passwords.json"))
@@ -1023,6 +1051,8 @@ impl NativeBackend {
             // A provisional navigation has no private world yet.
             Err(_) => return Ok(()),
         };
+        let mut captured = captured;
+        captured["tab"] = json!(view.label().trim_start_matches("browser-"));
         offer_capture(&self.settings_path, &self.pending, &self.password_index, &self.state, captured)
     }
     pub async fn fill_saved(&self, tab_id: &str, entry_id: &str) -> Result<Value, String> {
@@ -1074,11 +1104,12 @@ impl BrowserBackend for NativeBackend {
         Box::pin(self.action_and_settle(json!({"action":"script","op":"select","ref":reference,"values":values})))
     }
     fn navigate(&self, url: &str) -> BoxFuture<'_, Result<Value, String>> {
-        let current = self.tab(&self.active()).and_then(|t| t["url"].as_str().map(String::from));
+        let owner = super::backend::agent_owner();
+        let current = self.tab(&self.active_of(&owner)).and_then(|t| t["url"].as_str().map(String::from));
         let url = resolve_path(url, current.as_deref());
         Box::pin(async move {
             self.command(json!({"action":"navigate","url":url})).await?;
-            let id = self.active();
+            let id = self.active_of(&owner);
             let events = self.state.subscribe();
             match wait_for_page(events.clone(), &id, url == "about:blank", Duration::from_secs(20)).await {
                 // The navigation started; a slow page is not a failed one.
@@ -1272,6 +1303,81 @@ fn page_load_values(previous_url: &str, url: &tauri::Url, finished: bool) -> Val
     }
     values
 }
+/// A page asked for a new tab; remember whose page it was so the tab joins that thread.
+fn request_window(state: &watch::Sender<Value>, url: &str, owner: &str) {
+    state.send_modify(|s| { s["newWindow"] = json!(url); s["newWindowOwner"] = json!(owner); });
+}
+fn tab_owner(tab: &Value) -> &str { tab["owner"].as_str().unwrap_or("") }
+fn owned_tabs(state: &Value, owner: &str) -> Vec<Value> {
+    state["tabs"].as_array().into_iter().flatten().filter(|tab| tab_owner(tab) == owner).cloned().collect()
+}
+/// What `browser_tabs list` shows an agent: its own thread's tabs only, with its active one marked.
+fn tabs_list(state: &Value, owner: &str) -> Value {
+    let active = active_in(state, owner);
+    let mut tabs = owned_tabs(state, owner);
+    // Other browser tools act on the active tab.
+    for tab in &mut tabs { tab["active"] = json!(tab["id"] == active.as_str()); }
+    json!(tabs)
+}
+/// A tab index counts within the owner's own tabs.
+fn tab_at(state: &Value, owner: &str, index: usize) -> Option<String> {
+    owned_tabs(state, owner).get(index).and_then(|tab| tab["id"].as_str().map(String::from))
+}
+/// The owner's active tab. Without a per-owner map (older state) the single active tab applies.
+fn active_in(state: &Value, owner: &str) -> String {
+    match state["activeByOwner"].as_object() {
+        Some(map) => map.get(owner).and_then(Value::as_str).unwrap_or("").into(),
+        None => state["active"].as_str().unwrap_or("").into(),
+    }
+}
+/// Keep the top-level `active` (and `agent`) equal to the viewed scope's, which is what the pane reads.
+fn sync_active(s: &mut Value) {
+    let scope = s["scope"].as_str().unwrap_or("").to_string();
+    s["active"] = json!(active_in(s, &scope));
+    s["agent"] = json!(s["agentActiveOwners"].as_array().is_some_and(|owners| owners.iter().any(|o| o == scope.as_str())));
+}
+fn set_active(s: &mut Value, owner: &str, id: Option<&str>) {
+    if !s["activeByOwner"].is_object() { s["activeByOwner"] = json!({}); }
+    match id {
+        Some(id) => { s["activeByOwner"][owner] = json!(id); }
+        None => { s["activeByOwner"].as_object_mut().unwrap().remove(owner); }
+    }
+    sync_active(s);
+}
+fn set_agent_active(s: &mut Value, owner: &str, active: bool) {
+    let mut owners: Vec<Value> = s["agentActiveOwners"].as_array().cloned().unwrap_or_default();
+    owners.retain(|o| o != owner);
+    if active { owners.push(json!(owner)); }
+    s["agentActiveOwners"] = json!(owners);
+    sync_active(s);
+}
+/// Whether the agent of the thread that owns `tab` is driving the browser right now.
+fn tab_agent_active(state: &Value, tab: &str) -> bool {
+    let owner = state["tabs"].as_array().and_then(|tabs| tabs.iter().find(|t| t["id"] == tab)).map(tab_owner).unwrap_or("");
+    state["agentActiveOwners"].as_array().is_some_and(|owners| owners.iter().any(|o| o == owner))
+}
+/// Move one owner's tabs, active tab and agent state to another (a draft becoming a thread).
+fn adopt(s: &mut Value, from: &str, to: &str) {
+    if from == to { return; }
+    for tab in s["tabs"].as_array_mut().into_iter().flatten() {
+        if tab_owner(tab) == from { tab["owner"] = json!(to); }
+    }
+    let moved = s["activeByOwner"].as_object_mut().and_then(|map| map.remove(from));
+    if let Some(id) = moved {
+        if active_in(s, to).is_empty() { s["activeByOwner"][to] = id; }
+    }
+    if s["agentActiveOwners"].as_array().is_some_and(|owners| owners.iter().any(|o| o == from)) {
+        set_agent_active(s, from, false);
+        set_agent_active(s, to, true);
+    }
+    if s["scope"] == from { s["scope"] = json!(to); }
+    sync_active(s);
+}
+fn empty_state(scope: &str, native: bool) -> Value {
+    let mut state = json!({"tabs":[],"active":"","agent":false,"activeByOwner":{},"agentActiveOwners":[],"scope":scope});
+    if native { state["backend"] = json!("native"); }
+    state
+}
 fn update(state: &watch::Sender<Value>, id: &str, values: Value) {
     update_if(state, id, values, || true);
 }
@@ -1411,6 +1517,89 @@ mod tests {
             assert_eq!(state.borrow()["tabs"][0]["favicon"], "new.ico");
             assert_eq!(state.borrow()["tabs"][0]["ready"], true);
         }
+    }
+    fn two_owner_state() -> Value {
+        json!({"scope":"a","active":"a2","agent":false,"activeByOwner":{"a":"a2","b":"b1"},"agentActiveOwners":[],
+            "tabs":[{"id":"a1","owner":"a"},{"id":"a2","owner":"a"},{"id":"b1","owner":"b"},{"id":"shared","owner":""}]})
+    }
+    #[test]
+    fn owners_keep_their_own_active_tab_and_lists() {
+        let mut state = two_owner_state();
+        assert_eq!((active_in(&state, "a"), active_in(&state, "b"), active_in(&state, "c")), ("a2".into(), "b1".into(), "".into()));
+        // Changing one owner's tab leaves the other's alone, and `active` follows only the viewed scope.
+        set_active(&mut state, "b", Some("b1"));
+        set_active(&mut state, "a", Some("a1"));
+        assert_eq!((active_in(&state, "a"), active_in(&state, "b"), state["active"].clone()), ("a1".into(), "b1".into(), json!("a1")));
+        set_active(&mut state, "b", None);
+        assert_eq!((active_in(&state, "b"), state["active"].clone()), ("".into(), json!("a1")));
+        let ids = |list: Value| list.as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let list = tabs_list(&state, "a");
+        assert_eq!(ids(list.clone()), ["a1", "a2"]);
+        assert_eq!((list[0]["active"].clone(), list[1]["active"].clone()), (json!(true), json!(false)));
+        assert_eq!(ids(tabs_list(&state, "b")), ["b1"]);
+        assert_eq!(ids(tabs_list(&state, "")), ["shared"]);
+        assert!(tabs_list(&state, "nobody").as_array().unwrap().is_empty());
+        // Indexes count within the owner's tabs: index 0 of b is b1, not a1.
+        assert_eq!((tab_at(&state, "b", 0), tab_at(&state, "a", 1), tab_at(&state, "b", 1)), (Some("b1".into()), Some("a2".into()), None));
+    }
+    #[test]
+    fn scope_switches_the_published_active_tab_and_agent_state() {
+        let mut state = two_owner_state();
+        set_agent_active(&mut state, "b", true);
+        assert_eq!((state["active"].clone(), state["agent"].clone()), (json!("a2"), json!(false)));
+        state["scope"] = json!("b");
+        sync_active(&mut state);
+        assert_eq!((state["active"].clone(), state["agent"].clone()), (json!("b1"), json!(true)));
+        state["scope"] = json!("empty");
+        sync_active(&mut state);
+        assert_eq!((state["active"].clone(), state["agent"].clone()), (json!(""), json!(false)));
+        // Another thread's agent finishing does not clear this one's.
+        set_agent_active(&mut state, "a", true);
+        set_agent_active(&mut state, "a", false);
+        assert_eq!(state["agentActiveOwners"], json!(["b"]));
+    }
+    #[test]
+    fn adopt_moves_a_drafts_tabs_active_tab_and_scope() {
+        let mut state = json!({"scope":"","active":"d2","agent":false,"agentActiveOwners":[],"activeByOwner":{"":"d2","other":"o1"},
+            "tabs":[{"id":"d1"},{"id":"d2","owner":""},{"id":"o1","owner":"other"}]});
+        adopt(&mut state, "", "thread");
+        assert_eq!(state["scope"], "thread");
+        assert_eq!(state["active"], "d2");
+        assert_eq!(state["activeByOwner"], json!({"thread":"d2","other":"o1"}));
+        assert_eq!((owned_tabs(&state, "thread").len(), owned_tabs(&state, "").len(), owned_tabs(&state, "other").len()), (2, 0, 1));
+        // An existing active tab of the target wins; adopting onto itself changes nothing.
+        let before = state.clone();
+        adopt(&mut state, "thread", "thread");
+        assert_eq!(state, before);
+        adopt(&mut state, "other", "thread");
+        assert_eq!(state["activeByOwner"], json!({"thread":"d2"}));
+        assert_eq!(owned_tabs(&state, "thread").len(), 3);
+    }
+    #[test]
+    fn password_pause_only_blocks_the_owner_of_the_paused_tab_by_index() {
+        let state = json!({"scope":"a","active":"a1","activeByOwner":{"a":"a1","b":"b1"},
+            "tabs":[{"id":"a1","owner":"a","credentialsPaused":true},{"id":"b1","owner":"b"},{"id":"b2","owner":"b","credentialsPaused":true}]});
+        let call = |owner: &str, p: Value| password_gate(&state, &{ let mut p = p; p["owner"] = json!(owner); p }, true);
+        assert!(call("a", json!({"action":"script"})).is_err());
+        assert!(call("b", json!({"action":"script"})).is_ok());
+        // Index 0 for b is b1 (fine); index 1 is b2 (paused). For a, index 0 is the paused a1.
+        assert!(call("b", json!({"action":"tabs","params":{"action":"select","index":0}})).is_ok());
+        assert!(call("b", json!({"action":"tabs","params":{"action":"select","index":1}})).is_err());
+        assert!(call("a", json!({"action":"tabs","params":{"action":"select","index":0}})).is_err());
+    }
+    #[test]
+    fn a_capture_is_an_agent_login_only_when_its_own_threads_agent_is_active() {
+        let mut state = two_owner_state();
+        set_agent_active(&mut state, "b", true);
+        assert!(tab_agent_active(&state, "b1"));
+        assert!(!tab_agent_active(&state, "a1"));
+        assert!(!tab_agent_active(&state, "shared"));
+    }
+    #[tokio::test]
+    async fn agent_owner_is_task_local() {
+        assert_eq!(super::super::backend::agent_owner(), "");
+        let seen = super::super::backend::OWNER.scope("thread".into(), async { tokio::task::yield_now().await; super::super::backend::agent_owner() }).await;
+        assert_eq!(seen, "thread");
     }
     #[tokio::test]
     async fn settle_reports_new_popups_before_command_return_or_during_settle() {
@@ -1760,9 +1949,11 @@ fn close_view(view: Webview) -> Result<(), String> {
 fn password_gate(state: &Value, p: &Value, agent: bool) -> Result<(), String> {
     super::passwords::reject_action(p)?;
     let action = p["action"].as_str().unwrap_or("");
-    let active = state["active"].as_str().unwrap_or("").to_string();
+    // An agent only reaches its own thread's tabs, so the target is looked up among them.
+    let owner = p["owner"].as_str().unwrap_or("");
+    let active = active_in(state, owner);
     let target = if p["action"] == "tabs" {
-        p["params"]["index"].as_u64().and_then(|i| state["tabs"][i as usize]["id"].as_str().map(str::to_owned))
+        p["params"]["index"].as_u64().and_then(|i| owned_tabs(state, owner).get(i as usize).and_then(|t| t["id"].as_str().map(str::to_owned)))
     } else if matches!(action, "close" | "activate") { p["id"].as_str().map(str::to_owned) } else { None }.unwrap_or(active);
     let always = matches!(action, "script" | "evaluate" | "console" | "dialog" | "screenshot" | "wait");
     let agent_action = agent && !matches!(action, "poll" | "ensure" | "activity" | "detach" | "bounds" | "resize" | "attach");
@@ -1781,7 +1972,11 @@ fn offer_capture(settings_path: &std::path::PathBuf, pending: &Arc<Mutex<Option<
     nucode_diag_mcp::writer::remember_secret(password);
     if !settings.offer_to_save_passwords || settings.private_browsing { return Ok(()); }
     // A login the agent typed (test credentials for the app it is building) is not the user's to save.
-    if state.borrow()["agent"] == true { return Ok(()); }
+    let agent = match captured["tab"].as_str() {
+        Some(tab) => tab_agent_active(&state.borrow(), tab),
+        None => state.borrow()["agent"] == true,
+    };
+    if agent { return Ok(()); }
     let site = origin(captured["origin"].as_str().ok_or("Invalid login origin")?)?;
     let username = captured["username"].as_str().ok_or("Invalid login username")?;
     if password.is_empty() || password.len() > 65536 || username.len() > 4096 { return Ok(()); }
