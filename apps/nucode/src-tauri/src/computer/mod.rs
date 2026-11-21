@@ -247,12 +247,17 @@ impl Computer {
                         })
                         .cloned()
                         .collect();
+                    if let Some(missing) = missing_permissions(&permissions()) {
+                        return Err(missing);
+                    }
                     let background = settings.computer.mode == "background";
                     let frame = tokio::task::spawn_blocking(move || {
                         if background {
-                            background::screenshot(
-                                allowed.first().ok_or("Select an allowed target app")?,
-                            )
+                            // Background mode captures one app's window: the first allowed app.
+                            let target = allowed.first().ok_or("Select an allowed target app")?;
+                            background::screenshot(target).map_err(|e| if e == "Target app is not running" {
+                                format!("In background mode the screenshot shows the first allowed app, {target}, which is not running. Use computer_run_task with the app named to see another app.")
+                            } else { e })
                         } else {
                             native::capture(&allowed)
                         }
@@ -300,8 +305,8 @@ impl Computer {
                 .try_lock()
                 .map_err(|_| "A computer run is already active")?;
             let settings = self.enabled()?;
-            if permissions()["screen"] != true || permissions()["accessibility"] != true {
-                return Err("Grant Screen Recording and Accessibility in System Settings".into());
+            if let Some(missing) = missing_permissions(&permissions()) {
+                return Err(missing);
             }
             let instruction = p["instruction"]
                 .as_str()
@@ -522,6 +527,15 @@ pub fn permissions() -> Value {
     {
         json!({"screen":false,"accessibility":false,"unsupported":true})
     }
+}
+/// What macOS still withholds from this copy of nucode, as a message the user can act on.
+fn missing_permissions(p: &Value) -> Option<String> {
+    let missing: Vec<&str> = [("screen", "Screen Recording"), ("accessibility", "Accessibility")]
+        .into_iter().filter(|(key, _)| p[*key] != true).map(|(_, name)| name).collect();
+    if missing.is_empty() { return None; }
+    // A rebuilt or moved copy can keep its name in System Settings while macOS ties the old
+    // entry to the earlier copy, so a switch that looks on still refuses this one.
+    Some(format!("macOS has not given this copy of nucode {} permission. If System Settings > Privacy & Security already shows nucode as allowed, that entry belongs to an earlier copy: remove it with the − button, allow nucode again, then quit and reopen nucode.", missing.join(" or ")))
 }
 #[cfg(any(target_os = "macos", test))]
 trait PermissionRequests {
