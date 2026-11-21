@@ -1058,7 +1058,12 @@ impl PiEngine {
             let p = s.process.clone();
             drop(sessions);
             let mut history = if let Some(p) = p.filter(|p| p.alive.load(Ordering::SeqCst)) {
-                let messages = p.request(json!({"type":"get_messages"})).await?;
+                let mut messages = p.request(json!({"type":"get_messages"})).await?;
+                // Live frames and saved history get their image blob references hydrated; this reload must too, or
+                // a reopened thread shows each screenshot as a broken image.
+                if let Some(directory) = &p.blobs {
+                    for message in messages["messages"].as_array_mut().into_iter().flatten() { images::restore(message, directory); }
+                }
                 let t = p.translator.lock().await;
                 let fresh = Translator::history(
                     id,
