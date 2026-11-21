@@ -16,6 +16,23 @@ import {
 } from "./threadItems";
 
 describe("threadItems", () => {
+  it("keeps unchanged items the same object when one item streams, so memoized rows skip rendering", () => {
+    const items: ConversationItem[] = [
+      { id: "u", kind: "message", role: "user", text: "Build it" },
+      ...Array.from({ length: 14 }, (_, i): ConversationItem => ({ id: `t${i}`, kind: "tool", toolType: "mcpToolCall", title: "Tool: x / y", detail: "{}", status: "completed", output: "out ".repeat(5000) })),
+      { id: "c", kind: "tool", toolType: "commandExecution", title: "Command: rg foo src", detail: "", status: "completed", output: "" },
+      { id: "a", kind: "message", role: "assistant", text: "Working" },
+    ];
+    const first = prepareThreadItems(items);
+    const next = [...first];
+    const last = next.length - 1;
+    next[last] = { ...(next[last] as Extract<ConversationItem, { kind: "message" }>), text: "Working on it" };
+    const second = prepareThreadItems(next);
+    expect(second).toHaveLength(first.length);
+    second.slice(0, -1).forEach((item, index) => expect(item).toBe(first[index]));
+    expect(second[last]).not.toBe(first[last]);
+    expect((second[last] as Extract<ConversationItem, { kind: "message" }>).text).toBe("Working on it");
+  });
   it("draws only real image data as a tool thumbnail and names an unresolved one", () => {
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0uoAAAAASUVORK5CYII=";
     const tool = (data: string) => buildConversationItem({ type: "mcpToolCall", id: "shot", server: "nucode_browser", tool: "browser_take_screenshot", arguments: {}, status: "completed", result: { content: [{ type: "image", mimeType: "image/png", data }, { type: "text", text: "Saved" }] } }) as Extract<ConversationItem, { kind: "tool" }>;

@@ -1,7 +1,6 @@
 import { DigitalRain } from "@/features/themes/DigitalRain";
 import { useFeatures } from "@settings/features";
 import { useCheckpointWarnings } from "@/features/checkpoints/useCheckpointWarnings";
-import { RewindAction } from "@/features/checkpoints/Checkpoints";
 import { memo, useCallback } from "react";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import ListTree from "lucide-react/dist/esm/icons/list-tree";
@@ -72,6 +71,18 @@ type MessagesProps = {
   onChangeModel?: () => void;
 };
 
+// One object per distinct value, so MessageRow's memo sees the same rewind props between renders.
+const rewindCache = new Map<string, { workspaceId: string; threadId: string; running: boolean; warning?: string }>();
+function rewindProps(workspaceId: string, threadId: string, running: boolean, warning?: string) {
+  const key = JSON.stringify([workspaceId, threadId, running, warning ?? null]);
+  let value = rewindCache.get(key);
+  if (!value) {
+    if (rewindCache.size > 64) rewindCache.clear();
+    value = { workspaceId, threadId, running, ...(warning ? { warning } : {}) };
+    rewindCache.set(key, value);
+  }
+  return value;
+}
 export const Messages = memo(function Messages({
   items,
   threadId,
@@ -208,7 +219,7 @@ export const Messages = memo(function Messages({
           item={item}
           isCopied={isCopied}
           diagnosticThreadId={threadId}
-          rewindAction={features.checkpoints && item.role === "user" && workspaceId && threadId ? <><RewindAction workspaceId={workspaceId} threadId={threadId} userItemId={item.id} running={isThinking} />{checkpointWarnings[item.id] && <span role="status">{checkpointWarnings[item.id]}</span>}</> : undefined}
+          rewind={features.checkpoints && item.role === "user" && workspaceId && threadId ? rewindProps(workspaceId, threadId, isThinking, checkpointWarnings[item.id]) : undefined}
           onSideChat={onSideChat}
           sideChatDisabledReason={sideChatDisabledReason}
           onSendToMain={onSendToMain}
