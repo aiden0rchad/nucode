@@ -66,6 +66,7 @@ define_class!(
         #[unsafe(method(webView:didCommitNavigation:))]
         fn committed(&self, view: &WKWebView, navigation: Option<&WKNavigation>) {
             self.ivars().deferred.take();
+            unsafe { super::macos::keep_view_scale(view) };
             self.pass_on(sel!(webView:didCommitNavigation:), view, navigation);
         }
         /// Wry reports a finish with whatever URL the view shows now. When an older load (the blank page a new
