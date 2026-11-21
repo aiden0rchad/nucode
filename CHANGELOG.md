@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **One browser per thread:** the in-app browser kept one set of pages for every thread, so opening another thread's browser pane showed what the first thread's agent was doing, with its "Agent is using the browser" banner. Each thread now has its own pages: its agent sees and drives only those, and its pane, banner and Take over button show only that thread. Sign-ins are still shared, as in one browser with several windows. Codex and Claude threads still share one set of pages.
 - **Access for threads started from a project page:** such a thread could run read-only while its composer showed Full access, so every command was refused. It now runs with the mode it shows. Choosing Ask first on a read-only thread now takes effect, and a refused command tells the agent why (read-only thread, read-only role, or a protected path) instead of listing all three.
 - **Project page while a thread starts:** sending a prompt from a project's page no longer shows "Review in progress. Chat will re-enable when it completes." in the composer while the thread starts; it says "Starting the thread…".
 - **Key presses inside frames:** when focus was inside a frame on the page, an agent's key press went to the frame's outer box and the page inside never saw it, so arrow-key checks of a map or list in a frame did nothing. Keys now go to the focused element inside the frame, as a real keyboard sends them.
