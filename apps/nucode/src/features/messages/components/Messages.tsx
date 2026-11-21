@@ -226,6 +226,7 @@ export const Messages = memo(function Messages({
           onCopy={handleCopyMessage}
           onQuote={onQuoteMessage ? handleQuoteMessage : undefined}
           codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+          isStreaming={isThinking && item === latestItem && item.role === "assistant"}
           showMessageFilePath={showMessageFilePath}
           workspacePath={workspacePath}
           onOpenFileLink={openFileLink}

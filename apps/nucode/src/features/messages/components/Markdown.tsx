@@ -1,6 +1,8 @@
 import { Copy, Check } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode, type MouseEvent } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import type { Root } from "mdast";
+import type { Plugin, PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -14,6 +16,8 @@ import {
   toFileLink,
 } from "../utils/messageFileLinks";
 import type { ParsedFileLocation } from "../../../utils/fileLinks";
+import { createIncrementalMarkdownPlugin } from "../utils/markdownIncremental";
+import { splitMarkdownBlocks } from "../utils/markdownStreamBlocks";
 import { highlightLine, languageFromTag } from "../../../utils/syntax";
 
 type MarkdownProps = {
@@ -27,6 +31,8 @@ type MarkdownProps = {
   onOpenFileLink?: (path: ParsedFileLocation) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: ParsedFileLocation) => void;
   onOpenThreadLink?: (threadId: string) => void;
+  /** Render in blocks with an incremental parse so only the growing tail re-renders. */
+  isStreaming?: boolean;
 };
 
 type CodeBlockProps = {
@@ -432,6 +438,14 @@ function PreBlock({ node, children, copyUseModifier }: PreProps) {
   );
 }
 
+// A finished block only re-renders when its text or the render settings change; callbacks are not compared.
+const MarkdownBlock = memo(
+  function MarkdownBlock({ text, render }: { text: string; settings: string; render: (text: string) => ReactNode }) {
+    return <>{render(text)}</>;
+  },
+  (prev, next) => prev.text === next.text && prev.settings === next.settings,
+);
+
 export function Markdown({
   value,
   className,
@@ -443,7 +457,9 @@ export function Markdown({
   onOpenFileLink,
   onOpenFileLinkMenu,
   onOpenThreadLink,
+  isStreaming = false,
 }: MarkdownProps) {
+  const incrementalRef = useRef<Plugin<[], Root> | null>(null);
   const normalizedValue = codeBlock
     ? value
     : normalizeStructuredReviewTables(normalizeListIndentation(value));
@@ -613,38 +629,55 @@ export function Markdown({
     );
   }
 
+  const renderMarkdown = (text: string, plugins: PluggableList) => (
+    <ReactMarkdown
+      remarkPlugins={plugins}
+      urlTransform={(url) => {
+        const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
+        // Keep file-like hrefs intact before scheme sanitization runs, otherwise
+        // Windows absolute paths such as C:/repo/file.ts look like unknown schemes.
+        if (resolveHrefFilePath(url)) {
+          return url;
+        }
+        if (
+          isFileLinkUrl(url) ||
+          url.startsWith("http://") ||
+          url.startsWith("https://") ||
+          url.startsWith("mailto:") ||
+          url.startsWith("#") ||
+          url.startsWith("/") ||
+          url.startsWith("./") ||
+          url.startsWith("../")
+        ) {
+          return url;
+        }
+        if (!hasScheme) {
+          return url;
+        }
+        return "";
+      }}
+      components={components}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+  const blocks = isStreaming && !codeBlock ? splitMarkdownBlocks(content) : null;
+  const useIncremental = isStreaming && !blocks;
+  if (useIncremental) incrementalRef.current ??= createIncrementalMarkdownPlugin();
+  const remarkPlugins: PluggableList = useIncremental && incrementalRef.current
+    ? [remarkGfm, remarkFileLinks, incrementalRef.current]
+    : [remarkGfm, remarkFileLinks];
+  const settings = [codeBlockStyle, codeBlockCopyUseModifier, showFilePath, workspacePath].join("\0");
+
   return (
     <div className={className}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkFileLinks]}
-        urlTransform={(url) => {
-          const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
-          // Keep file-like hrefs intact before scheme sanitization runs, otherwise
-          // Windows absolute paths such as C:/repo/file.ts look like unknown schemes.
-          if (resolveHrefFilePath(url)) {
-            return url;
-          }
-          if (
-            isFileLinkUrl(url) ||
-            url.startsWith("http://") ||
-            url.startsWith("https://") ||
-            url.startsWith("mailto:") ||
-            url.startsWith("#") ||
-            url.startsWith("/") ||
-            url.startsWith("./") ||
-            url.startsWith("../")
-          ) {
-            return url;
-          }
-          if (!hasScheme) {
-            return url;
-          }
-          return "";
-        }}
-        components={components}
-      >
-        {content}
-      </ReactMarkdown>
+      {blocks ? (
+        blocks.map((block, index) => (
+          <MarkdownBlock key={index} text={block} settings={settings} render={(text) => renderMarkdown(text, [remarkGfm, remarkFileLinks])} />
+        ))
+      ) : (
+        renderMarkdown(content, remarkPlugins)
+      )}
     </div>
   );
 }

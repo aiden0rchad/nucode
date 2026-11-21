@@ -4,6 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectOpenedFileTarget } from "../test/fileLinkAssertions";
 import { Markdown } from "./Markdown";
 
+const parsed = vi.hoisted(() => ({ texts: [] as string[] }));
+vi.mock("react-markdown", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-markdown")>();
+  return {
+    ...actual,
+    default: (props: React.ComponentProps<typeof actual.default>) => {
+      parsed.texts.push(String(props.children));
+      return actual.default(props);
+    },
+  };
+});
+
 describe("Markdown file-like href behavior", () => {
   afterEach(() => {
     cleanup();
@@ -557,4 +569,33 @@ describe("Markdown file-like href behavior", () => {
     expect(screen.getByText("Ready")).toBeTruthy();
   });
 
+});
+
+describe("Markdown streaming", () => {
+  const text = "# Title\n\nIntro with [file](./a.ts) and `src/b.ts`.\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\n- one\n- two\n\nlast para";
+  const html = (isStreaming: boolean, value: string) => {
+    const { container } = render(<Markdown value={value} className="markdown" isStreaming={isStreaming} />);
+    const out = container.innerHTML.replace(/>\s+</g, "><");
+    cleanup();
+    return out;
+  };
+
+  it("renders streamed prefixes like the non-streaming render", () => {
+    for (let end = 0; end <= text.length; end++) {
+      const prefix = text.slice(0, end);
+      expect(html(true, prefix), `prefix ${end}`).toBe(html(false, prefix));
+    }
+  });
+
+  it("re-parses only the growing tail block while streaming", () => {
+    const { rerender } = render(<Markdown value={"first\n\nsecond"} isStreaming />);
+    parsed.texts.length = 0;
+    rerender(<Markdown value={"first\n\nsecond more"} isStreaming />);
+    expect(parsed.texts).toEqual(["second more"]);
+  });
+
+  it("falls back to whole-text rendering when the text cannot be split", () => {
+    const value = "para\n\n[ref]: /x\n\n[link][ref]";
+    expect(html(true, value)).toBe(html(false, value));
+  });
 });
