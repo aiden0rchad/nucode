@@ -119,6 +119,9 @@ it("resolves unique CSS selectors and rejects ambiguous selectors and stale refs
   document.body.insertAdjacentHTML("beforeend", "<button>Other</button>");
   expect(bridge({ op: "click", ref: "button" }).error).toContain("matched 2");
   expect(bridge({ op: "click", ref: "e999" }).error).toContain("Stale");
+  expect(bridge({ op: "click", ref: "text=Save" }).error).toContain("Playwright selectors");
+  expect(bridge({ op: "click", ref: ".x, main button:has-text('Save')" }).error).toContain("Playwright selectors");
+  expect(bridge({ op: "click", ref: "button[" }).error).toContain("Invalid CSS selector");
   expect(bridge({ op: "type", ref: "#name", text: "Fern" }).error).toBeUndefined();
   expect(document.querySelector<HTMLInputElement>("#name")!.value).toBe("Fern");
 });

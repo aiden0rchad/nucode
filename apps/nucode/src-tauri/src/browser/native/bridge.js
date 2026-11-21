@@ -102,7 +102,11 @@
     let el = nodes.get(ref);
     if (!el && !/^e\d+$/.test(ref)) {
       let matches;
-      try { matches = document.querySelectorAll(ref); } catch { throw new Error("Invalid selector; use a snapshot ref or unique CSS selector"); }
+      try { matches = document.querySelectorAll(ref); } catch {
+        // Agents used to Playwright reach for text= and :has-text(); say why those fail instead of a bare "invalid".
+        if (/(^|\s|,)(text|role|css|xpath|id|data-testid)=|:(has-)?text\(|>>|^internal:/.test(ref)) throw new Error("Playwright selectors such as text= and :has-text() are not supported; use a ref from browser_snapshot or a plain CSS selector");
+        throw new Error("Invalid CSS selector; use a ref from browser_snapshot or a unique CSS selector");
+      }
       if (matches.length !== 1) throw new Error(`Target selector matched ${matches.length} elements; expected one`);
       el = matches[0];
     }
