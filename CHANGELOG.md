@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **browser_resize that changed nothing:** when the browser pane wasn't showing the agent's page (pane closed, or open on another thread), browser_resize reported the page "scaled down" to the requested width while the page kept laying out 800 px wide, so desktop checks saw the narrow layout. The agent's page now takes the requested width wherever it is, pages opened afterwards start at it, and browser_resize reports an error if the page still doesn't lay out at that width instead of claiming success.
 - **Access for threads started from a project page:** such a thread could run read-only while its composer showed Full access, so every command was refused. It now runs with the mode it shows. Choosing Ask first on a read-only thread now takes effect, and a refused command tells the agent why (read-only thread, read-only role, or a protected path) instead of listing all three.
 - **Project page while a thread starts:** sending a prompt from a project's page no longer shows "Review in progress. Chat will re-enable when it completes." in the composer while the thread starts; it says "Starting the thread…".
 - **Key presses inside frames:** when focus was inside a frame on the page, an agent's key press went to the frame's outer box and the page inside never saw it, so arrow-key checks of a map or list in a frame did nothing. Keys now go to the focused element inside the frame, as a real keyboard sends them.

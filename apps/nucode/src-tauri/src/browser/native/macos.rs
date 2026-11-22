@@ -182,6 +182,12 @@ pub async fn script(view: &Webview, params: Value) -> Result<Value, String> {
     }
 }
 
+/// The width the page lays out at, in CSS pixels (`innerWidth`), read from nucode's isolated world.
+pub(super) async fn layout_width(view: &Webview) -> Result<f64, String> {
+    evaluate(view, "JSON.stringify(window.innerWidth)".into(), false).await?
+        .as_f64().ok_or_else(|| "Cannot read the page width".into())
+}
+
 pub async fn evaluate_page(view: &Webview, params: Value, url: &str) -> Result<Value, String> {
     let function = params["function"]
         .as_str()

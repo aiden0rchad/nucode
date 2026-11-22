@@ -80,6 +80,17 @@ pub struct Rect {
 /// Smallest and largest viewport an agent may ask for, in CSS pixels.
 pub const VIEWPORT_WIDTH: (f64, f64) = (240., 3840.);
 pub const VIEWPORT_HEIGHT: (f64, f64) = (240., 2160.);
+/// Size of a page the pane isn't showing, parked offscreen, when no agent viewport is set.
+pub const PARKED_SIZE: (f64, f64) = (800., 600.);
+/// The size a parked page gets, in CSS pixels: it lays out at its view's size, so an agent's viewport is the size
+/// itself (with the pane's height, if the page has a pane, when no height was asked for). Without one the page
+/// takes its pane's size, or the default.
+pub fn parked_size(viewport: Option<(f64, Option<f64>)>, pane: Option<Rect>) -> (f64, f64) {
+    match viewport {
+        Some((width, height)) => (width, height.or(pane.map(|p| p.h)).unwrap_or(PARKED_SIZE.1)),
+        None => pane.map_or(PARKED_SIZE, |p| (p.w, p.h)),
+    }
+}
 /// Lays an agent's requested viewport out inside the pane, in the pane's points. A narrower viewport keeps full size
 /// and is centred; a wider one is scaled down with page zoom, so the page still lays out at the requested width and
 /// the user sees all of it. Returns the view's bounds and the page zoom to apply.
@@ -324,6 +335,17 @@ mod viewport_tests {
         assert_eq!(rect.h, 600., "a taller viewport than the pane keeps the pane height");
         let (rect, _) = fit_viewport(PANE, 390., Some(400.));
         assert_eq!(rect.h, 400.);
+    }
+    #[test]
+    fn a_parked_page_takes_the_agents_viewport_as_its_size() {
+        // A wide viewport is not scaled down offscreen: the page's own size is what it lays out at.
+        assert_eq!(parked_size(Some((1440., Some(900.))), Some(PANE)), (1440., 900.));
+        assert_eq!(parked_size(Some((1440., None)), Some(PANE)), (1440., 600.), "no height: the pane's");
+        assert_eq!(parked_size(Some((390., None)), None), (390., PARKED_SIZE.1), "no pane: the default height");
+        // Clearing the viewport returns the page to its pane's size, or the default.
+        assert_eq!(parked_size(None, Some(PANE)), (800., 600.));
+        assert_eq!(parked_size(None, Some(Rect { x: 0., y: 0., w: 462., h: 700. })), (462., 700.));
+        assert_eq!(parked_size(None, None), PARKED_SIZE);
     }
     #[test]
     fn a_wider_viewport_is_scaled_to_fit_and_still_lays_out_at_its_width() {
