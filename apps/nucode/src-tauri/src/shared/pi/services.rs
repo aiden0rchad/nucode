@@ -103,6 +103,15 @@ fn fingerprint(report: &Value) -> Option<Fingerprint> {
     entries.sort();
     Some(entries)
 }
+/// Every service in the report is up and its process still runs. Starting, stopping or adding a service writes its
+/// metadata, which the fingerprint catches; a process that died without that write is what the TTL is for.
+fn steady(report: &Value) -> bool {
+    project(report).and_then(|scope| scope["daemons"].as_array()).into_iter().flatten().all(|d| terminal(d)
+        || (matches!(d["state"].as_str(), Some("running" | "ready"))
+            && d["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok()).is_some_and(super::process::pid_alive)))
+}
+/// How long a steady report is reused before the CLI is asked again anyway.
+const STEADY_TTL: Duration = Duration::from_secs(300);
 struct Cached { report: Value, at: Instant, fingerprint: Option<Fingerprint> }
 #[derive(Default)]
 pub(super) struct Services { cache: Mutex<HashMap<(String, String), Cached>> }
@@ -141,7 +150,8 @@ impl Services {
             if let Some(cached) = cache.get(&key) {
                 let current = fingerprint(&cached.report);
                 if project(&cached.report).is_some() && current.as_ref().is_none_or(Vec::is_empty) { return Ok(json!([])); }
-                if cached.at.elapsed() < ttl && current == cached.fingerprint { return Ok(cached.report.clone()); }
+                let fresh_enough = cached.at.elapsed() < ttl || (cached.at.elapsed() < STEADY_TTL && steady(&cached.report));
+                if fresh_enough && current == cached.fingerprint { return Ok(cached.report.clone()); }
             }
         }
         let report = runner.run(&["ps", "--json", "--dir", cwd]).await?;
@@ -200,8 +210,9 @@ mod tests {
             })
         }
     }
+    // The pid is out of range for any process, so the fixture's service never counts as still running.
     fn daemon(state: &str) -> Value {
-        json!({"name":"preview", "id":"service", "owner":"thread", "state":state, "pid":69586,
+        json!({"name":"preview", "id":"service", "owner":"thread", "state":state, "pid":4_000_000_000u32,
             "createdAt":1793407978300i64, "startedAt":1793407978300i64, "exitedAt":1793408601983i64,
             "exitCode":1, "supervised":true, "cwd":"/project",
             "command":"/bin/bash -l -c '/x/bun/bin/bun.exe' '/x/agent/ws/extensions/lib/commandGuard.ts' '85089' '/bin/bash' 'node server.mjs'"})
@@ -292,18 +303,37 @@ mod tests {
         let tasks = services.request(&fixture, "workspace", "thread", "/project", "list", None, None).await.unwrap();
         assert_eq!(tasks[0]["status"], "stopped");
         assert_eq!(fixture.count(), 2);
+        // Every service has exited: until a metadata write, the report holds past its TTL.
         services.report(&fixture, "workspace", "/project", false, Duration::ZERO).await.unwrap();
-        assert_eq!(fixture.count(), 3);
+        assert_eq!(fixture.count(), 2);
         std::fs::remove_dir_all(fixture.path.join("daemons/preview")).unwrap();
         assert!(services.request(&fixture, "workspace", "thread", "/project", "list", None, None).await.unwrap().is_empty());
         std::fs::remove_dir(fixture.path.join("daemons")).unwrap();
         assert!(services.request(&fixture, "workspace", "thread", "/project", "list", None, None).await.unwrap().is_empty());
-        assert_eq!(fixture.count(), 3);
+        assert_eq!(fixture.count(), 2);
         std::fs::create_dir_all(fixture.path.join("daemons/preview")).unwrap();
         std::fs::write(fixture.path.join("daemons/preview/meta.json"), "{}").unwrap();
         fixture.set("ready");
         assert_eq!(services.request(&fixture, "workspace", "thread", "/project", "list", None, None).await.unwrap()[0]["status"], "running");
-        assert_eq!(fixture.count(), 4);
+        assert_eq!(fixture.count(), 3);
+    }); }
+
+    #[test]
+    fn a_steady_report_is_reused_until_a_process_dies() { runtime().block_on(async {
+        let fixture = Fixture::new();
+        let services = Services::default();
+        fixture.report.lock().unwrap()[0]["daemons"][0]["pid"] = json!(std::process::id());
+        services.report(&fixture, "workspace", "/project", false, Duration::ZERO).await.unwrap();
+        services.report(&fixture, "workspace", "/project", false, Duration::ZERO).await.unwrap();
+        #[cfg(unix)]
+        assert_eq!(fixture.count(), 1, "the service's process still runs, so the CLI is not asked again");
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let dead = child.id();
+        child.wait().unwrap();
+        services.cache.lock().await.values_mut().for_each(|cached| cached.report[0]["daemons"][0]["pid"] = json!(dead));
+        services.report(&fixture, "workspace", "/project", false, Duration::ZERO).await.unwrap();
+        #[cfg(unix)]
+        assert_eq!(fixture.count(), 2);
     }); }
 
     #[test]

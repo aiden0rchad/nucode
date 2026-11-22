@@ -76,6 +76,8 @@ impl Drop for StartingProcess {
         }
     }
 }
+/// A saved session's size, modification time and the provider registry it was listed under.
+type ListedKey = (u64, Option<std::time::SystemTime>, String);
 pub(crate) struct PiEngine {
     pub(super) data: Option<PathBuf>,
     profile: profile::EngineProfile,
@@ -85,6 +87,8 @@ pub(crate) struct PiEngine {
     pub read_only_folders: Mutex<HashMap<String, Vec<String>>>,
     pub paths: Mutex<HashMap<String, String>>,
     sessions: Mutex<HashMap<String, Session>>,
+    /// The listed thread of each saved session, kept until its file or the provider registry changes.
+    listed: std::sync::Mutex<HashMap<PathBuf, (ListedKey, Value)>>,
     /// One gate per thread: an engine start holds it while `sessions` is released.
     starting: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     services: services::Services,
@@ -127,6 +131,7 @@ impl Default for PiEngine {
             read_only_folders: Mutex::new(HashMap::new()),
             paths: Mutex::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
+            listed: Default::default(),
             starting: Mutex::new(HashMap::new()),
             services: services::Services::default(),
             registry: Mutex::new(HashMap::new()),
@@ -281,7 +286,7 @@ impl PiEngine {
             return Ok(vec![]);
         }
         let dir = self.directory(workspace)?;
-        let entries = match std::fs::read_dir(dir) {
+        let entries = match std::fs::read_dir(&dir) {
             Ok(v) => v,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
             Err(e) => return Err(e.to_string()),
@@ -294,8 +299,11 @@ impl PiEngine {
             .cloned()
             .unwrap_or_default()
             .0;
-        let mut sessions = self.sessions.lock().await;
-        let mut threads = vec![];
+        // Read the files before taking the sessions lock: a workspace's sessions can be hundreds of
+        // megabytes, and every other thread request waits on that lock. A file read before is reused
+        // until its size or modification time changes.
+        let providers = serde_json::to_string(&registry).unwrap_or_default();
+        let mut listed = vec![];
         for entry in entries {
             let entry = entry.map_err(|e| e.to_string())?;
             if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
@@ -305,49 +313,64 @@ impl PiEngine {
             if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
                 continue;
             }
-            match read_session(&path, &registry) {
-                Ok((mut thread, _)) => {
-                    thread["engine"] = json!(self.profile.id());
-                    let id = thread["id"]
-                        .as_str()
-                        .ok_or("Pi session missing ID")?
-                        .to_owned();
-                    thread["turns"] = json!([]);
-                    if let Some(s) = sessions.get_mut(&id) {
-                        if s.process
-                            .as_ref()
-                            .is_none_or(|p| !p.alive.load(Ordering::SeqCst))
-                        {
-                            s.thread = thread.clone();
-                        } else {
-                            for key in ["modelProvider", "model", "forkedFromId", "chatWeb"] {
-                                thread[key] = s.thread[key].clone();
-                            }
-                            if s.process
-                                .as_ref()
-                                .is_some_and(|p| p.running.load(Ordering::SeqCst))
-                            {
-                                thread["status"] = json!({"type":"active","activeFlags":[]});
-                            }
-                            s.thread = thread.clone();
-                            thread["turns"] = json!([]);
-                        }
-                    } else {
-                        sessions.insert(
-                            id,
-                            Session {
-                                workspace: workspace.into(),
-                                thread: thread.clone(),
-                                file: path,
-                                process: None,
-                                configuration: String::new(),
-                            },
-                        );
+            let Ok(metadata) = entry.metadata() else { continue };
+            let key = (metadata.len(), metadata.modified().ok(), providers.clone());
+            let cached = self.listed.lock().unwrap().get(&path).filter(|(k, _)| *k == key).map(|(_, t)| t.clone());
+            let thread = match cached {
+                Some(thread) => thread,
+                None => match read_session_entries(&path).and_then(|entries| session_thread(&path, &entries, &registry).map(|(thread, _)| thread)) {
+                    Ok(thread) => {
+                        self.listed.lock().unwrap().insert(path.clone(), (key, thread.clone()));
+                        thread
                     }
-                    threads.push(thread);
+                    Err(e) => {
+                        eprintln!("pi session {}: {e}", path.display());
+                        continue;
+                    }
+                },
+            };
+            listed.push((path, thread));
+        }
+        self.listed.lock().unwrap().retain(|path, _| !path.starts_with(&dir) || listed.iter().any(|(p, _)| p == path));
+        let mut sessions = self.sessions.lock().await;
+        let mut threads = vec![];
+        for (path, mut thread) in listed {
+            thread["engine"] = json!(self.profile.id());
+            let id = thread["id"]
+                .as_str()
+                .ok_or("Pi session missing ID")?
+                .to_owned();
+            if let Some(s) = sessions.get_mut(&id) {
+                if s.process
+                    .as_ref()
+                    .is_none_or(|p| !p.alive.load(Ordering::SeqCst))
+                {
+                    s.thread = thread.clone();
+                } else {
+                    for key in ["modelProvider", "model", "forkedFromId", "chatWeb"] {
+                        thread[key] = s.thread[key].clone();
+                    }
+                    if s.process
+                        .as_ref()
+                        .is_some_and(|p| p.running.load(Ordering::SeqCst))
+                    {
+                        thread["status"] = json!({"type":"active","activeFlags":[]});
+                    }
+                    s.thread = thread.clone();
                 }
-                Err(e) => eprintln!("pi session {}: {e}", path.display()),
+            } else {
+                sessions.insert(
+                    id,
+                    Session {
+                        workspace: workspace.into(),
+                        thread: thread.clone(),
+                        file: path,
+                        process: None,
+                        configuration: String::new(),
+                    },
+                );
             }
+            threads.push(thread);
         }
         threads.sort_by_key(|t| std::cmp::Reverse(t["updatedAt"].as_i64().unwrap_or(0)));
         Ok(threads)
@@ -1519,8 +1542,9 @@ fn blob_dir(file: &Path) -> Option<PathBuf> {
     Some(workspace.parent().and_then(Path::parent)?.join("agent").join(workspace.file_name()?).join("blobs"))
 }
 
-fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Translator), String> {
-    let entries = read_session_entries(file)?;
+/// The thread a saved session describes (names, model, preview, times) and the entries on its current branch,
+/// without building its history.
+fn session_thread<'a>(file: &Path, entries: &'a [Value], registry: &[ProviderEntry]) -> Result<(Value, Vec<&'a Value>), String> {
     let header = &entries[0];
     let id = header["id"].as_str().ok_or("Missing pi session ID")?;
     let cwd = header["cwd"].as_str().ok_or("Missing pi cwd")?;
@@ -1569,6 +1593,42 @@ fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Trans
         next = e["parentId"].as_str();
     }
     branch.reverse();
+    for entry in &branch {
+        match entry["type"].as_str() {
+            Some("message") if entry["message"]["role"] == "user" && thread["preview"] == "" => {
+                thread["preview"] = json!(translate::text(&entry["message"]["content"]));
+            }
+            Some("model_change") => {
+                // pi records the provider and the model apart; omp records one "provider/model" string, and
+                // also the models of its other roles, which are not the conversation's own.
+                let named = match entry["provider"].as_str() {
+                    Some(provider) => Some((provider, entry["modelId"].clone())),
+                    None if matches!(entry["role"].as_str(), None | Some("default")) => entry["model"].as_str()
+                        .and_then(|model| model.split_once('/'))
+                        .map(|(provider, model)| (provider, json!(model))),
+                    None => None,
+                };
+                if let Some((pi, model)) = named {
+                    thread["modelProvider"] = json!(registry
+                        .iter()
+                        .find(|p| config::provider_id(p, registry) == pi)
+                        .map(|p| p.id.as_str())
+                        .unwrap_or(pi));
+                    thread["model"] = model;
+                }
+            }
+            Some("session_info") => thread["name"] = entry["name"].clone(),
+            _ => (),
+        }
+    }
+    Ok((thread, branch))
+}
+
+fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Translator), String> {
+    let entries = read_session_entries(file)?;
+    let (mut thread, branch) = session_thread(file, &entries, registry)?;
+    let id = entries[0]["id"].as_str().ok_or("Missing pi session ID")?;
+    let cwd = entries[0]["cwd"].as_str().ok_or("Missing pi cwd")?;
     let finished_calls: std::collections::HashSet<_> = branch.iter().filter_map(|entry| {
         if entry["type"] == "message" && entry["message"]["role"] == "toolResult"
             && agents::results(&entry["message"]["details"]).is_some() {
@@ -1606,9 +1666,6 @@ fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Trans
                         }
                     }
                 }
-                if m["role"] == "user" && thread["preview"] == "" {
-                    thread["preview"] = json!(translate::text(&m["content"]));
-                }
                 messages.push(m.clone());
                 if m["role"] == "assistant" {
                     for call in m["content"].as_array().into_iter().flatten().filter(|p| p["type"] == "toolCall") {
@@ -1622,26 +1679,6 @@ fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Trans
                     }
                 }
             }
-            Some("model_change") => {
-                // pi records the provider and the model apart; omp records one "provider/model" string, and
-                // also the models of its other roles, which are not the conversation's own.
-                let named = match entry["provider"].as_str() {
-                    Some(provider) => Some((provider, entry["modelId"].clone())),
-                    None if matches!(entry["role"].as_str(), None | Some("default")) => entry["model"].as_str()
-                        .and_then(|model| model.split_once('/'))
-                        .map(|(provider, model)| (provider, json!(model))),
-                    None => None,
-                };
-                if let Some((pi, model)) = named {
-                    thread["modelProvider"] = json!(registry
-                        .iter()
-                        .find(|p| config::provider_id(p, registry) == pi)
-                        .map(|p| p.id.as_str())
-                        .unwrap_or(pi));
-                    thread["model"] = model;
-                }
-            }
-            Some("session_info") => thread["name"] = entry["name"].clone(),
             Some("compaction") => messages.push(json!({"role":"nucodeCompaction","result":entry})),
             Some("custom") if entry["customType"] == "nucode-subagent-result" => messages.push(json!({"role":"nucodeSubagentResult","toolCallId":entry["data"]["toolCallId"],"result":entry["data"]["result"]})),
             Some("custom") if entry["customType"] == "nucode-verification" => messages.push(json!({"role":"nucodeVerification","record":entry["data"]})),

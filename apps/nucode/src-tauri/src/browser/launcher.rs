@@ -152,6 +152,10 @@ async fn proxy(
     let client = super::web::client()?;
     let mut web_requests = FuturesUnordered::new();
     let mut web_cancellations: HashMap<String, AbortHandle> = HashMap::new();
+    // Native tool calls run side by side: one slow page must not hold back the calls behind it, whose MCP clock
+    // is already running.
+    let mut native_requests = FuturesUnordered::new();
+    let mut native_cancellations: HashMap<String, AbortHandle> = HashMap::new();
     let result = async {
         loop {
             tokio::select! {
@@ -163,6 +167,14 @@ async fn proxy(
                         emit(&json!({"jsonrpc":"2.0","id":id,"result":result}).to_string())?;
                     }
                 }
+                Some(completed) = native_requests.next() => {
+                    let completed: Result<(Value, Value), futures_util::future::Aborted> = completed;
+                    if let Ok((id, result)) = completed {
+                        native_cancellations.remove(&id.to_string());
+                        emit(&json!({"jsonrpc":"2.0","id":id,"result":result}).to_string())?;
+                    }
+                    if native_requests.is_empty() { activity.finish(); }
+                }
                 generation = &mut activity.idle => {
                     if generation == activity.generation { activity.set(false).await; }
                 }
@@ -172,7 +184,8 @@ async fn proxy(
                     if let Ok(v) = serde_json::from_str::<Value>(&line) {
                         if v["method"] == "initialize" { initialize = Some(v.clone()); }
                         if v["method"] == "notifications/cancelled" {
-                            if let Some(cancel) = web_cancellations.remove(&v["params"]["requestId"].to_string()) {
+                            if let Some(cancel) = web_cancellations.remove(&v["params"]["requestId"].to_string())
+                                .or_else(|| native_cancellations.remove(&v["params"]["requestId"].to_string())) {
                                 cancel.abort();
                                 continue;
                             }
@@ -202,10 +215,9 @@ async fn proxy(
                             };
                             if endpoint["native"] == true {
                                 activity.set(true).await;
-                                let result = browser.request(owned(&owner, json!({"action":"tool","name":v["params"]["name"],"arguments":v["params"]["arguments"]}))).await;
-                                activity.finish();
-                                let result = result.unwrap_or_else(|error|json!({"isError":true,"content":[{"type":"text","text":error}]}));
-                                emit(&json!({"jsonrpc":"2.0","id":v["id"],"result":result}).to_string())?;
+                                let (cancel, registration) = AbortHandle::new_pair();
+                                native_cancellations.insert(v["id"].to_string(), cancel);
+                                native_requests.push(Abortable::new(native_call(browser, &owner, v), registration));
                                 continue;
                             }
                             activity.set(false).await;
@@ -315,6 +327,16 @@ async fn web_call(client: reqwest::Client, settings: Result<Settings, String>, r
         Ok(text) => json!({"content":[{"type":"text","text":text}]}),
         Err(error) => json!({"isError":true,"content":[{"type":"text","text":error}]}),
     };
+    (request["id"].clone(), result)
+}
+
+/// A native tool call, answered before the MCP client's 30 s timeout even when the app does not reply in time.
+async fn native_call(browser: &Browser, owner: &str, request: Value) -> (Value, Value) {
+    let name = request["params"]["name"].as_str().unwrap_or("browser tool");
+    let call = browser.request(owned(owner, json!({"action":"tool","name":name,"arguments":request["params"]["arguments"]})));
+    let result = tokio::time::timeout(super::backend::TOOL_BUDGET + std::time::Duration::from_secs(3), call).await
+        .unwrap_or_else(|_| Err(super::backend::over_budget(name)));
+    let result = result.unwrap_or_else(|error| json!({"isError":true,"content":[{"type":"text","text":error}]}));
     (request["id"].clone(), result)
 }
 

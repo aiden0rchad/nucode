@@ -36,3 +36,16 @@ export function canonicalMcpName(servers: Connector[], tool: string): string | u
   const prefix = `mcp__${server.id.replace(/-/g, "_")}_`;
   return prefix.slice(0, -1) + "__" + tool.slice(prefix.length);
 }
+
+/**
+ * The timeout, in seconds, for an eval cell that calls nucode's browser or computer tools without asking for one.
+ * OMP counts those calls against the cell's 30 s default, which a single browser call (answered within 28 s) nearly
+ * fills and a computer run exceeds, so the cell was stopped while the call inside it was still running.
+ */
+export function nucodeToolEvalTimeout(input: { code?: unknown; timeout?: unknown }): number | undefined {
+  if (input.timeout !== undefined && input.timeout !== null) return undefined;
+  const code = typeof input.code === "string" ? input.code : "";
+  if (code.includes("mcp__nucode_computer")) return 600;
+  if (code.includes("mcp__nucode_browser")) return 180;
+  return undefined;
+}

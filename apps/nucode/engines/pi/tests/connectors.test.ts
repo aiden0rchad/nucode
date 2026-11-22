@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canonicalMcpName, connectorDecision, connectorVerdict, type Connector } from "../extensions/lib/connectors.ts";
+import { canonicalMcpName, connectorDecision, connectorVerdict, nucodeToolEvalTimeout, type Connector } from "../extensions/lib/connectors.ts";
 
 test("browser read tools never ask; mutations ask unless the thread has full access", () => {
   const browser: Connector = {id:"nucode-browser",enabled:true,approval:"ask"};
@@ -71,4 +71,15 @@ test("omp connector tool names map back to the policy form", () => {
   assert.equal(canonicalMcpName(servers, "mcp__nucode_browser_browser_click"), "mcp__nucode_browser__browser_click");
   assert.equal(canonicalMcpName(servers, "mcp__nucode_browser__browser_click"), "mcp__nucode_browser__browser_click");
   assert.equal(canonicalMcpName(servers, "mcp__other_thing"), undefined);
+});
+
+test("eval cells that call nucode tools get time for them unless they set a timeout", () => {
+  const browser = `r = await tool.write({"path": "xd://mcp__nucode_browser_browser_navigate", "content": "{}"})`;
+  assert.equal(nucodeToolEvalTimeout({ code: browser }), 180);
+  assert.equal(nucodeToolEvalTimeout({ code: browser, timeout: null }), 180);
+  assert.equal(nucodeToolEvalTimeout({ code: `${browser}\nawait tool.write({"path": "xd://mcp__nucode_computer_computer_run_task"})` }), 600);
+  // The agent's own timeout wins, including 0 (no deadline); other cells keep OMP's default.
+  for (const timeout of [0, 5, 3600]) assert.equal(nucodeToolEvalTimeout({ code: browser, timeout }), undefined);
+  assert.equal(nucodeToolEvalTimeout({ code: "print(1)" }), undefined);
+  assert.equal(nucodeToolEvalTimeout({}), undefined);
 });

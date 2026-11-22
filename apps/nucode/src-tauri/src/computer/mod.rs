@@ -317,7 +317,7 @@ impl Computer {
                 let n = v
                     .as_u64()
                     .filter(|n| *n > 0 && *n <= limits.max_steps as u64)
-                    .ok_or("max_steps must be within configured limit")?;
+                    .ok_or_else(|| format!("max_steps must be a whole number from 1 to {}, the Maximum steps set in Settings -> Computer Use; ask for at most {} or leave max_steps out", limits.max_steps, limits.max_steps))?;
                 limits.max_steps = n as u32;
             }
             let ask = limits.app_access == "ask";

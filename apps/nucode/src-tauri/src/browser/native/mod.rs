@@ -55,6 +55,8 @@ pub struct NativeBackend {
     app: AppHandle,
     state: watch::Sender<Value>,
     views: tokio::sync::Mutex<Views>,
+    /// Held by page commands, in place of `views`, while they wait on the page.
+    page: tokio::sync::Mutex<()>,
     downloads: Arc<Mutex<HashSet<String>>>,
     pending: Arc<Mutex<Option<super::passwords::Pending>>>,
     password_index: Arc<Mutex<()>>,
@@ -82,6 +84,7 @@ impl NativeBackend {
                 user_zoom: 1.,
                 applied_zoom: None,
             }),
+            page: tokio::sync::Mutex::new(()),
             downloads: Arc::default(),
             pending: Arc::new(Mutex::new(None)),
             password_index: Arc::new(Mutex::new(())),
@@ -474,6 +477,74 @@ impl NativeBackend {
             None => result,
         })
     }
+    /// A script, evaluation, console read, dialog answer or screenshot on the page. Runs without `views`: one can wait
+    /// up to 10 s on the page, and the pane's placement and polling must not wait with it.
+    async fn page_command(&self, p: Value, id: &str, view: &Webview, key: Option<String>, settings: &super::Settings, agent: bool) -> Result<Value, String> {
+        let action = p["action"].as_str().unwrap_or_default().to_owned();
+        if matches!(action.as_str(), "screenshot" | "evaluate") { policy::check_target(&p, id, Some(current_url(view).await?.as_str()))?; }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (key, settings, agent);
+            Err("Try the Headless Chromium backend (Settings → Browser)".into())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            if matches!(action.as_str(), "evaluate" | "console" | "screenshot") && macos::sensitive(view).await? {
+                return Err(super::passwords::SENSITIVE.into());
+            }
+            let url = current_url(view).await?;
+            if action == "screenshot" {
+                policy::check_target(&p, id, Some(url.as_str()))?;
+            }
+            if !automation_allowed(&url, settings) {
+                return Err("Browser origin blocked by policy".into());
+            }
+            if action == "screenshot" {
+                let result = macos::image(view).await?;
+                if macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                if current_url(view).await? != url {
+                    return Err("Page changed during capture; retry on the current page".into());
+                }
+                return Ok(result);
+            }
+            if action == "evaluate" {
+                policy::check_target(&p, id, Some(url.as_str()))?;
+                let result = macos::evaluate_page(view, p, url.as_str()).await;
+                if macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                return result;
+            }
+            let key = key.ok_or("Native page hooks unavailable; reload the tab")?;
+            let hooks = |params: Value| json!({"function":format!("() => globalThis[{}].request({params})", json!(key))});
+            if matches!(action.as_str(), "console" | "dialog") {
+                let console = action == "console";
+                let result = macos::evaluate_page(view, hooks(p), url.as_str()).await;
+                if console && macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                return result;
+            }
+            let snapshot = p["op"] == "snapshot";
+            let mut p = p; p["expectedUrl"] = json!(url.as_str());
+            if p["op"] == "click" && agent && pointer_click(view, &p, url.as_str()).await {
+                return Ok(json!({"performed":true}));
+            }
+            let text = p["op"] == "text";
+            let mut result = macos::script(view, p).await?;
+            if text && macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+            if snapshot && !macos::sensitive(view).await? {
+                match macos::evaluate_page(view, hooks(json!({"action":"snapshot"})), url.as_str()).await {
+                    Ok(note) => if let Some(note) = note.as_str().filter(|s| !s.is_empty()) {
+                        result["dialogNote"] = json!(note.chars().take(14000).collect::<String>());
+                    },
+                    // A PDF or sandboxed file preview: the snapshot itself worked, its content may be outside the DOM.
+                    Err(e) if e == macos::SCRIPTS_BLOCKED => result["scriptsBlocked"] = json!(true),
+                    Err(e) => return Err(e),
+                }
+                if serde_json::to_vec(&result).map_err(|e| e.to_string())?.len() > 200000 {
+                    return Err("Native result exceeds 200 KB".into());
+                }
+            }
+            Ok(result)
+        }
+    }
     pub async fn ui_request(&self, p: Value) -> Result<Value, String> {
         if p["action"] == "tool" { return Err("Unknown browser action".into()); }
         self.dispatch(p, false).await
@@ -484,9 +555,6 @@ impl NativeBackend {
     }
     async fn dispatch(&self, p: Value, agent: bool) -> Result<Value, String> {
         super::passwords::reject_action(&p)?;
-        let mut views = self.views.lock().await;
-        let owner = self.owner(agent);
-        self.check_paused(&p, agent)?;
         self.state.send_if_modified(|s| {
             let capabilities = json!({"screenshot":cfg!(target_os = "macos"),"evaluate":cfg!(target_os = "macos")});
             let changed = s["backend"] != "native" || s["capabilities"] != capabilities;
@@ -494,6 +562,25 @@ impl NativeBackend {
             s["capabilities"] = capabilities;
             changed
         });
+        // The MCP launcher sends these before every tool call. They touch no page, so they must not queue behind a
+        // page command that holds the views (a script or poll can take seconds).
+        match p["action"].as_str() {
+            Some("ensure") => return Ok(json!({"native":cfg!(target_os = "macos")})),
+            Some("activity") => {
+                let owner = self.owner(agent);
+                self.state.send_modify(|s| set_agent_active(s, &owner, p["active"] == true));
+                return Ok(Value::Null);
+            }
+            _ => {}
+        }
+        // Page commands queue behind each other as before, but placement and polling do not queue behind them.
+        let _page = match p["action"].as_str() {
+            Some("poll" | "bounds" | "attach" | "resize" | "detach" | "dismiss" | "idle" | "wait" | "scope" | "adopt") => None,
+            _ => Some(self.page.lock().await),
+        };
+        let mut views = self.views.lock().await;
+        let owner = self.owner(agent);
+        self.check_paused(&p, agent)?;
         let settings = self.settings()?;
         self.expire_offer(settings.private_browsing || !settings.offer_to_save_passwords)?;
         if views.private != settings.private_browsing {
@@ -509,9 +596,6 @@ impl NativeBackend {
             views.private = settings.private_browsing;
         }
         let action = p["action"].as_str().ok_or("Missing browser action")?;
-        if action == "ensure" {
-            return Ok(json!({"native":cfg!(target_os = "macos")}));
-        }
         if action == "scope" || action == "adopt" {
             if agent { return Err("Unknown browser action".into()); }
             if action == "scope" {
@@ -580,10 +664,7 @@ impl NativeBackend {
             self.place(&mut views).await?;
             return Ok(self.state.borrow().clone());
         }
-        if action == "activity" {
-            self.state.send_modify(|s| set_agent_active(s, &owner, p["active"] == true));
-            return Ok(Value::Null);
-        }
+
         if action == "detach" {
             views.placement.detach();
             self.hide(&mut views).await?;
@@ -781,10 +862,10 @@ impl NativeBackend {
                 if self.tab(&id).is_some_and(|tab| (tab["ready"] == true || tab["committed"] == true) && tab["error"].is_null()) { break; }
             }
         }
-        if matches!(action, "screenshot" | "evaluate") { policy::check_target(&p, &id, Some(current_url(&view).await?.as_str()))?; }
-        #[cfg(target_os = "macos")]
-        if matches!(action, "evaluate" | "console" | "screenshot") && macos::sensitive(&view).await? {
-            return Err(super::passwords::SENSITIVE.into());
+        if matches!(action, "script" | "evaluate" | "console" | "dialog" | "screenshot") {
+            let key = views.hook_keys.get(&id).cloned();
+            drop(views);
+            return self.page_command(p, &id, &view, key, &settings, agent).await;
         }
         match action {
             "navigate" | "download" => {
@@ -807,7 +888,9 @@ impl NativeBackend {
                     self.state
                         .send_modify(|s| s["downloadRequest"] = Value::Null);
                 }
-                if action == "navigate" {
+                // A fragment navigation (only the part after # changes) stays in the same document: WebKit scrolls
+                // and never reports a new load, so marking the page not-ready would leave it "loading" for good.
+                if action == "navigate" && !self.tab(&id).is_some_and(|t| t["ready"] == true && t["url"].as_str().is_some_and(|current| same_document(current, url))) {
                     self.update(&id, json!({"ready":false,"committed":false,"loading":true,"error":null}));
                 }
                 view.navigate(url.parse().map_err(|_| "Invalid URL")?)
@@ -853,63 +936,7 @@ impl NativeBackend {
                 return macos::control(&view, action.into()).await;
             }
             #[cfg(target_os = "macos")]
-            "script" | "evaluate" | "console" | "dialog" => {
-                let url = current_url(&view).await?;
-                if action == "evaluate" { policy::check_target(&p, &id, Some(url.as_str()))?; }
-                if !automation_allowed(&url, &settings) {
-                    return Err("Browser origin blocked by policy".into());
-                }
-                if action == "evaluate" {
-                    let result = macos::evaluate_page(&view, p, url.as_str()).await;
-                    if macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                    return result;
-                }
-                let key = views.hook_keys.get(&id).ok_or("Native page hooks unavailable; reload the tab")?;
-                let hooks = |params: Value| json!({"function":format!("() => globalThis[{}].request({params})", json!(key))});
-                if matches!(action, "console" | "dialog") {
-                    let console = action == "console";
-                    let result = macos::evaluate_page(&view, hooks(p), url.as_str()).await;
-                    if console && macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                    return result;
-                }
-                let snapshot = p["op"] == "snapshot";
-                let mut p = p; p["expectedUrl"] = json!(url.as_str());
-                if p["op"] == "click" && agent && pointer_click(&view, &p, url.as_str()).await {
-                    return Ok(json!({"performed":true}));
-                }
-                let text = p["op"] == "text";
-                let mut result = macos::script(&view, p).await?;
-                if text && macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                if snapshot && !macos::sensitive(&view).await? {
-                    match macos::evaluate_page(&view, hooks(json!({"action":"snapshot"})), url.as_str()).await {
-                        Ok(note) => if let Some(note) = note.as_str().filter(|s| !s.is_empty()) {
-                            result["dialogNote"] = json!(note.chars().take(14000).collect::<String>());
-                        },
-                        // A PDF or sandboxed file preview: the snapshot itself worked, its content may be outside the DOM.
-                        Err(e) if e == macos::SCRIPTS_BLOCKED => result["scriptsBlocked"] = json!(true),
-                        Err(e) => return Err(e),
-                    }
-                    if serde_json::to_vec(&result).map_err(|e| e.to_string())?.len() > 200000 {
-                        return Err("Native result exceeds 200 KB".into());
-                    }
-                }
-                return Ok(result);
-            }
-            #[cfg(target_os = "macos")]
-            "screenshot" => {
-                let url = current_url(&view).await?;
-                policy::check_target(&p, &id, Some(url.as_str()))?;
-                if !automation_allowed(&url, &settings) {
-                    return Err("Browser origin blocked by policy".into());
-                }
-                let result = macos::image(&view).await?;
-                if macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                if current_url(&view).await? != url {
-                    return Err("Page changed during capture; retry on the current page".into());
-                }
-                return Ok(result);
-            }
-            #[cfg(target_os = "macos")]
+
             "idle" => {
                 let key = views.hook_keys.get(&id).cloned().ok_or("Native page hooks unavailable; reload the tab")?;
                 drop(views);
@@ -1169,6 +1196,13 @@ fn resolve_path(url: &str, current: Option<&str>) -> String {
         if let Some(joined) = base.and_then(|c| c.join(url).ok()) { return joined.into(); }
     }
     url.into()
+}
+/// Whether navigating from `current` to `target` is a fragment navigation, which stays in the same document: the
+/// URLs match up to the fragment and the target has one. Without a fragment the same URL loads the page again.
+fn same_document(current: &str, target: &str) -> bool {
+    use url::Position::AfterQuery;
+    let (Ok(current), Ok(target)) = (url::Url::parse(current), url::Url::parse(target)) else { return false };
+    target.fragment().is_some() && matches!(target.scheme(), "http" | "https" | "file") && current[..AfterQuery] == target[..AfterQuery]
 }
 fn new_tab_url(p: &Value) -> Result<&str, String> {
     let url = if p["action"] == "tabs" { p["params"].get("url").filter(|url| !url.is_null()) } else { None }
@@ -1473,6 +1507,20 @@ mod tests {
         offer_capture(&path, &pending, &index, &state, capture("blocked-secret", 0)).unwrap();
         assert!(pending.lock().unwrap().is_none());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn only_fragment_changes_count_as_same_document_navigations() {
+        let page = "http://127.0.0.1:8787/?v=33#simulation";
+        for target in ["http://127.0.0.1:8787/?v=33#market", "http://127.0.0.1:8787/?v=33#simulation", "http://127.0.0.1:8787/?v=33#"] {
+            assert!(super::same_document(page, target), "{target}");
+        }
+        assert!(super::same_document("https://site.test/a", "https://site.test/a#top"));
+        // A new query or path is a new document, and the same URL without a fragment loads the page again.
+        for (current, target) in [(page, "http://127.0.0.1:8787/?v=34#market"), (page, "http://127.0.0.1:8787/x?v=33#market"),
+            ("https://site.test/a", "https://site.test/a"), ("https://site.test/a#top", "https://site.test/a"),
+            ("about:blank", "about:blank#x"), ("not a url", "https://site.test/#x")] {
+            assert!(!super::same_document(current, target), "{current} -> {target}");
+        }
     }
     #[test]
     fn navigate_resolves_snapshot_paths_against_the_current_page_only() {

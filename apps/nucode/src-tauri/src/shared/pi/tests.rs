@@ -362,6 +362,12 @@ async fn omp_title_slot_survives_listing_read_fork_and_rewind() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0]["id"], "parent");
     assert_eq!(listed[0]["name"], "Current title");
+    // A listing is reused only while the file is unchanged: a rename written after it shows on the next one.
+    let renamed = format!("{source}{}\n", json!({"type":"session_info","id":"n1","parentId":"t1","name":"Renamed"}));
+    std::fs::write(&file, &renamed).unwrap();
+    assert_eq!(engine.scan("workspace").await.unwrap()[0]["name"], "Renamed");
+    std::fs::write(&file, &source).unwrap();
+    assert_eq!(engine.scan("workspace").await.unwrap()[0]["name"], "Current title");
     let (thread, history) = read_session(&file, &[]).unwrap();
     assert_eq!(thread["preview"], "first");
     assert_eq!(history.turns.len(), 1);
@@ -1403,6 +1409,26 @@ async fn fake_crash_fails_turn_and_idle_closes_stdin() {
     .await
     .unwrap();
     assert_eq!(std::fs::read_to_string(marker).unwrap(), "graceful");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn idle_omp_stays_up_while_a_supervised_process_runs() {
+    let dir = temp();
+    let mut server = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+    let (p, _) = fake_engine(Duration::from_millis(200), &dir.join("idle"), true).await;
+    p.receive(json!({"type":"tool_execution_end","toolCallId":"dev","toolName":"bash",
+        "result":{"content":[{"type":"text","text":"dev: ready"}],"details":{"service":{"name":"dev","state":"ready","pid":server.id()}}}})).await;
+    // A replayed result from an earlier session must not hold the process up.
+    p.receive(json!({"type":"tool_execution_end","replay":true,"toolCallId":"old","result":{"details":{"service":{"pid":std::process::id()}}}})).await;
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert!(p.alive.load(Ordering::SeqCst), "idle shutdown would stop the agent's dev server");
+    server.kill().unwrap();
+    server.wait().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while p.alive.load(Ordering::SeqCst) { tokio::time::sleep(Duration::from_millis(10)).await; }
+    }).await.expect("the process idles out once the supervised process has exited");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

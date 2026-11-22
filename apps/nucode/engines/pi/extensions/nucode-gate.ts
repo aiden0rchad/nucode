@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { blockReason, decide, inside, normalizeRule, protectedPath, readOnlySandbox, safeReadOnlyCommand, sandboxedCommand, type Access } from "./lib/policy.ts";
-import { canonicalMcpName, connectorVerdict, type Connector } from "./lib/connectors.ts";
+import { canonicalMcpName, connectorVerdict, nucodeToolEvalTimeout, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { registerScreenshotFiles } from "./lib/screenshotFile.ts";
 import { ownedCommand, userHome } from "./lib/commandGuard.ts";
@@ -133,6 +133,10 @@ export default function (pi: ExtensionAPI) {
       const home = process.env.PI_CODING_AGENT_DIR!, session = process.env.NUCODE_SESSION_KEY!;
       const access = JSON.parse(readFileSync(join(home, "nucode/threads", `${session}.json`), "utf8")) as Access;
       const input = (event.input ?? {}) as Record<string, unknown>;
+      if (event.toolName === "eval") {
+        const timeout = nucodeToolEvalTimeout(input);
+        if (timeout !== undefined) input.timeout = timeout;
+      }
       // OMP expands @/~ prefixes and file URLs; only auto-allow plain local paths.
       const plainLocal = (file: unknown) => typeof file === "string" && /^[\w ./-]+$/.test(file) && !!file.trim()
         && inside(resolve(ctx.cwd, file), ctx.cwd) && !protectedPath(resolve(ctx.cwd, file), home);
