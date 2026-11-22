@@ -346,14 +346,16 @@ impl NativeBackend {
             .app
             .get_window("main")
             .ok_or("Main window unavailable")?;
-        // Create offscreen: no white flash before first load or before hide is processed.
+        // Create offscreen: no white flash before first load or before hide is processed. A page opened after an
+        // agent set a viewport lays out at that width even while the pane isn't showing it.
         *stage = "webview";
         injected_fault(stage)?;
+        let (width, height) = policy::parked_size(views.viewport, None);
         let view = window
             .add_child(
                 builder,
                 LogicalPosition::new(-32000., -32000.),
-                LogicalSize::new(800., 600.),
+                LogicalSize::new(width, height),
             )
             .map_err(|e| e.to_string())?;
         #[cfg(target_os = "macos")]
@@ -719,17 +721,49 @@ impl NativeBackend {
             views.viewport = width.map(|w| (w, height));
             views.applied_zoom = None;
             let ui_zoom = self.main_frame().await.map_or(1., |f| f.zoom);
-            let pane = views.placement.rect(&self.active()).map(|r| r.scaled(ui_zoom)).transpose()?;
             self.state.send_modify(|s| s["viewport"] = views.viewport.map_or(Value::Null, |(w, h)| json!({"width":w,"height":h})));
             self.place(&mut views).await?;
-            return Ok(match (views.viewport, pane) {
-                (None, _) => json!({"viewport":null,"note":"The page follows the browser pane again."}),
-                (Some((w, h)), Some(pane)) => {
+            // The page this request is for: the agent's own page, which the pane may not be showing.
+            let id = self.active_of(&owner);
+            let pane = views.placement.rect(&id).map(|r| r.scaled(ui_zoom)).transpose()?;
+            let shown = views.shown.as_deref() == Some(id.as_str());
+            let view = label(&id).ok().and_then(|name| self.app.get_webview(&name));
+            if let (Some(view), false) = (&view, shown) {
+                // A page the pane isn't showing waits parked offscreen at its last size (800 px wide when it was
+                // never shown), so place() never reached it: size the parked view itself.
+                let size = policy::parked_size(views.viewport, pane);
+                #[cfg(target_os = "macos")]
+                let _ = macos::view_scale(view, 1.).await;
+                view.set_zoom(if views.viewport.is_some() { 1. } else { views.user_zoom }).map_err(|e| e.to_string())?;
+                view.set_size(LogicalSize::new(size.0, size.1)).map_err(|e| e.to_string())?;
+            }
+            let Some((w, h)) = views.viewport else {
+                return Ok(json!({"viewport":null,"note":"The page follows the browser pane again."}));
+            };
+            // Reading the width runs a script on the page, which can wait on a slow one: placement must not wait too.
+            drop(views);
+            // Report what the page does, not what was asked: an unchanged layout must not read as success.
+            #[cfg(target_os = "macos")]
+            if let Some(view) = &view {
+                let mut laid_out = None;
+                for _ in 0..20 {
+                    laid_out = macos::layout_width(view).await.ok();
+                    if laid_out.is_some_and(|actual| (actual - w).abs() < 1.) { break; }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                if let Some(actual) = laid_out.filter(|actual| (actual - w).abs() >= 1.) {
+                    return Err(format!("The viewport was set to {w} px, but the page still lays out {actual} px wide, so this layout can't be checked here. Say so rather than judging the {w} px layout from it."));
+                }
+            }
+            return Ok(match (shown, pane) {
+                _ if view.is_none() => json!({"viewport":{"width":w,"height":h},"note":"No page is open yet; the next page opens at this width."}),
+                (true, Some(pane)) => {
                     let (_, zoom) = policy::fit_viewport(pane, w, h);
                     json!({"viewport":{"width":w,"height":h},"scale":(zoom * 100.).round() / 100.,
-                        "note":if zoom < 1. { "The pane is narrower than this viewport, so the page is shown scaled down; it still lays out at the requested width." } else { "The page lays out at the requested width, centred in the pane." }})
+                        "note":if zoom < 1. { "The pane is narrower than this viewport, so the page is shown scaled down; it lays out at the requested width." } else { "The page lays out at the requested width, centred in the pane." }})
                 }
-                (Some((w, h)), None) => json!({"viewport":{"width":w,"height":h},"note":"Applied when the browser pane is shown."}),
+                _ => json!({"viewport":{"width":w,"height":h},
+                    "note":"The page lays out at the requested width. The browser pane isn't showing this page right now, so the user can't watch it; screenshots and snapshots see it at this width."}),
             });
         }
         if action == "attach" || action == "bounds" || action == "resize" {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **browser_resize that changed nothing:** when the browser pane wasn't showing the agent's page (pane closed, or open on another thread), browser_resize reported the page "scaled down" to the requested width while the page kept laying out 800 px wide, so desktop checks saw the narrow layout. The agent's page now takes the requested width wherever it is, pages opened afterwards start at it, and browser_resize reports an error if the page still doesn't lay out at that width instead of claiming success.
 - **Background task checks while a dev server runs:** with an omp thread's dev server up, the task list asked omp for its services every 15 s, which starts a helper that takes about 0.4 s each time. It now asks only when a service starts, stops or changes, when its process has died, or every 5 minutes.
 - **Browser pane lagging behind the window:** while an agent's page script or screenshot was waiting on a slow page (up to 10 s), the in-app browser's page stayed where it was when you resized the window, moved the divider or switched panels. The page now follows the pane straight away; agent commands on the page still run one at a time.
 - **Slow usage refresh:** the Usage numbers refresh in under a second instead of about a minute when nothing new has happened. Every conversation that had saved agent or stream checkpoints was read again on each refresh, and the whole usage record was rewritten each time; now a conversation is read again only when it or its checkpoints change. Copies left behind by a refresh that was cut short are removed.
