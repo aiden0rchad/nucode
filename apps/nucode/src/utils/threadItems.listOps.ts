@@ -26,10 +26,16 @@ function mergeUserInputQuestions(
   return [...merged, ...missingExisting];
 }
 
+// A photo sent from a file is a local path here; the engine echoes it back as stored image data.
+const isLocalPath = (image: string) => image.startsWith("/") || image.startsWith("file://");
+function sameImages(pending: string[] = [], incoming: string[] = []) {
+  return pending.length === incoming.length && pending.every((image, i) => image === incoming[i] || isLocalPath(image));
+}
+
 function matchesOptimisticUser(pending: ConversationItem, incoming: ConversationItem) {
   return pending.id.startsWith("optimistic-user-") && !incoming.id.startsWith("optimistic-user-") &&
     pending.kind === "message" && pending.role === "user" && incoming.kind === "message" && incoming.role === "user" &&
-    pending.text.trim() === incoming.text.trim() && JSON.stringify(pending.images ?? []) === JSON.stringify(incoming.images ?? []);
+    pending.text.trim() === incoming.text.trim() && sameImages(pending.images, incoming.images);
 }
 
 export function removeEchoedOptimisticMessages(localItems: ConversationItem[], incomingItems: ConversationItem[]) {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Photo messages shown twice:** a message with a photo attached from a file showed twice in the conversation once the agent answered, although it was sent and saved once. The copy shown while sending held the file's path and the agent's copy the stored picture, so the two were never matched; they now are.
 - **Turn times over an hour:** "Worked for" and the timers on background tasks and the session rail now show hours, so a two-hour turn reads "1:56:45" instead of "116:45".
 - **Photos you drag in or pick:** a message with photos attached from files now sends. Before, it failed with "Request couldn't complete" and the photos were dropped, because the app tried to convert each file to inline data, which the desktop app refuses; the engine reads the files itself. Pasted images were not affected.
 - **Browser on slow pages:** an agent can now click, type, scroll, read, take a snapshot or a screenshot on a page whose content is there but that is still loading images and ads, instead of waiting for the whole page to finish. A screenshot of such a page shows what is on screen now. If a page has not even started to show, the tools answer "still loading" within 15 seconds rather than hanging until the request times out.

@@ -1100,3 +1100,12 @@ describe("built-in tool images", () => {
     expect(item && "images" in item ? item.images : undefined).toBeUndefined();
   });
 });
+
+it("replaces the optimistic copy of a photo sent from a file when the engine echoes the stored image", () => {
+  const pending: ConversationItem = { id: "optimistic-user-photo", kind: "message", role: "user", text: "What is this?", images: ["/tmp/photos/cat.png"] };
+  const echo: ConversationItem = { ...pending, id: "user-1", images: ["data:image/png;base64,a"] };
+  expect(upsertItem([pending], echo).map(item => item.id)).toEqual(["user-1"]);
+  expect(mergeThreadItems([echo], [pending]).map(item => item.id)).toEqual(["user-1"]);
+  expect(upsertItem([pending], { ...echo, images: [] })).toHaveLength(2);
+  expect(upsertItem([pending], { ...echo, images: ["data:image/png;base64,a", "data:image/png;base64,b"] })).toHaveLength(2);
+});
