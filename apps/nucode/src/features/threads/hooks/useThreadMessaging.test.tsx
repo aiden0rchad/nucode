@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Sentry from "@sentry/react";
 import {
   sendUserMessage as sendUserMessageService,
-  convertImagesToDataUrls,
+  prepareImagesForSend,
   steerTurn as steerTurnService,
   startReview as startReviewService,
   interruptTurn as interruptTurnService,
@@ -26,7 +26,7 @@ vi.mock("@sentry/react", () => ({
 
 vi.mock("@services/tauri", () => ({
   sendUserMessage: vi.fn(),
-  convertImagesToDataUrls: vi.fn(),
+  prepareImagesForSend: vi.fn(),
   steerTurn: vi.fn(),
   startReview: vi.fn(),
   interruptTurn: vi.fn(),
@@ -73,7 +73,7 @@ describe("useThreadMessaging telemetry", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(convertImagesToDataUrls).mockImplementation(async images => images.map(image => image.startsWith("data:") ? image : "data:image/png;base64,a"));
+    vi.mocked(prepareImagesForSend).mockImplementation(async images => images.map(image => image.startsWith("data:") ? image : "data:image/png;base64,a"));
     vi.mocked(sendUserMessageService).mockResolvedValue({
       result: {
         turn: { id: "turn-1" },
@@ -103,7 +103,7 @@ describe("useThreadMessaging telemetry", () => {
   it.each(["image-error", "rejected", "rpc", "missing-turn", "sent"])("shows the user message before the %s send response, then reconciles failure", async outcome => {
     let settle!: (value: unknown) => void;
     let fail!: (error: Error) => void;
-    if (outcome === "image-error") vi.mocked(convertImagesToDataUrls).mockRejectedValueOnce(new Error("Cannot read image"));
+    if (outcome === "image-error") vi.mocked(prepareImagesForSend).mockRejectedValueOnce(new Error("Cannot read image"));
     else vi.mocked(sendUserMessageService).mockImplementationOnce(() => new Promise((resolve, reject) => { settle = resolve; fail = reject; }));
     const dispatch = vi.fn();
     const pushError = vi.fn();
@@ -124,7 +124,7 @@ describe("useThreadMessaging telemetry", () => {
       else if (outcome !== "image-error") settle(outcome === "rpc" ? { error: { message: "Denied" } } : outcome === "missing-turn" ? {} : { result: { turn: { id: "turn-1" } } });
       await sending;
     });
-    expect(convertImagesToDataUrls).toHaveBeenCalledWith(["image.png"]);
+    expect(prepareImagesForSend).toHaveBeenCalledWith(["image.png"]);
     if (outcome === "image-error") expect(sendUserMessageService).not.toHaveBeenCalled();
     else {
       expect(sendUserMessageService).toHaveBeenCalledWith(workspace.id, "thread-1", "Before reply", expect.objectContaining({ images: ["data:image/png;base64,a"] }));

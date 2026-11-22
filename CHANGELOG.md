@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Photos you drag in or pick:** a message with photos attached from files now sends. Before, it failed with "Request couldn't complete" and the photos were dropped, because the app tried to convert each file to inline data, which the desktop app refuses; the engine reads the files itself. Pasted images were not affected.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
 - **Agents opening the same pictures over and over:** an agent that keeps re-opening the same screenshots is now stopped even when it copies them to new folders or another format first. With a model reached through an OpenAI-format proxy, an agent can open at most two images per step: the proxy passes on only the last two, so a third is refused with that reason instead of arriving as text and being opened again.

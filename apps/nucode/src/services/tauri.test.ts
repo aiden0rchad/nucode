@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import * as notification from "@tauri-apps/plugin-notification";
 import {
+  prepareImagesForSend,
   exportMarkdownFile,
   addWorkspace,
   compactThread,
@@ -722,6 +723,18 @@ describe("tauri invoke wrappers", () => {
       text: "continue",
       images: ["data:image/jpeg;base64,xyz"],
     });
+  });
+
+  it("keeps dragged or picked photo paths as paths for a desktop send", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "get_app_settings") return { backendMode: "local" };
+      if (command === "is_mobile_runtime") return false;
+      if (command === "read_image_as_data_url") throw new Error("Image conversion is only supported in remote backend mode or on mobile runtimes");
+      return undefined;
+    });
+    await expect(prepareImagesForSend(["/tmp/photo.png", "data:image/png;base64,AAAA"])).resolves.toEqual(["/tmp/photo.png", "data:image/png;base64,AAAA"]);
+    expect(invokeMock).not.toHaveBeenCalledWith("read_image_as_data_url", expect.anything());
   });
 
   it("converts image paths on mobile even in local backend mode", async () => {

@@ -13,7 +13,7 @@ import type {
 } from "@/types";
 import {
   compactThread as compactThreadService,
-  convertImagesToDataUrls,
+  prepareImagesForSend,
   sendUserMessage as sendUserMessageService,
   steerTurn as steerTurnService,
   startReview as startReviewService,
@@ -251,7 +251,7 @@ export function useThreadMessaging({
         },
       });
       try {
-        const inputImages = !shouldSteer && images.length ? await convertImagesToDataUrls(images) : images;
+        const inputImages = !shouldSteer && images.length ? await prepareImagesForSend(images) : images;
         if (optimisticId && inputImages !== images) dispatch({ type: "upsertItem", workspaceId: workspace.id, threadId, hasCustomName: Boolean(customThreadName), item: { id: optimisticId, kind: "message", role: "user", text: finalText, images: inputImages } });
         const shouldPreflightRuntimeCodexArgs =
           shouldPreflightRuntimeCodexArgsForSend?.(workspace.id, threadId) ?? true;
