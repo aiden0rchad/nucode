@@ -628,10 +628,11 @@ export function buildToolSummary(
 }
 
 export function formatDurationMs(durationMs: number) {
-  const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
-  const durationMinutes = Math.floor(durationSeconds / 60);
-  const durationRemainder = durationSeconds % 60;
-  return `${durationMinutes}:${String(durationRemainder).padStart(2, "0")}`;
+  const total = Math.max(0, Math.floor(durationMs / 1000));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  return hours ? `${hours}:${pad(minutes)}:${pad(total % 60)}` : `${minutes}:${pad(total % 60)}`;
 }
 
 export function statusToneFromText(status?: string): StatusTone {
