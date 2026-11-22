@@ -254,6 +254,18 @@ fn settings_value(registry: &[ProviderEntry], auto_compact: &AutoCompact) -> Val
     json!({"quietStartup":true,"enableInstallTelemetry":false,"enabledModels":enabled.iter().map(|(key, _)| key).collect::<Vec<_>>(),"compaction":compaction})
 }
 
+// A `pi` CLI the agent runs in its own shell inherits this home and leaves an empty `{}` auth.json
+// behind. That holds no account, so it is removed (as the runtime's own guard does); anything with
+// content is still refused.
+pub(super) fn clear_empty_auth(home: &Path) -> Result<(), String> {
+    let auth = home.join("auth.json");
+    let Ok(bytes) = std::fs::read(&auth) else { return Ok(()) };
+    if serde_json::from_slice::<Value>(&bytes).ok().and_then(|v| v.as_object().map(|o| o.is_empty())) == Some(true) {
+        return std::fs::remove_file(&auth).map_err(|e| format!("Cannot remove the empty auth.json from nucode's isolated pi home: {e}"));
+    }
+    Err("Remove auth.json from nucode's isolated pi home; accounts and logins are not supported".into())
+}
+
 pub(super) fn prepare(
     home: &Path,
     registry: &[ProviderEntry],
@@ -329,9 +341,7 @@ pub(super) fn prepare(
         write_file(&home.join("extensions").join(name), source.as_bytes())?;
     }
     write_json(&home.join("extensions/lib/package.json"), &json!({"type":"module"}))?;
-    if home.join("auth.json").exists() {
-        return Err("Remove auth.json from nucode's isolated pi home; accounts and logins are not supported".into());
-    }
+    clear_empty_auth(home)?;
     write_json(&home.join("models.json"), &models(registry))?;
     write_json(&home.join("mcp.json"), &mcp(graph))?;
     write_json(
