@@ -78,6 +78,12 @@ test("Full access lets a read-only pipeline name protected paths and still asks 
     assert.ok(!readOnlyPipeline(command), command);
     assert.equal(decide(full, { tool: "bash", command, cwd }, home, true), "ask", command);
   }
+  for (const command of ["git commit -q -m 'Give eval cells that call xd://mcp__nucode_browser_navigate time'", "npm test -- nucode_gate", "echo NUCODE_SESSION_KEY is set by the host > notes.txt"]) {
+    assert.equal(decide(full, { tool: "bash", command, cwd }, home, true), "allow", command);
+  }
+  for (const command of ["NUCODE_SESSION_KEY=x node a.js", "export PI_CODING_AGENT_DIR=/tmp", "unset NUCODE_WORK", "cp a $PI_CODING_AGENT_DIR/b", "rm ${NUCODE_STATE}/x", "env -u NUCODE_OMP node a.js", "touch .GIT/config"]) {
+    assert.equal(decide(full, { tool: "bash", command, cwd }, home, true), "ask", command);
+  }
   assert.equal(decide({ accessMode: "ask", sessionAllow: [] }, { tool: "bash", command: reads[3], cwd }, home, true), "ask");
   assert.equal(decide({ accessMode: "read-only", sessionAllow: [] }, { tool: "bash", command: reads[3], cwd }, home, true), "block");
 });

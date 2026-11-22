@@ -165,6 +165,10 @@ export function workDecision(access: Access, call: Call, interactive: boolean, c
   const inOutputs = canonical(outputs) === resolve(canonical(access.workspace), "outputs") && inside(path, outputs);
   if (existsSync(path) && !inOutputs && access.accessMode !== "full-access") return interactive && !child ? "ask" : "block";
 }
+// nucode's own variables count only where a command reads, sets or clears them. Variable names are case
+// sensitive, so a tool name such as mcp__nucode_browser or a commit message that names one is not a match.
+const ENV_NAME = String.raw`(?:PI_CODING_AGENT_DIR|NUCODE_\w+)`;
+const ENV_USE = new RegExp(String.raw`\$\{?${ENV_NAME}\b|(?:^|[\s;&|(])${ENV_NAME}=|\b(?:export|unset|declare|typeset|local|readonly|env)\s+(?:-\w+\s+)*${ENV_NAME}\b`);
 export function decide(access: Access, call: Call, home: string, interactive: boolean, child?: { workspace: string; toolAccess: string }): "allow" | "ask" | "block" {
   const work = workDecision(access, call, interactive, !!child);
   if (work) return work;
@@ -179,7 +183,7 @@ export function decide(access: Access, call: Call, home: string, interactive: bo
   const unexcluded = command.replace(/--exclude(?:-dir)?(?:=|\s+)(['"]?)\.(?:git|env)[\w.-]*\1(?=[\s;|&)]|$)/gi, "")
     .replace(/-i?name\s+(['"]?)\.(?:git|env)[\w.-]*\1(?=(?:\s+-o\s+-i?(?:name|path)\s+\S+)*\s*(?:\\?\))?\s*-prune\b)/gi, "");
   const protectedWrite = call.tool === "bash"
-    ? !readonly && !readOnlyPipeline(command) && (/(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/i.test(unexcluded) || command.includes(home))
+    ? !readonly && !readOnlyPipeline(command) && (/(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|nucode\/threads/i.test(unexcluded) || ENV_USE.test(command) || command.includes(home))
     : protectedPath(path, home);
   if (protectedWrite) return interactive && !child ? "ask" : "block";
   if (child && access.accessMode === "ask") return readonly || (call.tool !== "bash" && inside(path, child.workspace)) ? "allow" : "block";
