@@ -134,7 +134,26 @@ pub fn filter_tools(response: &mut Value, native: bool, provider: crate::types::
     }
 }
 
+/// MCP clients (omp, Codex) give up on a tool call after 30 s and then cannot tell what happened. Every browser
+/// tool answers inside this budget instead, with a reason the agent can act on.
+pub const TOOL_BUDGET: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// What the agent reads when a browser tool ran out of its budget.
+pub fn over_budget(name: &str) -> String {
+    format!("{name} did not finish within {} s, so it was stopped. The page may still be loading or not responding, or the browser was busy with another call: check the page with browser_snapshot, and reload it if it stays stuck.", TOOL_BUDGET.as_secs())
+}
+
+/// Runs a browser tool within [`TOOL_BUDGET`]. Dropping the work at the deadline releases the page for the next call.
 pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Result<Value, String> {
+    tool_within(backend, name, args, TOOL_BUDGET).await
+}
+
+async fn tool_within(backend: &dyn BrowserBackend, name: &str, args: Value, budget: std::time::Duration) -> Result<Value, String> {
+    let deadline = tokio::time::Instant::now() + budget;
+    tokio::time::timeout_at(deadline, run_tool(backend, name, args, deadline)).await.unwrap_or_else(|_| Err(over_budget(name)))
+}
+
+async fn run_tool(backend: &dyn BrowserBackend, name: &str, args: Value, deadline: tokio::time::Instant) -> Result<Value, String> {
     backend.authorize_tool(args.clone()).await?;
     let tab_page = name == "browser_tabs" && matches!(args["action"].as_str(), Some("new" | "select"));
     let mut result = match name {
@@ -185,9 +204,14 @@ pub async fn tool(backend: &dyn BrowserBackend, name: &str, args: Value) -> Resu
     let page_changed = matches!(name, "browser_navigate" | "browser_navigate_back") || (name == "browser_click" && result["navigated"].is_string())
         || tab_page;
     if page_changed && result["error"].is_null() && backend.snapshot_on_page_change() {
-        if let Some(lines) = backend.snapshot().await.ok().as_ref().and_then(compact_snapshot) {
-            text.push_str("\n\nPage snapshot:\n");
-            text.push_str(&lines);
+        // The page itself already changed; a snapshot that doesn't arrive in time must not turn that into a failure.
+        let snapshot_deadline = deadline - std::time::Duration::from_millis(500);
+        match tokio::time::timeout_at(snapshot_deadline, backend.snapshot()).await {
+            Ok(snapshot) => if let Some(lines) = snapshot.ok().as_ref().and_then(compact_snapshot) {
+                text.push_str("\n\nPage snapshot:\n");
+                text.push_str(&lines);
+            },
+            Err(_) => text.push_str("\n\n[The page snapshot was not ready in time; call browser_snapshot to read the page.]"),
         }
     }
     Ok(
@@ -360,6 +384,33 @@ mod tests {
         assert!(!text(tool(&Pages, "browser_navigate_back", json!({})).await.unwrap()).contains("Page snapshot"));
         assert!(!text(tool(&Pages, "browser_press_key", json!({"key":"Tab"})).await.unwrap()).contains("Page snapshot"));
         assert!(!text(tool(&Fake, "browser_navigate", json!({"url":"https://example.test/"})).await.unwrap()).contains("Page snapshot"));
+    }
+    /// Navigation lands at once; everything else (snapshot, ready waits) never answers.
+    struct Stuck;
+    impl BrowserBackend for Stuck {
+        fn snapshot_on_page_change(&self) -> bool { true }
+        fn navigate(&self, url: &str) -> BoxFuture<'_, Result<Value, String>> {
+            let url = url.to_string();
+            Box::pin(async move { Ok(json!({"id":"one","url":url,"ready":true})) })
+        }
+        fn request(&self, _params: Value) -> BoxFuture<'_, Result<Value, String>> {
+            Box::pin(std::future::pending())
+        }
+    }
+    #[tokio::test]
+    async fn tools_answer_within_their_budget() {
+        let budget = std::time::Duration::from_millis(1200);
+        let started = tokio::time::Instant::now();
+        // A page change that already happened stays a success when its snapshot doesn't come in time.
+        let navigated = tool_within(&Stuck, "browser_navigate", json!({"url":"https://example.test/"}), budget).await.unwrap();
+        let text = navigated["content"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with(&json!({"id":"one","url":"https://example.test/","ready":true}).to_string()));
+        assert!(text.ends_with("call browser_snapshot to read the page.]"), "{text}");
+        assert!(started.elapsed() < budget);
+        // A tool that never answers is stopped at the budget, with what to do next.
+        let started = tokio::time::Instant::now();
+        assert_eq!(tool_within(&Stuck, "browser_snapshot", json!({}), budget).await.unwrap_err(), over_budget("browser_snapshot"));
+        assert!(started.elapsed() >= budget && started.elapsed() < budget * 2);
     }
     impl BrowserBackend for Fake {
         fn request(&self, params: Value) -> BoxFuture<'_, Result<Value, String>> {

@@ -440,8 +440,6 @@ impl NativeBackend {
     }
     async fn dispatch(&self, p: Value, agent: bool) -> Result<Value, String> {
         super::passwords::reject_action(&p)?;
-        let mut views = self.views.lock().await;
-        self.check_paused(&p, agent)?;
         self.state.send_if_modified(|s| {
             let capabilities = json!({"screenshot":cfg!(target_os = "macos"),"evaluate":cfg!(target_os = "macos")});
             let changed = s["backend"] != "native" || s["capabilities"] != capabilities;
@@ -449,6 +447,15 @@ impl NativeBackend {
             s["capabilities"] = capabilities;
             changed
         });
+        // The MCP launcher sends these before every tool call. They touch no page, so they must not queue behind a
+        // page command that holds the views (a script or poll can take seconds).
+        match p["action"].as_str() {
+            Some("ensure") => return Ok(json!({"native":cfg!(target_os = "macos")})),
+            Some("activity") => { self.state.send_modify(|s| s["agent"] = p["active"].clone()); return Ok(Value::Null); }
+            _ => {}
+        }
+        let mut views = self.views.lock().await;
+        self.check_paused(&p, agent)?;
         let settings = self.settings()?;
         self.expire_offer(settings.private_browsing || !settings.offer_to_save_passwords)?;
         if views.private != settings.private_browsing {
@@ -464,9 +471,6 @@ impl NativeBackend {
             views.private = settings.private_browsing;
         }
         let action = p["action"].as_str().ok_or("Missing browser action")?;
-        if action == "ensure" {
-            return Ok(json!({"native":cfg!(target_os = "macos")}));
-        }
         // Process popup requests for agent-only sessions too, without requiring a pane subscription.
         {
             let new_url = self.state.borrow()["newWindow"].as_str().map(String::from);
@@ -515,10 +519,6 @@ impl NativeBackend {
             }
             self.place(&mut views).await?;
             return Ok(self.state.borrow().clone());
-        }
-        if action == "activity" {
-            self.state.send_modify(|s| s["agent"] = p["active"].clone());
-            return Ok(Value::Null);
         }
         if action == "detach" {
             views.placement.detach();
