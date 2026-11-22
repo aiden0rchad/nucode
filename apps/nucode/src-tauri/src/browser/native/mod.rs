@@ -104,7 +104,7 @@ impl NativeBackend {
             s["tabs"]
                 .as_array_mut()
                 .unwrap()
-                .push(json!({"id":id,"url":url,"title":"New tab","loading":true,"ready":false}));
+                .push(json!({"id":id,"url":url,"title":"New tab","loading":true,"ready":false,"committed":false}));
             s["active"] = json!(id);
         });
         id
@@ -144,7 +144,7 @@ impl NativeBackend {
             policy::touch(&mut views.live, id);
             return Ok(view);
         }
-        self.update(id, json!({"error":null,"ready":false,"loading":true}));
+        self.update(id, json!({"error":null,"ready":false,"committed":false,"loading":true}));
         let mut stage = "configuration";
         let valid = Arc::new(AtomicBool::new(true));
         let result = self.create_view(id, views, &mut stage, valid.clone()).await;
@@ -678,13 +678,27 @@ impl NativeBackend {
                 // Materialize the view first; page events and UI commands must be able to run while waiting.
                 let events = self.state.subscribe();
                 drop(views);
-                wait_for_page(events, &id, true, deadline.saturating_duration_since(tokio::time::Instant::now())).await?;
+                // A committed page whose document is parsed is usable before its `load` event (images can take minutes).
+                let mut slice = Duration::ZERO;
+                loop {
+                    match wait_for_page(events.clone(), &id, true, slice).await {
+                        Ok(_) => break,
+                        Err(error) if error == STILL_LOADING => {
+                            let now = tokio::time::Instant::now();
+                            if now >= deadline { return Err(error); }
+                            if self.tab(&id).is_some_and(|t| t["committed"] == true && t["error"].is_null() && t["url"] != "about:blank")
+                                && document_interactive(&view, &settings).await { break; }
+                            slice = Duration::from_millis(500).min(deadline - now);
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
                 views = self.views.lock().await;
                 self.check_paused(&p, agent)?;
                 if self.active() != id { return Err("Browser page changed; retry on the current page".into()); }
                 // A concurrent command may have evicted the view while we waited.
                 view = self.view(&id, &mut views).await?;
-                if self.tab(&id).is_some_and(|tab| tab["ready"] == true && tab["error"].is_null()) { break; }
+                if self.tab(&id).is_some_and(|tab| (tab["ready"] == true || tab["committed"] == true) && tab["error"].is_null()) { break; }
             }
         }
         if matches!(action, "screenshot" | "evaluate") { policy::check_target(&p, &id, Some(current_url(&view).await?.as_str()))?; }
@@ -714,13 +728,13 @@ impl NativeBackend {
                         .send_modify(|s| s["downloadRequest"] = Value::Null);
                 }
                 if action == "navigate" {
-                    self.update(&id, json!({"ready":false,"loading":true,"error":null}));
+                    self.update(&id, json!({"ready":false,"committed":false,"loading":true,"error":null}));
                 }
                 view.navigate(url.parse().map_err(|_| "Invalid URL")?)
                     .map_err(|e| e.to_string())?;
             }
             "reload" => {
-                self.update(&id, json!({"error":null,"ready":false}));
+                self.update(&id, json!({"error":null,"ready":false,"committed":false}));
                 view.reload().map_err(|e| e.to_string())?;
             }
             "zoom" => {
@@ -1036,7 +1050,8 @@ impl BrowserBackend for NativeBackend {
     }
     fn screenshot(&self) -> BoxFuture<'_, Result<Value, String>> {
         Box::pin(async move {
-            let _ = self.command(json!({"action":"idle"})).await;
+            // One bounded wait: a page that is not usable yet answers here instead of stacking a second wait.
+            if let Err(error) = self.command(json!({"action":"idle"})).await { if error == STILL_LOADING { return Err(error); } }
             self.command(json!({"action":"screenshot"})).await
         })
     }
@@ -1098,6 +1113,19 @@ fn needs_ready_page(p: &Value) -> bool {
         (p["action"] == "script" && matches!(p["op"].as_str(), Some("snapshot" | "click" | "type" | "press" | "select" | "scroll" | "fill")))
 }
 
+/// Whether the page's DOM exists (`document.readyState` is not "loading"); read-only, and only on allowed origins.
+async fn document_interactive(view: &Webview, settings: &super::Settings) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(url) = current_url(view).await else { return false };
+        if url.as_str() == "about:blank" || !automation_allowed(&url, settings) { return false; }
+        let probe = macos::evaluate_page(view, json!({"function":"() => document.readyState"}), url.as_str());
+        return matches!(tokio::time::timeout(Duration::from_secs(2), probe).await, Ok(Ok(state)) if state == "interactive" || state == "complete");
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = (view, settings); false }
+}
+
 const STILL_LOADING: &str = "The page is still loading; try again in a moment";
 async fn wait_for_page(mut events: watch::Receiver<Value>, id: &str, allow_blank: bool, timeout: Duration) -> Result<Value, String> {
     let deadline = tokio::time::Instant::now() + timeout;
@@ -1137,7 +1165,10 @@ async fn settle_action(
 ) -> Value {
     // A load has started: wait for it to finish. A URL change alone (the policy decision, or a same-document
     // navigation) only earns a short grace for a load to start; the old page stays ready until the new one commits.
-    let mut loading = before["loading"] == true;
+    // A page that already committed and is only waiting for its `load` event is not a navigation caused by this
+    // action: a new navigation shows as the page uncommitting.
+    let slow = before["committed"] == true && before["ready"] == false && before["error"].is_null();
+    let mut loading = before["loading"] == true && !slow;
     let mut navigated = loading;
     let mut deadline = tokio::time::Instant::now() + if loading { timeout } else { grace };
     let finish = |tab: Value, mut result: Value| {
@@ -1155,7 +1186,7 @@ async fn settle_action(
             state["tabs"].as_array().and_then(|tabs| tabs.iter().find(|tab| tab["id"] == id)).cloned()
         };
         let Some(tab) = tab else { return result; };
-        if !loading && (tab["loading"] == true || (before["ready"] == true && tab["ready"] == false)) {
+        if !loading && ((tab["loading"] == true && !slow) || (slow && tab["committed"] == false) || (before["ready"] == true && tab["ready"] == false)) {
             loading = true;
             navigated = true;
             deadline = tokio::time::Instant::now() + timeout;
@@ -1200,7 +1231,7 @@ fn parse_fault(spec: &str) -> Option<(String, u32)> {
     (!stage.is_empty() && count > 0).then(|| (stage.to_owned(), count))
 }
 fn page_load_values(previous_url: &str, url: &tauri::Url, finished: bool) -> Value {
-    let mut values = json!({"url":url.as_str(),"loading":!finished,"ready":finished,"progress":if finished {1.} else {0.1},"error":null});
+    let mut values = json!({"url":url.as_str(),"loading":!finished,"ready":finished,"committed":true,"progress":if finished {1.} else {0.1},"error":null});
     if !finished {
         values["credentialsPaused"] = json!(false);
         values["snapshot"] = Value::Null;
@@ -1443,6 +1474,36 @@ mod tests {
         for action in ["navigate", "tabs", "close", "stop", "dialog", "poll"] {
             assert!(!needs_ready_page(&json!({"action":action})));
         }
+    }
+    #[tokio::test]
+    async fn uncommitted_page_waits_then_reports_still_loading_but_committed_page_does_not() {
+        let (state, events, _) = settle_state();
+        update(&state, "one", json!({"ready":false,"loading":true,"committed":false}));
+        let started = tokio::time::Instant::now();
+        assert_eq!(wait_for_page(events.clone(), "one", true, Duration::from_millis(100)).await.unwrap_err(), STILL_LOADING);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        // A committed page is not `ready`; the wait times out and the caller probes the document instead.
+        update(&state, "one", json!({"committed":true}));
+        assert_eq!(wait_for_page(events, "one", true, Duration::from_millis(50)).await.unwrap_err(), STILL_LOADING);
+        assert!(state.borrow()["tabs"][0]["committed"] == true);
+        assert_eq!(page_load_values("about:blank", &"https://example.test/".parse().unwrap(), false)["committed"], true);
+    }
+    #[tokio::test]
+    async fn settle_ignores_a_load_already_in_progress_on_a_committed_page() {
+        let tab = json!({"id":"one","url":"https://example.test/","ready":false,"loading":true,"committed":true});
+        let (state, events) = watch::channel(json!({"active":"one","tabs":[tab.clone()]}));
+        let result = json!({"performed":true});
+        let started = Instant::now();
+        let settle = settle_action(events.clone(), "one", &tab, &Value::Null, result.clone(), Duration::from_millis(10), Duration::from_secs(30));
+        assert_eq!(tokio::time::timeout(Duration::from_secs(2), settle).await.unwrap(), result);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // An action that starts a new navigation uncommits the page and still waits for it.
+        let settle = settle_action(events, "one", &tab, &Value::Null, result, Duration::from_millis(10), Duration::from_secs(5));
+        tokio::pin!(settle);
+        update(&state, "one", json!({"committed":false}));
+        assert!(futures_util::poll!(&mut settle).is_pending());
+        update(&state, "one", json!({"committed":true,"ready":true,"loading":false}));
+        assert_eq!(settle.await["navigated"], "https://example.test/");
     }
     #[tokio::test]
     async fn tabs_new_tool_uses_nested_url_and_waits_for_ready_tab() {

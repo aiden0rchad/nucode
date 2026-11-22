@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Browser on slow pages:** an agent can now click, type, scroll, read, take a snapshot or a screenshot on a page whose content is there but that is still loading images and ads, instead of waiting for the whole page to finish. A screenshot of such a page shows what is on screen now. If a page has not even started to show, the tools answer "still loading" within 15 seconds rather than hanging until the request times out.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
 - **Chain of Command:** the composer's model chip shows a star while a team is on, and the team editor is large enough to show five roles with their models.
 - **Agents opening the same pictures over and over:** an agent that keeps re-opening the same screenshots is now stopped even when it copies them to new folders or another format first. With a model reached through an OpenAI-format proxy, an agent can open at most two images per step: the proxy passes on only the last two, so a third is refused with that reason instead of arriving as text and being opened again.
