@@ -3508,6 +3508,8 @@ async fn long_thread_opens_in_bounded_time_and_payload() {
     assert!(bytes < 30_000_000, "the window should receive text and references, not screenshots: {bytes}");
     assert!(requests <= 30);
     eprintln!("long thread: {} rows, {file_bytes} bytes on disk; parse {parsed:?}; read_session {read:?} (without blobs {without_images:?}); full-thread serialize {serialized:?}, {} bytes; window open: {requests} requests, {bytes} bytes, {opened:?}", entries.len(), one.len());
+}
+
 #[test]
 fn empty_auth_left_by_a_pi_cli_is_removed_but_credentials_are_refused() {
     let dir = temp();
