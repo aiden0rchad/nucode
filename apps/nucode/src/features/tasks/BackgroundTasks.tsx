@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Play, RotateCcw, Square, Terminal } from "lucide-react";
 import type { LaunchScriptEntry } from "@/types";
 import type { ManagedTask, ManagedTasksController } from "./useManagedTasks";
+import { formatDurationMs } from "@/features/messages/utils/messageRenderUtils";
 import "./background-tasks.css";
 
 function elapsed(task: ManagedTask, now: number) {
-  const seconds = Math.max(0, Math.floor(((task.endedAt ?? now) - task.startedAt) / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return formatDurationMs((task.endedAt ?? now) - task.startedAt);
 }
 export function BackgroundTasks({ controller, commands = [], commandsEnabled = true, showCommandInput = true, onOpenUrl }: {
   controller: ManagedTasksController;

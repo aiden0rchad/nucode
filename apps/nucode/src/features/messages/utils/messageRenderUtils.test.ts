@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationItem } from "../../../types";
-import { buildToolSummary, collapseChecklistPlans, describeTool, statusToneFromText, stripTaskList } from "./messageRenderUtils";
+import { buildToolSummary, collapseChecklistPlans, describeTool, formatDurationMs, statusToneFromText, stripTaskList } from "./messageRenderUtils";
 
 function makeToolItem(
   overrides: Partial<Extract<ConversationItem, { kind: "tool" }>>,
@@ -178,5 +178,15 @@ describe("collapseChecklistPlans", () => {
   it("leaves threads without checklist plans alone", () => {
     const plain: ConversationItem[] = [{ id: "p", kind: "tool", toolType: "plan", title: "Plan", detail: "", output: "1. Do it" }];
     expect(collapseChecklistPlans(plain).items).toBe(plain);
+  });
+});
+
+describe("formatDurationMs", () => {
+  it("rolls minutes over into hours", () => {
+    expect(formatDurationMs(0)).toBe("0:00");
+    expect(formatDurationMs(65_000)).toBe("1:05");
+    expect(formatDurationMs(3_599_999)).toBe("59:59");
+    expect(formatDurationMs(3_600_000)).toBe("1:00:00");
+    expect(formatDurationMs((116 * 60 + 45) * 1000)).toBe("1:56:45");
   });
 });

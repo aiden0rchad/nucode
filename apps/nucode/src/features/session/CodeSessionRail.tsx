@@ -10,6 +10,7 @@ import { useFeatures } from "@settings/features";
 import { IconButton } from "@/features/design-system/components/IconButton";
 import { ModalShell } from "@/features/design-system/components/modal/ModalShell";
 import { contextUsage } from "./useCodeSessionData";
+import { formatDurationMs } from "@/features/messages/utils/messageRenderUtils";
 import { isMissingRepo } from "@/features/git/utils/repoErrors";
 import "./code-session-rail.css";
 
@@ -170,7 +171,7 @@ export function CodeSessionRail(props: CodeSessionRailProps) {
   const openFile = (path: string) => { if (props.onOpenFile(path)) openTool("files"); };
   const openPage = (url: string) => { void panel?.openPage(url).catch(error => setError(String(error))); };
   const stop = (id: string) => { void props.tasks.stop(id).catch(error => setError(String(error))); };
-  const elapsed = (started: number) => { const seconds = Math.max(0, Math.floor((now - started) / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
+  const elapsed = (started: number) => formatDurationMs(now - started);
   const move = (section: Section, direction: number) => setPreferences(current => {
     const order = [...current.order]; const from = order.indexOf(section); const to = from + direction;
     if (to < 0 || to >= order.length) return current;
