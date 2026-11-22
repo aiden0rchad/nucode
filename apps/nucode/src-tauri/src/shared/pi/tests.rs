@@ -362,6 +362,12 @@ async fn omp_title_slot_survives_listing_read_fork_and_rewind() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0]["id"], "parent");
     assert_eq!(listed[0]["name"], "Current title");
+    // A listing is reused only while the file is unchanged: a rename written after it shows on the next one.
+    let renamed = format!("{source}{}\n", json!({"type":"session_info","id":"n1","parentId":"t1","name":"Renamed"}));
+    std::fs::write(&file, &renamed).unwrap();
+    assert_eq!(engine.scan("workspace").await.unwrap()[0]["name"], "Renamed");
+    std::fs::write(&file, &source).unwrap();
+    assert_eq!(engine.scan("workspace").await.unwrap()[0]["name"], "Current title");
     let (thread, history) = read_session(&file, &[]).unwrap();
     assert_eq!(thread["preview"], "first");
     assert_eq!(history.turns.len(), 1);
