@@ -3508,5 +3508,18 @@ async fn long_thread_opens_in_bounded_time_and_payload() {
     assert!(bytes < 30_000_000, "the window should receive text and references, not screenshots: {bytes}");
     assert!(requests <= 30);
     eprintln!("long thread: {} rows, {file_bytes} bytes on disk; parse {parsed:?}; read_session {read:?} (without blobs {without_images:?}); full-thread serialize {serialized:?}, {} bytes; window open: {requests} requests, {bytes} bytes, {opened:?}", entries.len(), one.len());
+#[test]
+fn empty_auth_left_by_a_pi_cli_is_removed_but_credentials_are_refused() {
+    let dir = temp();
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(config::clear_empty_auth(&dir).is_ok());
+    std::fs::write(dir.join("auth.json"), "{}").unwrap();
+    assert!(config::clear_empty_auth(&dir).is_ok());
+    assert!(!dir.join("auth.json").exists());
+    for content in [r#"{"openai":{"type":"api_key","key":"canary"}}"#, "not json"] {
+        std::fs::write(dir.join("auth.json"), content).unwrap();
+        assert!(config::clear_empty_auth(&dir).unwrap_err().contains("accounts and logins are not supported"));
+        assert!(dir.join("auth.json").exists());
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }
