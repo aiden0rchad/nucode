@@ -646,11 +646,15 @@ impl NativeBackend {
                             Ok(meta) => {
                                 if meta["userInput"] == true && self.state.borrow()["agent"] == true
                                 {
+                                    let cause = meta["userInputType"].clone();
                                     self.state.send_modify(|s| {
                                         let scope = s["scope"].as_str().unwrap_or("").to_string();
                                         set_agent_active(s, &scope, false);
                                         s["takeover"] =
                                             json!(s["takeover"].as_u64().unwrap_or(0) + 1);
+                                        // Only the thread whose page got the input is taken over, and the pane says what did it.
+                                        s["takeoverScope"] = json!(scope);
+                                        s["takeoverCause"] = cause;
                                     });
                                 }
                                 self.update(&id, meta);

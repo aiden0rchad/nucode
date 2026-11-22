@@ -155,7 +155,9 @@ it("uses the native slot, aligned toolbar sizes, and native takeover events", as
   const takeover = vi.fn();
   render(<BrowserPane onClose={vi.fn()} onTakeOver={takeover} />);
   await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
-  act(() => receive({ ...state, backend: "native", takeover: 1, tabs: [{ ...state.tabs[0], ready: true, canGoBack: false, canGoForward: false }] }));
+  const page = { ...state, backend: "native" as const, tabs: [{ ...state.tabs[0], ready: true, canGoBack: false, canGoForward: false }] };
+  act(() => receive({ ...page, takeover: 0 }));
+  act(() => receive({ ...page, takeover: 1 }));
   expect(screen.getByLabelText("Native browser page")).toBeTruthy();
   expect(document.querySelector("canvas")).toBeNull();
   expect(screen.getByRole("button", { name: "Back" }).hasAttribute("disabled")).toBe(true);
@@ -372,4 +374,17 @@ it("shows fill errors in the browser error area", async () => {
   act(() => receive({ ...state, backend: "native", tabs: [{ ...state.tabs[0], savedLogins: [{ id: "login", username: "alice" }] }] }));
   fireEvent.click(screen.getByLabelText("Fill saved password"));
   expect(await screen.findByText("Authentication was cancelled")).toBeTruthy();
+});
+
+it("never acts on a take-over raised before the pane mounted, or on another thread's page", async () => {
+  const takeover = vi.fn();
+  render(<BrowserPane scope="a" onClose={vi.fn()} onTakeOver={takeover} />);
+  await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+  const page = { ...state, backend: "native" as const, scope: "a" };
+  act(() => receive({ ...page, takeover: 5, takeoverScope: "a" }));
+  expect(takeover).not.toHaveBeenCalled();
+  act(() => receive({ ...page, takeover: 6, takeoverScope: "b" }));
+  expect(takeover).not.toHaveBeenCalled();
+  act(() => receive({ ...page, takeover: 7, takeoverScope: "a", takeoverCause: "keydown" }));
+  expect(takeover).toHaveBeenCalledOnce();
 });

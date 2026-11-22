@@ -6,7 +6,7 @@ export type BrowserState = {
   capabilities?: { screenshot: boolean; evaluate: boolean };
   tabs: { owner?: string; credentialsPaused?: boolean; savedLogins?: { id: string; username: string }[]; id: string; title: string; url: string; favicon?: string | null; loading: boolean; ready?: boolean; snapshot?: string; progress?: number; canGoBack?: boolean; canGoForward?: boolean; error?: string }[];
   active: string; frame?: string | null; frameTarget?: string; width?: number; height?: number; dpr?: number;
-  backend?: "native" | "cdp"; takeover?: number; externalRequest?: string; newWindow?: string; downloadRequest?: string;
+  backend?: "native" | "cdp"; takeover?: number; takeoverScope?: string; takeoverCause?: string | null; externalRequest?: string; newWindow?: string; downloadRequest?: string;
   agent?: boolean; cursor?: string; error?: string;
   /** Native only: each thread (owner) has its own tabs and active tab; `scope` is the owner whose pane is on screen. "" is a draft, or an engine that has no thread id. */
   scope?: string; activeByOwner?: Record<string, string>; agentActiveOwners?: string[];

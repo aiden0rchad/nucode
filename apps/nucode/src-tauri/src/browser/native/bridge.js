@@ -3,14 +3,15 @@
   if (globalThis.__nuBrowser) return;
   const refs = new WeakMap();
   let nodes = new Map(), next = 0, userInput = false, agentPointer = null, agentPressed = false;
-  for (const event of ["pointerdown", "keydown", "wheel", "touchstart"]) {
+  // Scrolling to watch the agent is not taking over; only a press or a key is.
+  for (const event of ["pointerdown", "keydown", "touchstart"]) {
     addEventListener(event, e => {
       if (!e.isTrusted) return;
       // The agent cursor's own press arrives as a trusted event at the point it asked for; that is not the user taking over.
       if (e.type === "pointerdown" && agentPointer && performance.now() < agentPointer.until && Math.hypot(e.clientX - agentPointer.x, e.clientY - agentPointer.y) < 4) {
         agentPointer = null; agentPressed = true; return;
       }
-      userInput = true;
+      userInput = e.type;
     }, { capture: true, passive: true });
   }
   // A visible, unobstructed point inside el for the agent cursor to press, or null when something covers it.
@@ -198,7 +199,7 @@
       if (p.expectedUrl && location.href !== p.expectedUrl) throw new Error("Page navigated before action; retry on the current page");
       let result = null;
       if (p.op === "meta") {
-        result = { title: document.title, url: location.href, favicon: document.querySelector('link[rel~="icon"]')?.href || null, userInput };
+        result = { title: document.title, url: location.href, favicon: document.querySelector('link[rel~="icon"]')?.href || null, userInput: !!userInput, userInputType: userInput || null };
         userInput = false;
       } else if (p.op === "snapshot") {
         const items = []; nodes = new Map(); let bytes = 2, truncated = false;

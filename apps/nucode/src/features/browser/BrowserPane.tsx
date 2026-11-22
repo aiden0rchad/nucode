@@ -1,4 +1,5 @@
 import { NativeSlot } from "./NativeSlot";
+import { record } from "@/features/diagnostics/client";
 import { RowMenu } from "@/features/chat/RowMenu";
 import { ArrowLeft, ArrowRight, CircleAlert, Download, KeyRound, LockKeyhole, Pencil, Plus, RotateCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,10 +30,19 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
   const [capture, setCapture] = useState<BrowserCapture | null>(null);
   const [capturing, setCapturing] = useState(false);
   const captureId = useRef(0);
-  const takeover = useRef(0);
+  // The take-over count is app-wide and outlives this pane: a pane mounted later must not act on a count raised
+  // before it existed, or opening the browser would stop whatever turn is running. Seed it from the first state seen.
+  const takeover = useRef<number | null>(null);
   useEffect(() => {
-    if (state.takeover && state.takeover > takeover.current) { takeover.current = state.takeover; void onTakeOver(); }
-  }, [state.takeover, onTakeOver]);
+    if (!state.backend) return;
+    const count = state.takeover ?? 0;
+    if (takeover.current === null) { takeover.current = count; return; }
+    if (count <= takeover.current) return;
+    takeover.current = count;
+    if (state.takeoverScope !== undefined && state.takeoverScope !== scope) return;
+    record({ kind: "warning", area: "browser", code: "browser.takeover", message: "Browser input took over from the agent", context: { cause: state.takeoverCause ?? "unknown" } });
+    void onTakeOver();
+  }, [state.backend, state.takeover, state.takeoverScope, state.takeoverCause, scope, onTakeOver]);
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   // An error belongs to the page it happened on; a stale one would keep covering (and hiding) every page after it.
