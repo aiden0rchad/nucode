@@ -1,8 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceInfo } from "../../../types";
+import type { ConversationItem, WorkspaceInfo } from "../../../types";
 
 const STARTING_DRAFT_CLEAR_MS = 1500;
 const STARTING_DRAFT_FALLBACK_MS = 4000;
+
+export type PendingFirstMessage = {
+  workspaceId: string;
+  text: string;
+  images: string[];
+};
+
+// The first message of a new thread is shown from the moment Send is pressed. The thread
+// (and its real optimistic item) only exists after the runtime preflight and thread/start,
+// so the message is carried here until the thread has a user message of its own.
+export function withPendingFirstMessage(
+  items: ConversationItem[],
+  pending: PendingFirstMessage | null,
+  workspaceId: string | null,
+): ConversationItem[] {
+  if (
+    !pending ||
+    pending.workspaceId !== workspaceId ||
+    items.some((item) => item.kind === "message" && item.role === "user")
+  ) {
+    return items;
+  }
+  return [
+    {
+      id: `pending-first-message-${pending.workspaceId}`,
+      kind: "message",
+      role: "user",
+      text: pending.text,
+      images: pending.images,
+    },
+    ...items,
+  ];
+}
 
 type UseNewAgentDraftOptions = {
   activeWorkspace: WorkspaceInfo | null;
@@ -23,6 +56,9 @@ export function useNewAgentDraft({
   const [startingDraftThreadWorkspaceId, setStartingDraftThreadWorkspaceId] = useState<
     string | null
   >(null);
+  const [pendingFirstMessage, setPendingFirstMessage] = useState<PendingFirstMessage | null>(
+    null,
+  );
 
   const clearStartingTimeout = useCallback(() => {
     if (clearStartingTimeoutRef.current !== null) {
@@ -88,7 +124,7 @@ export function useNewAgentDraft({
   );
 
   const runWithDraftStart = useCallback(
-    async (runner: () => Promise<void>) => {
+    async (runner: () => Promise<void>, pending?: { text: string; images: string[] }) => {
       const shouldMarkStarting = Boolean(activeWorkspace && !activeThreadId);
       const draftWorkspaceId = activeWorkspace?.id ?? null;
       if (shouldMarkStarting && draftWorkspaceId) {
@@ -99,6 +135,9 @@ export function useNewAgentDraft({
           })
           .then(async () => {
             setStartingDraftThreadWorkspaceId(draftWorkspaceId);
+            if (pending) {
+              setPendingFirstMessage({ workspaceId: draftWorkspaceId, ...pending });
+            }
             try {
               await runner();
               clearStartingTimeout();
@@ -114,6 +153,12 @@ export function useNewAgentDraft({
                 value === draftWorkspaceId ? null : value,
               );
               throw error;
+            } finally {
+              if (pending) {
+                setPendingFirstMessage((value) =>
+                  value?.workspaceId === draftWorkspaceId ? null : value,
+                );
+              }
             }
           })
           .finally(() => {
@@ -134,6 +179,7 @@ export function useNewAgentDraft({
   return {
     newAgentDraftWorkspaceId,
     startingDraftThreadWorkspaceId,
+    pendingFirstMessage,
     isDraftModeForActiveWorkspace,
     startNewAgentDraft,
     clearDraftState,
