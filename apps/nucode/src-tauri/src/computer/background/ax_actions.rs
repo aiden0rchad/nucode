@@ -719,7 +719,7 @@ pub(super) fn elementless_keyboard(action: &Action, selected: bool) -> bool {
 }
 fn focused_owner(pid: i32, owner: Option<i32>, readable: bool) -> Result<(), String> {
     if owner != Some(pid) || !readable {
-        return Err("AX focused policy target belongs to another pid or cannot be read".into());
+        return Err("Keys were not sent: keyboard focus is outside the target app, or its focused element can't be read, so nucode can't check what the keys would reach. Retry with an instruction that clicks the field to type into before typing or pressing keys".into());
     }
     Ok(())
 }
