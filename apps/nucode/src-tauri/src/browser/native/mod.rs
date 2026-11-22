@@ -49,6 +49,8 @@ pub struct NativeBackend {
     app: AppHandle,
     state: watch::Sender<Value>,
     views: tokio::sync::Mutex<Views>,
+    /// Held by page commands, in place of `views`, while they wait on the page.
+    page: tokio::sync::Mutex<()>,
     downloads: Arc<Mutex<HashSet<String>>>,
     pending: Arc<Mutex<Option<super::passwords::Pending>>>,
     password_index: Arc<Mutex<()>>,
@@ -73,6 +75,7 @@ impl NativeBackend {
                 last_poll: Instant::now(),
                 private: false,
             }),
+            page: tokio::sync::Mutex::new(()),
             downloads: Arc::default(),
             pending: Arc::new(Mutex::new(None)),
             password_index: Arc::new(Mutex::new(())),
@@ -430,6 +433,72 @@ impl NativeBackend {
             None => result,
         })
     }
+    /// A script, evaluation, console read, dialog answer or screenshot on the page. Runs without `views`: one can wait
+    /// up to 10 s on the page, and the pane's placement and polling must not wait with it.
+    async fn page_command(&self, p: Value, id: &str, view: &Webview, key: Option<String>, settings: &super::Settings, agent: bool) -> Result<Value, String> {
+        let action = p["action"].as_str().unwrap_or_default().to_owned();
+        if matches!(action.as_str(), "screenshot" | "evaluate") { policy::check_target(&p, id, Some(current_url(view).await?.as_str()))?; }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (key, settings, agent);
+            Err("Try the Headless Chromium backend (Settings → Browser)".into())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            if matches!(action.as_str(), "evaluate" | "console" | "screenshot") && macos::sensitive(view).await? {
+                return Err(super::passwords::SENSITIVE.into());
+            }
+            let url = current_url(view).await?;
+            if action == "screenshot" {
+                policy::check_target(&p, id, Some(url.as_str()))?;
+            }
+            if !automation_allowed(&url, settings) {
+                return Err("Browser origin blocked by policy".into());
+            }
+            if action == "screenshot" {
+                let result = macos::image(view).await?;
+                if macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                if current_url(view).await? != url {
+                    return Err("Page changed during capture; retry on the current page".into());
+                }
+                return Ok(result);
+            }
+            if action == "evaluate" {
+                policy::check_target(&p, id, Some(url.as_str()))?;
+                let result = macos::evaluate_page(view, p, url.as_str()).await;
+                if macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                return result;
+            }
+            let key = key.ok_or("Native page hooks unavailable; reload the tab")?;
+            let hooks = |params: Value| json!({"function":format!("() => globalThis[{}].request({params})", json!(key))});
+            if matches!(action.as_str(), "console" | "dialog") {
+                let console = action == "console";
+                let result = macos::evaluate_page(view, hooks(p), url.as_str()).await;
+                if console && macos::sensitive(view).await? { return Err(super::passwords::SENSITIVE.into()); }
+                return result;
+            }
+            let snapshot = p["op"] == "snapshot";
+            let mut p = p; p["expectedUrl"] = json!(url.as_str());
+            if p["op"] == "click" && agent && pointer_click(view, &p, url.as_str()).await {
+                return Ok(json!({"performed":true}));
+            }
+            let mut result = macos::script(view, p).await?;
+            if snapshot && !macos::sensitive(view).await? {
+                match macos::evaluate_page(view, hooks(json!({"action":"snapshot"})), url.as_str()).await {
+                    Ok(note) => if let Some(note) = note.as_str().filter(|s| !s.is_empty()) {
+                        result["dialogNote"] = json!(note.chars().take(14000).collect::<String>());
+                    },
+                    // A PDF or sandboxed file preview: the snapshot itself worked, its content may be outside the DOM.
+                    Err(e) if e == macos::SCRIPTS_BLOCKED => result["scriptsBlocked"] = json!(true),
+                    Err(e) => return Err(e),
+                }
+                if serde_json::to_vec(&result).map_err(|e| e.to_string())?.len() > 200000 {
+                    return Err("Native result exceeds 200 KB".into());
+                }
+            }
+            Ok(result)
+        }
+    }
     pub async fn ui_request(&self, p: Value) -> Result<Value, String> {
         if p["action"] == "tool" { return Err("Unknown browser action".into()); }
         self.dispatch(p, false).await
@@ -454,6 +523,11 @@ impl NativeBackend {
             Some("activity") => { self.state.send_modify(|s| s["agent"] = p["active"].clone()); return Ok(Value::Null); }
             _ => {}
         }
+        // Page commands queue behind each other as before, but placement and polling do not queue behind them.
+        let _page = match p["action"].as_str() {
+            Some("poll" | "bounds" | "attach" | "resize" | "detach" | "dismiss" | "idle" | "wait") => None,
+            _ => Some(self.page.lock().await),
+        };
         let mut views = self.views.lock().await;
         self.check_paused(&p, agent)?;
         let settings = self.settings()?;
@@ -687,10 +761,10 @@ impl NativeBackend {
                 if self.tab(&id).is_some_and(|tab| tab["ready"] == true && tab["error"].is_null()) { break; }
             }
         }
-        if matches!(action, "screenshot" | "evaluate") { policy::check_target(&p, &id, Some(current_url(&view).await?.as_str()))?; }
-        #[cfg(target_os = "macos")]
-        if matches!(action, "evaluate" | "console" | "screenshot") && macos::sensitive(&view).await? {
-            return Err(super::passwords::SENSITIVE.into());
+        if matches!(action, "script" | "evaluate" | "console" | "dialog" | "screenshot") {
+            let key = views.hook_keys.get(&id).cloned();
+            drop(views);
+            return self.page_command(p, &id, &view, key, &settings, agent).await;
         }
         match action {
             "navigate" | "download" => {
@@ -754,61 +828,6 @@ impl NativeBackend {
             #[cfg(target_os = "macos")]
             "back" | "forward" | "stop" => {
                 return macos::control(&view, action.into()).await;
-            }
-            #[cfg(target_os = "macos")]
-            "script" | "evaluate" | "console" | "dialog" => {
-                let url = current_url(&view).await?;
-                if action == "evaluate" { policy::check_target(&p, &id, Some(url.as_str()))?; }
-                if !automation_allowed(&url, &settings) {
-                    return Err("Browser origin blocked by policy".into());
-                }
-                if action == "evaluate" {
-                    let result = macos::evaluate_page(&view, p, url.as_str()).await;
-                    if macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                    return result;
-                }
-                let key = views.hook_keys.get(&id).ok_or("Native page hooks unavailable; reload the tab")?;
-                let hooks = |params: Value| json!({"function":format!("() => globalThis[{}].request({params})", json!(key))});
-                if matches!(action, "console" | "dialog") {
-                    let console = action == "console";
-                    let result = macos::evaluate_page(&view, hooks(p), url.as_str()).await;
-                    if console && macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                    return result;
-                }
-                let snapshot = p["op"] == "snapshot";
-                let mut p = p; p["expectedUrl"] = json!(url.as_str());
-                if p["op"] == "click" && agent && pointer_click(&view, &p, url.as_str()).await {
-                    return Ok(json!({"performed":true}));
-                }
-                let mut result = macos::script(&view, p).await?;
-                if snapshot && !macos::sensitive(&view).await? {
-                    match macos::evaluate_page(&view, hooks(json!({"action":"snapshot"})), url.as_str()).await {
-                        Ok(note) => if let Some(note) = note.as_str().filter(|s| !s.is_empty()) {
-                            result["dialogNote"] = json!(note.chars().take(14000).collect::<String>());
-                        },
-                        // A PDF or sandboxed file preview: the snapshot itself worked, its content may be outside the DOM.
-                        Err(e) if e == macos::SCRIPTS_BLOCKED => result["scriptsBlocked"] = json!(true),
-                        Err(e) => return Err(e),
-                    }
-                    if serde_json::to_vec(&result).map_err(|e| e.to_string())?.len() > 200000 {
-                        return Err("Native result exceeds 200 KB".into());
-                    }
-                }
-                return Ok(result);
-            }
-            #[cfg(target_os = "macos")]
-            "screenshot" => {
-                let url = current_url(&view).await?;
-                policy::check_target(&p, &id, Some(url.as_str()))?;
-                if !automation_allowed(&url, &settings) {
-                    return Err("Browser origin blocked by policy".into());
-                }
-                let result = macos::image(&view).await?;
-                if macos::sensitive(&view).await? { return Err(super::passwords::SENSITIVE.into()); }
-                if current_url(&view).await? != url {
-                    return Err("Page changed during capture; retry on the current page".into());
-                }
-                return Ok(result);
             }
             #[cfg(target_os = "macos")]
             "idle" => {
