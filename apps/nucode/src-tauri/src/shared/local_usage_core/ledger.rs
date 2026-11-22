@@ -14,6 +14,9 @@ struct Ledger {
     parser_version: u32,
     records: HashMap<String, Record>,
     files: HashMap<PathBuf, (u64, u128)>,
+    /// Per session: how many checkpoints it had, their total size and the newest one's modification time.
+    #[serde(default)]
+    checkpoints: HashMap<PathBuf, (u64, u64, u128)>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -47,6 +50,27 @@ impl Record {
         }
         *models.entry(self.model.clone()).or_default() += self.input + self.output;
     }
+}
+
+fn nanos(metadata: &fs::Metadata) -> u128 {
+    metadata.modified().ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .unwrap_or_default()
+        .as_nanos()
+}
+
+/// The agent and stream checkpoints saved beside a session, which can change while the session is unchanged.
+fn checkpoints(session: &Path) -> Option<(u64, u64, u128)> {
+    let mut stamp = (0, 0, 0);
+    for suffix in ["agents", "streams"] {
+        let Ok(entries) = fs::read_dir(format!("{}.{suffix}", session.display())) else { continue };
+        for entry in entries.filter_map(Result::ok) {
+            if entry.path().extension().is_none_or(|e| e != "json") { continue; }
+            let Ok(metadata) = entry.metadata() else { continue };
+            stamp = (stamp.0 + 1, stamp.1 + metadata.len(), stamp.2.max(nanos(&metadata)));
+        }
+    }
+    (stamp.0 > 0).then_some(stamp)
 }
 
 pub(super) fn files(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -100,7 +124,14 @@ pub(super) fn sync(
     let parser_changed = ledger.parser_version != 1;
     if parser_changed {
         ledger.files.clear();
+        ledger.checkpoints.clear();
         ledger.parser_version = 1;
+    }
+    // Only a writer holding the lock creates these, so any left now are from a write that never finished.
+    for entry in fs::read_dir(&directory).map_err(|e| e.to_string())?.filter_map(Result::ok) {
+        if entry.path().extension().is_some_and(|e| e == "tmp") {
+            let _ = fs::remove_file(entry.path());
+        }
     }
     let mut roots = codex_roots.to_vec();
     roots.push(data.join("engines/codex-home/sessions"));
@@ -133,29 +164,16 @@ pub(super) fn sync(
     for root in roots {
         for file in files(&root)? {
             let metadata = fs::metadata(&file).map_err(|e| e.to_string())?;
-            let stamp = (
-                metadata.len(),
-                metadata
-                    .modified()
-                    .map_err(|e| e.to_string())?
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos(),
-            );
-            // Checkpoints can change while the session itself is unchanged.
-            let checkpoints = ["agents", "streams"]
-                .map(|suffix| PathBuf::from(format!("{}.{suffix}", file.display())));
-            let has_checkpoints = checkpoints.iter().any(|p| {
-                fs::read_dir(p).is_ok_and(|entries| {
-                    entries
-                        .filter_map(Result::ok)
-                        .any(|entry| entry.path().extension().is_some_and(|e| e == "json"))
-                })
-            });
-            if ledger.files.get(&file) == Some(&stamp) && !has_checkpoints {
+            let stamp = (metadata.len(), nanos(&metadata));
+            let saved = checkpoints(&file);
+            if ledger.files.get(&file) == Some(&stamp) && ledger.checkpoints.get(&file) == saved.as_ref() {
                 continue;
             }
             scan_file(&file, &mut ledger.records)?;
+            match saved {
+                Some(saved) => ledger.checkpoints.insert(file.clone(), saved),
+                None => ledger.checkpoints.remove(&file),
+            };
             ledger.files.insert(file, stamp);
             changed = true;
         }
@@ -744,6 +762,33 @@ mod tests {
                 .all_time_tokens,
             42
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_checkpoint_change_is_counted_and_an_unchanged_history_is_not_rewritten() {
+        let root = root();
+        let now = Utc::now().timestamp_millis();
+        let path = root.join("pi/sessions/w/thread.jsonl");
+        write(&path, &session(now)[..2]);
+        let checkpoint = PathBuf::from(format!("{}.streams/recovery.json", path.display()));
+        fs::create_dir_all(checkpoint.parent().unwrap()).unwrap();
+        let save = |output: i64| {
+            let mut partial = assistant(now);
+            partial["usage"]["output"] = json!(output);
+            fs::write(&checkpoint, json!({"version":1,"savedAt":now,"anchor":"user","result":partial}).to_string()).unwrap();
+        };
+        let total = || snapshot_from_records(30, None, sync(&root, &[]).unwrap().values()).totals.all_time_tokens;
+        save(2);
+        assert_eq!(total(), 37);
+        // The stream grew while the session file stayed the same.
+        save(40);
+        assert_eq!(total(), 75);
+        let ledger = root.join("usage/ledger-v1.json");
+        let written = fs::metadata(&ledger).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(total(), 75);
+        assert_eq!(fs::metadata(&ledger).unwrap().modified().unwrap(), written, "nothing changed, so the ledger is not rewritten");
         fs::remove_dir_all(root).unwrap();
     }
 
