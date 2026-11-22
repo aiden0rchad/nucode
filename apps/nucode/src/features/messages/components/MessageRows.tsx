@@ -696,7 +696,7 @@ export const ToolRow = memo(function ToolRow({
   const [isExportingPlan, setIsExportingPlan] = useState(false);
   const [imageIndex, setImageIndex] = useState<number | null>(null);
   const images = (item.images ?? []).map((src, index) => ({
-    src: normalizeMessageImageSrc(src), label: `Generated image ${index + 1}`,
+    src: normalizeMessageImageSrc(src), label: `${item.toolType === "imageGeneration" ? "Generated image" : "Image"} ${index + 1}`,
   }));
 
   useEffect(() => {

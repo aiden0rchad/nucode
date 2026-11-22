@@ -1044,3 +1044,22 @@ it("consumes each snapshot echo once when identical prompts are pending", () => 
   expect(mergeThreadItems([echo], [pending, second]).map(item => item.id)).toEqual(["canonical-first", "optimistic-user-second"]);
   expect(mergeThreadItems([echo, { ...echo, id: "canonical-second" }], [pending, second]).map(item => item.id)).toEqual(["canonical-first", "canonical-second"]);
 });
+
+describe("built-in tool images", () => {
+  it("shows a read image as a thumbnail and its text as output, never the JSON", () => {
+    const saved = `blob:sha256:${"a".repeat(64)}#image/png`;
+    const item = buildConversationItem({
+      type: "dynamicToolCall", id: "read", namespace: null, tool: "read", arguments: { path: "shot.png" }, status: "completed", success: true, durationMs: 3,
+      contentItems: [{ type: "inputText", text: "Read image file [image/png]" }, { type: "inputImage", imageUrl: saved }, { type: "inputImage", imageUrl: "data:image/png;base64,iVBORw0KGgo=" }],
+    });
+    expect(item).toMatchObject({ kind: "tool", images: [saved, "data:image/png;base64,iVBORw0KGgo="], output: "Read image file [image/png]" });
+  });
+  it("names an image it cannot show", () => {
+    const item = buildConversationItem({
+      type: "dynamicToolCall", id: "read", namespace: null, tool: "read", arguments: {}, status: "completed", success: true, durationMs: 3,
+      contentItems: [{ type: "inputImage", imageUrl: `blob:sha256:${"a".repeat(64)}` }, { type: "inputImage", imageUrl: "javascript:alert(1)" }],
+    });
+    expect(item).toMatchObject({ output: "Image preview unavailable." });
+    expect(item && "images" in item ? item.images : undefined).toBeUndefined();
+  });
+});

@@ -565,7 +565,8 @@ impl Translator {
                         Some("text") => p["text"].as_str().map(|s|json!({"type":"inputText","text":s})),
                         Some("image") => Some(json!({"type":"inputImage","imageUrl":match p["data"].as_str() {
                             // A saved screenshot not yet loaded: the reference stands in for the bytes.
-                            Some(reference) if reference.starts_with("blob:") => reference.to_owned(),
+                            // Its type follows "#", as the window's saved-image loader expects.
+                            Some(reference) if reference.starts_with("blob:") => format!("{reference}#{}",p["mimeType"].as_str().unwrap_or("image/png")),
                             data => format!("data:{};base64,{}",p["mimeType"].as_str().unwrap_or("image/png"),data.unwrap_or("")),
                         }})),
                         _ => None,

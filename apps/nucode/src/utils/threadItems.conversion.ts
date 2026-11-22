@@ -15,6 +15,17 @@ function extractImageInputValue(input: Record<string, unknown>) {
 }
 
 /** Codex Desktop wraps a prompt in "## My request:". The importer strips it now; threads imported earlier still carry it. */
+// A built-in tool's result: its text is the output, and a picture (a data URL or a saved
+// "blob:sha256:…#type" reference, loaded when shown) is a thumbnail, never printed as JSON.
+const TOOL_IMAGE = /^(data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=\r\n]+|blob:sha256:[0-9a-f]{64}#image\/(png|jpeg|webp|gif))$/;
+function dynamicToolOutput(items: unknown) {
+  const list = Array.isArray(items) ? items as Array<Record<string, unknown>> : [];
+  const images = list.flatMap(c => c.type === "inputImage" && typeof c.imageUrl === "string" && TOOL_IMAGE.test(c.imageUrl) ? [c.imageUrl] : []);
+  const missing = list.some(c => c.type === "inputImage" && !(typeof c.imageUrl === "string" && TOOL_IMAGE.test(c.imageUrl)));
+  const text = list.flatMap(c => c.type === "inputText" ? [asString(c.text)] : c.type === "inputImage" ? [] : [JSON.stringify(c)]);
+  return { images: images.length ? images : undefined, output: [...text, ...(missing ? ["Image preview unavailable."] : [])].join("\n") };
+}
+
 const IMPORTED_REQUEST_HEADER = /^## My request(?: for Codex)?:\s*/;
 
 function parseUserInputs(inputs: Array<Record<string, unknown>>) {
@@ -193,7 +204,7 @@ export function buildConversationItem(
       title: `Tool: ${[tool.namespace, tool.tool].filter(Boolean).join(" / ")}`,
       detail: JSON.stringify(tool.arguments ?? null, null, 2),
       status: tool.status, durationMs: tool.durationMs,
-      output: JSON.stringify(tool.contentItems ?? [], null, 2),
+      ...dynamicToolOutput(tool.contentItems),
     };
   }
   if (type === "imageGeneration") {
