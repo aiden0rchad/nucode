@@ -413,6 +413,12 @@ async function normalizeImagesForRpc(images?: string[]): Promise<string[] | null
   return convertImagesToDataUrls(images);
 }
 
+// The images a send carries: data URLs pass as they are; file paths stay paths on the desktop (the engine
+// reads them) and become data URLs only where the backend can't reach the file (remote backend, mobile).
+export async function prepareImagesForSend(images: string[]): Promise<string[]> {
+  return (await normalizeImagesForRpc(images)) ?? images;
+}
+
 export async function sendUserMessage(
   workspaceId: string,
   threadId: string,

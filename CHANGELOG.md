@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Photos you drag in or pick:** a message with photos attached from files now sends. Before, it failed with "Request couldn't complete" and the photos were dropped, because the app tried to convert each file to inline data, which the desktop app refuses; the engine reads the files itself. Pasted images were not affected.
 - **Browser on slow pages:** an agent can now click, type, scroll, read, take a snapshot or a screenshot on a page whose content is there but that is still loading images and ads, instead of waiting for the whole page to finish. A screenshot of such a page shows what is on screen now. If a page has not even started to show, the tools answer "still loading" within 15 seconds rather than hanging until the request times out.
 - **Threads stuck on "Remove auth.json":** a thread no longer fails to start because an agent ran a `pi` command in its own shell. That command used nucode's private pi folder and left an empty `auth.json` in it; an empty file holds no account, so nucode now removes it and starts. A file with any content is still refused, since nucode does not support accounts or logins.
 - **New thread:** the first message now shows in the conversation the moment you press Send, together with the Thinking row. Before, it appeared a few seconds later, after the runtime had been prepared and the thread started.
