@@ -572,7 +572,11 @@ impl Translator {
                     .flatten()
                     .filter_map(|p| match p["type"].as_str() {
                         Some("text") => p["text"].as_str().map(|s|json!({"type":"inputText","text":s})),
-                        Some("image") => Some(json!({"type":"inputImage","imageUrl":format!("data:{};base64,{}",p["mimeType"].as_str().unwrap_or("image/png"),p["data"].as_str().unwrap_or(""))})),
+                        Some("image") => Some(json!({"type":"inputImage","imageUrl":match p["data"].as_str() {
+                            // A saved screenshot not yet loaded: the reference stands in for the bytes.
+                            Some(reference) if reference.starts_with("blob:") => reference.to_owned(),
+                            data => format!("data:{};base64,{}",p["mimeType"].as_str().unwrap_or("image/png"),data.unwrap_or("")),
+                        }})),
                         _ => None,
                     })
                     .collect::<Vec<_>>());

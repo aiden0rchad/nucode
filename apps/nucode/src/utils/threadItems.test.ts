@@ -33,12 +33,15 @@ describe("threadItems", () => {
     expect(second[last]).not.toBe(first[last]);
     expect((second[last] as Extract<ConversationItem, { kind: "message" }>).text).toBe("Working on it");
   });
-  it("draws only real image data as a tool thumbnail and names an unresolved one", () => {
+  it("draws real image data or a saved reference as a tool thumbnail and names anything else", () => {
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0uoAAAAASUVORK5CYII=";
     const tool = (data: string) => buildConversationItem({ type: "mcpToolCall", id: "shot", server: "nucode_browser", tool: "browser_take_screenshot", arguments: {}, status: "completed", result: { content: [{ type: "image", mimeType: "image/png", data }, { type: "text", text: "Saved" }] } }) as Extract<ConversationItem, { kind: "tool" }>;
     expect(tool(png).images).toEqual([`data:image/png;base64,${png}`]);
     expect(tool(png).output).toBe("Saved");
-    const unresolved = tool(`blob:sha256:${"a".repeat(64)}`);
+    const saved = `blob:sha256:${"a".repeat(64)}`;
+    expect(tool(saved).images).toEqual([`${saved}#image/png`]);
+    expect(tool(saved).output).toBe("Saved");
+    const unresolved = tool("blob:md5:not-a-saved-image");
     expect(unresolved.images).toEqual([]);
     expect(unresolved.output).toBe("Saved\nImage preview unavailable.");
   });

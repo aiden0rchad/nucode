@@ -5,16 +5,16 @@ pub(super) async fn try_handle(
     params: &Value,
 ) -> Option<Result<Value, String>> {
     match method {
-        "create_side_chat" | "get_subagent_transcript" | "thread_agent_policy" => {
+        "create_side_chat" | "get_subagent_transcript" | "get_thread_image" | "thread_agent_policy" => {
             let workspace = match parse_string(params, "workspaceId") {
                 Ok(value) => value, Err(err) => return Some(Err(err)),
             };
             let thread = match parse_string(params, "threadId") {
                 Ok(value) => value, Err(err) => return Some(Err(err)),
             };
-            let rpc = match method { "create_side_chat" => "thread/sidechat", "thread_agent_policy" => "thread/agentPolicy", _ => "subagent/transcript" };
+            let rpc = match method { "create_side_chat" => "thread/sidechat", "thread_agent_policy" => "thread/agentPolicy", "get_thread_image" => "thread/image", _ => "subagent/transcript" };
             Some(codex_core::thread_feature_core(&state.sessions, workspace, rpc,
-                json!({"threadId":thread,"atItemId":params["atItemId"],"nodeId":params["nodeId"],"action":params["action"],"policy":params["policy"]})).await)
+                json!({"threadId":thread,"atItemId":params["atItemId"],"nodeId":params["nodeId"],"action":params["action"],"policy":params["policy"],"reference":params["reference"],"mimeType":params["mimeType"]})).await)
         }
         "connector_request" => {
             let input = params["params"].clone();

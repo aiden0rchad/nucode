@@ -189,6 +189,19 @@ describe("useThreads UX integration", () => {
     }
   });
 
+  it("reports an opened thread as loading in the render that opens it, until its history arrives", async () => {
+    let finish: (value: Awaited<ReturnType<typeof resumeThread>>) => void = () => {};
+    vi.mocked(resumeThread).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const { result } = renderHook(() => useThreads({ activeWorkspace: workspace, onWorkspaceConnected: vi.fn() }));
+    act(() => { result.current.setActiveThreadId("long-thread"); });
+    // No resume has been awaited yet: the empty new-thread screen must not show in between.
+    expect(result.current.threadResumeLoadingById["long-thread"]).toBe(true);
+    await waitFor(() => expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "long-thread"));
+    expect(result.current.threadResumeLoadingById["long-thread"]).toBe(true);
+    await act(async () => { finish({ result: { thread: { id: "long-thread", turns: [] } } }); });
+    await waitFor(() => expect(result.current.threadResumeLoadingById["long-thread"]).toBe(false));
+  });
+
   it("applies runtime codex args before start and selection resume", async () => {
     const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
     vi.mocked(startThread).mockResolvedValue({

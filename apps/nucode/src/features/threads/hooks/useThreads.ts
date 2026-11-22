@@ -838,16 +838,24 @@ export function useThreads({
             loadedThreadsRef.current[threadId] = true;
             return;
           }
-          const hasActiveTurnInWorkspace = hasProcessingThreadInWorkspace(targetId);
-          if (!hasActiveTurnInWorkspace) {
-            await ensureWorkspaceRuntimeCodexArgsBestEffort(targetId, threadId, "resume");
+          // The thread is open and has nothing to show yet: say it is loading from this render on, not
+          // only once the resume starts, or the empty "new thread" screen shows in between.
+          dispatch({ type: "setThreadResumeLoading", threadId, isLoading: true });
+          try {
+            const hasActiveTurnInWorkspace = hasProcessingThreadInWorkspace(targetId);
+            if (!hasActiveTurnInWorkspace) {
+              await ensureWorkspaceRuntimeCodexArgsBestEffort(targetId, threadId, "resume");
+            }
+            await resumeThreadForWorkspace(targetId, threadId);
+          } finally {
+            dispatch({ type: "setThreadResumeLoading", threadId, isLoading: false });
           }
-          await resumeThreadForWorkspace(targetId, threadId);
         })();
       }
     },
     [
       activeWorkspaceId,
+      dispatch,
       ensureWorkspaceRuntimeCodexArgsBestEffort,
       hasLocalThreadSnapshot,
       hasProcessingThreadInWorkspace,

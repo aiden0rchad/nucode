@@ -1274,6 +1274,10 @@ export function checkpointRequest(workspaceId: string, params: Record<string, un
 export function getSubagentTranscript(workspaceId: string, threadId: string, nodeId: string) {
   return invoke<{ messages: Record<string, unknown>[]; truncated: boolean }>("get_subagent_transcript", { workspaceId, threadId, nodeId });
 }
+/** The bytes of one screenshot saved in a thread, as base64, for a reference the thread's items carry. */
+export function getThreadImage(workspaceId: string, threadId: string, reference: string, mimeType: string) {
+  return invoke<{ result: { data: string; mimeType: string } }>("get_thread_image", { workspaceId, threadId, reference, mimeType });
+}
 export function createSideChat(workspaceId: string, threadId: string, atItemId?: string) {
   return invoke<{ result: { thread: Record<string, unknown> & { id: string } } }>("create_side_chat", { workspaceId, threadId, atItemId });
 }

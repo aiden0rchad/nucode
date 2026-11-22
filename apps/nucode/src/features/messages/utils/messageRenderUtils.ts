@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ConversationItem } from "../../../types";
+import { parseSavedImageSource } from "@utils/savedImages";
 
 export type ToolSummary = {
   label: string;
@@ -246,7 +247,7 @@ export function normalizeMessageImageSrc(path: string) {
   if (!path) {
     return "";
   }
-  if (path.startsWith("data:") || path.startsWith("http://") || path.startsWith("https://")) {
+  if (path.startsWith("data:") || path.startsWith("http://") || path.startsWith("https://") || parseSavedImageSource(path)) {
     return path;
   }
   if (path.startsWith("file://")) {

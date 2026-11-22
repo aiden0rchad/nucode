@@ -1,5 +1,6 @@
 import type { ConversationItem, TurnReview } from "../types";
 import { parseCollabToolCallItem } from "./threadItems.collab";
+import { savedImageSource } from "./savedImages";
 import { asNumber, asString, normalizeVirtualFileChange } from "./threadItems.shared";
 import type { ThreadItem } from "@protocol/v2/ThreadItem";
 
@@ -162,11 +163,11 @@ export function buildConversationItem(
     const result = item.result as { content?: Array<Record<string, unknown>>; structuredContent?: unknown } | null;
     const content = Array.isArray(result?.content) ? result.content : [];
     const image = (c: Record<string, unknown>) => c.type === "image" && typeof c.mimeType === "string" && /^image\/(png|jpeg|webp|gif)$/.test(c.mimeType);
-    // Only real base64 becomes a thumbnail; anything else (an unresolved "blob:sha256:" reference) would draw as a
-    // broken image, so it is named in the output instead.
-    const encoded = (c: Record<string, unknown>) => typeof c.data === "string" && c.data.length > 0 && /^[A-Za-z0-9+/=\r\n]+$/.test(c.data);
-    const images = content.flatMap(c => image(c) && encoded(c) ? [`data:${c.mimeType};base64,${c.data}`] : []);
-    const missing = content.some(c => image(c) && !encoded(c));
+    // Real base64 or a saved "blob:sha256:" reference (loaded lazily) becomes a thumbnail; anything else would draw
+    // as a broken image, so it is named in the output instead.
+    const usable = (c: Record<string, unknown>) => typeof c.data === "string" && c.data.length > 0 && (/^blob:sha256:[0-9a-f]{64}$/.test(c.data) || /^[A-Za-z0-9+/=\r\n]+$/.test(c.data));
+    const images = content.flatMap(c => image(c) && usable(c) ? [savedImageSource(c.data as string, c.mimeType as string)] : []);
+    const missing = content.some(c => image(c) && !usable(c));
     return {
       id,
       kind: "tool",

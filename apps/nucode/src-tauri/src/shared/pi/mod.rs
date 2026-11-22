@@ -94,10 +94,27 @@ pub(crate) struct PiEngine {
     graph: Option<CodegraphSetup>,
     idle: Duration,
     pub(super) keys: Arc<dyn KeyStore>,
+    /// The newest saved conversation read from disk, shared by the requests that page through it.
+    history: std::sync::Mutex<Option<StoredHistory>>,
     #[cfg(test)]
     pub(super) fake: bool,
     #[cfg(test)]
     fixture_transport: bool,
+}
+/// Opening a long thread asks for its turns and then for each turn's items, page by page. Each of those
+/// reads the same saved conversation, so the translated turns are kept for as long as the files that
+/// make them (the session, its stream checkpoints and its agent checkpoints) have not changed.
+struct StoredHistory {
+    file: PathBuf,
+    stamp: [Option<(u64, std::time::SystemTime)>; 3],
+    read_at: std::time::Instant,
+    turns: Arc<Vec<Value>>,
+}
+const HISTORY_KEPT: Duration = Duration::from_secs(60);
+fn history_stamp(file: &Path) -> [Option<(u64, std::time::SystemTime)>; 3] {
+    let name = file.file_name().unwrap_or_default().to_string_lossy();
+    [file.to_path_buf(), file.with_file_name(format!("{name}.streams")), file.with_file_name(format!("{name}.agents"))]
+        .map(|path| path.metadata().and_then(|m| Ok((m.len(), m.modified()?))).ok())
 }
 impl Default for PiEngine {
     fn default() -> Self {
@@ -118,6 +135,7 @@ impl Default for PiEngine {
             graph: None,
             idle: Duration::from_secs(600),
             keys: Arc::new(Keychain),
+            history: std::sync::Mutex::new(None),
             #[cfg(test)]
             fake: false,
             #[cfg(test)]
@@ -126,6 +144,19 @@ impl Default for PiEngine {
     }
 }
 impl PiEngine {
+    fn remember_history(&self, file: &Path, stamp: [Option<(u64, std::time::SystemTime)>; 3], turns: Arc<Vec<Value>>) {
+        *self.history.lock().unwrap() = Some(StoredHistory { file: file.to_path_buf(), stamp, read_at: std::time::Instant::now(), turns });
+    }
+    fn stored_turns(&self, file: &Path, registry: &[ProviderEntry]) -> Result<Arc<Vec<Value>>, String> {
+        let stamp = history_stamp(file);
+        if let Some(kept) = self.history.lock().unwrap().as_ref()
+            .filter(|kept| kept.file == file && kept.stamp == stamp && kept.read_at.elapsed() < HISTORY_KEPT) {
+            return Ok(kept.turns.clone());
+        }
+        let turns = Arc::new(read_session(file, registry)?.1.turns);
+        self.remember_history(file, stamp, turns.clone());
+        Ok(turns)
+    }
     pub fn with_definition(&self, definition: crate::types::EngineDefinition) -> Self {
         Self { data: self.data.clone(), profile: profile::EngineProfile { definition }, sink: self.sink.clone(), graph: self.graph.clone(), keys: self.keys.clone(), ..Self::default() }
     }
@@ -875,6 +906,15 @@ impl PiEngine {
             }
             return Ok(json!({}));
         }
+        if method == "thread/image" {
+            let reference = params["reference"].as_str().ok_or("Missing image reference")?;
+            let mime = params["mimeType"].as_str().ok_or("Missing image type")?;
+            let blobs = blob_dir(&s.file);
+            drop(sessions);
+            let data = blobs.and_then(|blobs| images::load(reference, mime, &blobs))
+                .ok_or("Image preview unavailable: the saved image is missing or invalid.")?;
+            return Ok(json!({"result":{"data":data,"mimeType":mime}}));
+        }
         if method == "subagent/transcript" {
             let node = params["nodeId"].as_str().ok_or("Missing node ID")?;
             let transcript = if let Some(p) = &s.process {
@@ -1022,19 +1062,26 @@ impl PiEngine {
             let usage;
             let mode = if let Some(p) = s.process.as_ref().filter(|p| p.alive.load(Ordering::SeqCst)) {
                 let t = p.translator.lock().await;
-                thread["turns"] = json!(t.turns);
+                thread["turns"] = if params["excludeTurns"] == true { json!([]) } else { json!(t.turns) };
                 usage = t.usage_event(None);
                 t.access_mode.clone()
             } else {
                 // The listed thread may have been read before the provider list was known and name its provider
                 // the engine's way, so the model is taken from this reading and matched under either name.
+                let stamp = history_stamp(&s.file);
                 let (read, stored) = read_session(&s.file, &registry)?;
                 let window = registry.iter()
                     .find(|p| read["modelProvider"] == p.id.as_str() || read["modelProvider"] == config::provider_id(p, &registry).as_str())
                     .and_then(|p| p.models.iter().find(|m| read["model"] == m.id.as_str()))
                     .and_then(|m| m.context_window);
                 usage = stored.usage_event(window);
-                thread["turns"] = json!(stored.turns);
+                // A window that pages the history in (excludeTurns) asks for the turns next, from this reading.
+                if params["excludeTurns"] == true {
+                    thread["turns"] = json!([]);
+                    self.remember_history(&s.file, stamp, Arc::new(stored.turns));
+                } else {
+                    thread["turns"] = json!(stored.turns);
+                }
                 let home = self.data.as_ref().ok_or("Pi runtime is not configured")?
                     .join(if self.chat { "chats/agent".into() } else { format!("{}/agent", self.profile.id()) })
                     .join(if self.chat { id } else { workspace });
@@ -1057,12 +1104,14 @@ impl PiEngine {
             let file = s.file.clone();
             let p = s.process.clone();
             drop(sessions);
-            let mut history = if let Some(p) = p.filter(|p| p.alive.load(Ordering::SeqCst)) {
+            let history: Arc<Vec<Value>> = if let Some(p) = p.filter(|p| p.alive.load(Ordering::SeqCst)) {
                 let mut messages = p.request(json!({"type":"get_messages"})).await?;
-                // Live frames and saved history get their image blob references hydrated; this reload must too, or
-                // a reopened thread shows each screenshot as a broken image.
+                // Treat images like saved history: screenshots in tool results stay references the window
+                // fetches lazily, other images are hydrated, so a reopened thread never shows a broken image.
                 if let Some(directory) = &p.blobs {
-                    for message in messages["messages"].as_array_mut().into_iter().flatten() { images::restore(message, directory); }
+                    for message in messages["messages"].as_array_mut().into_iter().flatten() {
+                        if message["role"] == "toolResult" { images::reference(message, directory); } else { images::restore(message, directory); }
+                    }
                 }
                 let t = p.translator.lock().await;
                 let fresh = Translator::history(
@@ -1095,12 +1144,12 @@ impl PiEngine {
                             }
                         }
                     }
-                    turns
+                    Arc::new(turns)
                 } else {
-                    fresh
+                    Arc::new(fresh)
                 }
             } else {
-                read_session(&file, &registry)?.1.turns
+                self.stored_turns(&file, &registry)?
             };
             if method == "thread/items/list" {
                 let turn = history
@@ -1117,16 +1166,22 @@ impl PiEngine {
                 );
             }
             if method == "thread/turns/list" {
-                if params["sortDirection"].as_str() != Some("asc") {
-                    history.reverse();
-                }
-                if params["itemsView"] == "notLoaded" {
-                    for turn in &mut history {
-                        turn["items"] = json!([]);
-                        turn["itemsView"] = json!("notLoaded");
+                let not_loaded = params["itemsView"] == "notLoaded";
+                let mut turns: Vec<Value> = history.iter().map(|turn| {
+                    if !not_loaded { return turn.clone(); }
+                    // Without the items, so a long thread's items are not copied only to be dropped.
+                    let mut bare = serde_json::Map::new();
+                    for (key, value) in turn.as_object().into_iter().flatten().filter(|(key, _)| *key != "items") {
+                        bare.insert(key.clone(), value.clone());
                     }
+                    bare.insert("items".into(), json!([]));
+                    bare.insert("itemsView".into(), json!("notLoaded"));
+                    Value::Object(bare)
+                }).collect();
+                if params["sortDirection"].as_str() != Some("asc") {
+                    turns.reverse();
                 }
-                let (data, next) = page(history, &params)?;
+                let (data, next) = page(turns, &params)?;
                 return Ok(
                     json!({"result":{"data":data,"nextCursor":next,"backwardsCursor":null}}),
                 );
@@ -1134,7 +1189,7 @@ impl PiEngine {
             thread["turns"] = if params["includeTurns"] == false {
                 json!([])
             } else {
-                json!(history)
+                json!(&*history)
             };
             return Ok(json!({"result":{"thread":thread,"readState":null}}));
         }
@@ -1458,6 +1513,12 @@ fn read_session_entries(file: &Path) -> Result<Vec<Value>, String> {
     Ok(entries)
 }
 
+/// Where OMP keeps the image blobs of the sessions beside `file`.
+fn blob_dir(file: &Path) -> Option<PathBuf> {
+    let workspace = file.parent()?;
+    Some(workspace.parent().and_then(Path::parent)?.join("agent").join(workspace.file_name()?).join("blobs"))
+}
+
 fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Translator), String> {
     let entries = read_session_entries(file)?;
     let header = &entries[0];
@@ -1596,10 +1657,11 @@ fn read_session(file: &Path, registry: &[ProviderEntry]) -> Result<(Value, Trans
             if !superseded { messages.push(saved); }
         }
     }
-    if let Some(workspace) = file.parent() {
-        if let (Some(root), Some(name)) = (workspace.parent().and_then(Path::parent), workspace.file_name()) {
-            let blobs = root.join("agent").join(name).join("blobs");
-            for message in &mut messages { images::restore(message, &blobs); }
+    if let Some(blobs) = blob_dir(file) {
+        // Screenshots in tool results stay references (see images::reference); the window fetches them
+        // as they come on screen. Pictures a person attached are few and shown at once.
+        for message in &mut messages {
+            if message["role"] == "toolResult" { images::reference(message, &blobs); } else { images::restore(message, &blobs); }
         }
     }
     let mut translator = Translator::history(id, cwd, &messages);
