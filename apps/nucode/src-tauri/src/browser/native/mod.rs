@@ -713,7 +713,9 @@ impl NativeBackend {
                     self.state
                         .send_modify(|s| s["downloadRequest"] = Value::Null);
                 }
-                if action == "navigate" {
+                // A fragment navigation (only the part after # changes) stays in the same document: WebKit scrolls
+                // and never reports a new load, so marking the page not-ready would leave it "loading" for good.
+                if action == "navigate" && !self.tab(&id).is_some_and(|t| t["ready"] == true && t["url"].as_str().is_some_and(|current| same_document(current, url))) {
                     self.update(&id, json!({"ready":false,"loading":true,"error":null}));
                 }
                 view.navigate(url.parse().map_err(|_| "Invalid URL")?)
@@ -1063,6 +1065,13 @@ fn resolve_path(url: &str, current: Option<&str>) -> String {
     }
     url.into()
 }
+/// Whether navigating from `current` to `target` is a fragment navigation, which stays in the same document: the
+/// URLs match up to the fragment and the target has one. Without a fragment the same URL loads the page again.
+fn same_document(current: &str, target: &str) -> bool {
+    use url::Position::AfterQuery;
+    let (Ok(current), Ok(target)) = (url::Url::parse(current), url::Url::parse(target)) else { return false };
+    target.fragment().is_some() && matches!(target.scheme(), "http" | "https" | "file") && current[..AfterQuery] == target[..AfterQuery]
+}
 fn new_tab_url(p: &Value) -> Result<&str, String> {
     let url = if p["action"] == "tabs" { p["params"].get("url").filter(|url| !url.is_null()) } else { None }
         .or_else(|| p.get("url").filter(|url| !url.is_null()));
@@ -1270,6 +1279,20 @@ mod tests {
         offer_capture(&path, &pending, &index, &state, capture("blocked-secret", 0)).unwrap();
         assert!(pending.lock().unwrap().is_none());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn only_fragment_changes_count_as_same_document_navigations() {
+        let page = "http://127.0.0.1:8787/?v=33#simulation";
+        for target in ["http://127.0.0.1:8787/?v=33#market", "http://127.0.0.1:8787/?v=33#simulation", "http://127.0.0.1:8787/?v=33#"] {
+            assert!(super::same_document(page, target), "{target}");
+        }
+        assert!(super::same_document("https://site.test/a", "https://site.test/a#top"));
+        // A new query or path is a new document, and the same URL without a fragment loads the page again.
+        for (current, target) in [(page, "http://127.0.0.1:8787/?v=34#market"), (page, "http://127.0.0.1:8787/x?v=33#market"),
+            ("https://site.test/a", "https://site.test/a"), ("https://site.test/a#top", "https://site.test/a"),
+            ("about:blank", "about:blank#x"), ("not a url", "https://site.test/#x")] {
+            assert!(!super::same_document(current, target), "{current} -> {target}");
+        }
     }
     #[test]
     fn navigate_resolves_snapshot_paths_against_the_current_page_only() {
