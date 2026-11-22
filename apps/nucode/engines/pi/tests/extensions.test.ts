@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decide, normalizeRule, protectedPath, readOnlyCommand, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
+import { decide, normalizeRule, protectedPath, readOnlyCommand, readOnlyPipeline, resolveTask, checkLimits, type Policy } from "../extensions/lib/policy.ts";
 import gate from "../extensions/nucode-gate.ts";
 import subagents from "../extensions/nucode-subagents.ts";
 
@@ -45,6 +45,34 @@ test("gate decision table, exact session rules, shell injection and protected pa
   assert.equal(decide(ask, bash, home, false, child), "block");
   assert.equal(decide(ask, { ...bash, command: "ls" }, home, false, child), "allow");
   assert.equal(decide(ask, write, home, false, { ...child, toolAccess: "read-only" }), "block");
+});
+
+test("Full access lets a read-only pipeline name protected paths and still asks before anything that can write them", () => {
+  const full = { accessMode: "full-access" as const, sessionAllow: [] };
+  const reads = [
+    `cd ${cwd}/src && grep -n "XDG\\|\\"HOME\\"\\|PI_CODING_AGENT_DIR\\|OMP_\\|env(\\"" mod.rs config.rs 2>/dev/null | cut -c1-220 | head -30; grep -n "base" -A15 dirs.ts | head -40`,
+    `cd "${home}" && ls -a; find . -type d | wc -l; find . -type d -name daemons -path "*/run/*"`,
+    `cat ${home}/config.yml | head -5`,
+    `grep -rn NUCODE_SESSION_KEY src | sort | head`,
+    `git log --oneline -5 && ls .git`,
+  ];
+  for (const command of reads) {
+    assert.ok(readOnlyPipeline(command), command);
+    assert.equal(decide(full, { tool: "bash", command, cwd }, home, true), "allow", command);
+  }
+  const writes = [
+    `echo x > ${home}/config.yml`, `cat a >> .env`, `rm -rf ${home}/nucode`, `export PI_CODING_AGENT_DIR=/tmp; ls`,
+    `find ${home} -name x -delete`, `find ${home} -exec rm {} +`, `sort -o ${home}/a b`, `sort --compress-program=sh ${home}/x`,
+    `ls ${home} && touch ${home}/x`, `cat $(echo ${home}/x)`, "cat `id` " + home, `ls ${home} & rm x`, `ls $X ${home}`,
+    `rg --pre=sh x ${home}`, `tree -o ${home}/out`, `cat "${home}/x`, `PI_CODING_AGENT_DIR=/tmp ls`, `tee ${home}/x < a`,
+    `git -c core.pager=sh log ${home}`, `cat <(id) ${home}`,
+  ];
+  for (const command of writes) {
+    assert.ok(!readOnlyPipeline(command), command);
+    assert.equal(decide(full, { tool: "bash", command, cwd }, home, true), "ask", command);
+  }
+  assert.equal(decide({ accessMode: "ask", sessionAllow: [] }, { tool: "bash", command: reads[3], cwd }, home, true), "ask");
+  assert.equal(decide({ accessMode: "read-only", sessionAllow: [] }, { tool: "bash", command: reads[3], cwd }, home, true), "block");
 });
 
 test("OMP Full access allows scoped LSP queries while retaining native mutation and mode gates", async (t) => {

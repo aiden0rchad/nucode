@@ -48,6 +48,48 @@ export function readOnlyCommand(command: string): boolean {
   const flags: Record<string, RegExp> = { ls: /^-[alhRdt]+$/, cat: /^-[nbEsTv]+$/, rg: /^(-[niIlwFc]+|--(?:files|hidden|no-ignore))$/, grep: /^-[niIlwFErc]+$/, pwd: /^-[LP]$/ };
   return !!flags[tool] && args.every(a => !a.startsWith("-") || a === "--" || flags[tool].test(a));
 }
+// Split a shell line into its pipeline segments, or return null when it can run anything
+// beyond its listed commands: substitution, background jobs, or writing redirects.
+function segments(command: string): string[][] | null {
+  const out: string[][] = []; let words: string[] = []; let word = ""; let quoted = false; let quote = "";
+  const end = () => { if (word || quoted) words.push(word); word = ""; quoted = false; };
+  const cut = () => { end(); if (words.length) out.push(words); words = []; };
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i], rest = command.slice(i);
+    if (quote === "'") { if (c === "'") quote = ""; else word += c; continue; }
+    // Any expansion could turn into a flag or a command that is not listed, so it is refused outright.
+    if (c === "`" || c === "$" || rest.startsWith("<(") || rest.startsWith(">(")) return null;
+    if (quote === '"') { if (c === '"') quote = ""; else if (c === "\\" && i + 1 < command.length) word += command[++i]; else word += c; continue; }
+    if (c === "'" || c === '"') { quote = c; quoted = true; continue; }
+    if (c === "\\") { if (i + 1 < command.length) word += command[++i]; continue; }
+    const redirect = /^(2>\/dev\/null|>\/dev\/null|2>&1)(?=\s|$|[|;&])/.exec(rest);
+    if (redirect && !word) { i += redirect[0].length - 1; continue; }
+    if (c === ">" || c === "<") return null;
+    if (rest.startsWith("&&") || rest.startsWith("||")) { cut(); i++; continue; }
+    if (c === "&") return null;
+    if (c === "|" || c === ";" || c === "\n") { cut(); continue; }
+    if (/\s/.test(c)) { end(); continue; }
+    word += c;
+  }
+  if (quote) return null;
+  cut();
+  return out;
+}
+const READERS = new Set(["cd", "pwd", "ls", "cat", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "find", "sort", "cut", "tr", "stat", "du", "file", "echo", "printf", "basename", "dirname", "realpath", "which", "tree", "diff", "jq", "true"]);
+// A pipeline of commands that only read: it may name protected paths, since it cannot change them.
+export function readOnlyPipeline(command: string): boolean {
+  const parts = segments(command);
+  return !!parts?.length && parts.every(([tool, ...args]) => {
+    if (tool === "git") return readOnlyCommand(["git", ...args].join(" "));
+    if (!READERS.has(tool) || tool.includes("=")) return false;
+    if (tool === "find") return !args.some(a => /^-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/.test(a));
+    if (tool === "sort") return !args.some(a => /^(-o|--output|--compress-program)/.test(a));
+    if (tool === "tree") return !args.some(a => /^-o/.test(a));
+    if (tool === "file") return !args.some(a => /^-[a-zA-Z]*C/.test(a));
+    if (tool === "rg") return !args.some(a => /^--pre/.test(a));
+    return true;
+  });
+}
 export function normalizeRule(call: Call): Rule {
   // Exact normalized command is the safest command prefix (no wildcard or shell suffix).
   return call.tool === "bash"
@@ -87,7 +129,7 @@ export function decide(access: Access, call: Call, home: string, interactive: bo
   if (access.accessMode === "read-only" || child?.toolAccess === "read-only") return readonly ? "allow" : "block";
   const command = (call.command ?? "").replace(/\$(?:NUCODE_WORK_PYTHON\b|\{NUCODE_WORK_PYTHON\})/g, "");
   const protectedWrite = call.tool === "bash"
-    ? !readonly && /(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/.test(command) || command.includes(home)
+    ? !readonly && !readOnlyPipeline(command) && (/(^|[\s/'"])(\.git(?:[/\s'";]|$)|\.env)|PI_CODING_AGENT_DIR|NUCODE_|nucode\/threads/.test(command) || command.includes(home))
     : protectedPath(path, home);
   if (protectedWrite) return interactive && !child ? "ask" : "block";
   if (child && access.accessMode === "ask") return readonly || (call.tool !== "bash" && inside(path, child.workspace)) ? "allow" : "block";
