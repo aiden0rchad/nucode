@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Fewer approval prompts in Full access:** a command that only reads (for example `grep`, `ls`, `find` or `cat`, piped together) no longer asks for approval because it mentions nucode's own settings, a `.git` folder or a variable such as `PI_CODING_AGENT_DIR`, for instance in a search pattern. A command that could change those (a redirect, `rm`, `find -delete`, setting the variable, or any `$` expansion) still asks.
 - **Photo messages shown twice:** a message with a photo attached from a file showed twice in the conversation once the agent answered, although it was sent and saved once. The copy shown while sending held the file's path and the agent's copy the stored picture, so the two were never matched; they now are.
 - **Turn times over an hour:** "Worked for" and the timers on background tasks and the session rail now show hours, so a two-hour turn reads "1:56:45" instead of "116:45".
 - **Photos you drag in or pick:** a message with photos attached from files now sends. Before, it failed with "Request couldn't complete" and the photos were dropped, because the app tried to convert each file to inline data, which the desktop app refuses; the engine reads the files itself. Pasted images were not affected.
