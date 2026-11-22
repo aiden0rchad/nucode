@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decide, inside, normalizeRule, protectedPath, safeReadOnlyCommand, type Access } from "./lib/policy.ts";
-import { connectorDecision, type Connector } from "./lib/connectors.ts";
+import { connectorDecision, nucodeToolEvalTimeout, type Connector } from "./lib/connectors.ts";
 import { registerStreamRecovery } from "./lib/streamRecovery.ts";
 import { ownedCommand } from "./lib/commandGuard.ts";
 import { contextReport } from "./lib/contextReport.ts";
@@ -83,6 +83,10 @@ export default function (pi: ExtensionAPI) {
       const home = process.env.PI_CODING_AGENT_DIR!, session = process.env.NUCODE_SESSION_KEY!;
       const access = JSON.parse(readFileSync(join(home, "nucode/threads", `${session}.json`), "utf8")) as Access;
       const input = (event.input ?? {}) as Record<string, unknown>;
+      if (event.toolName === "eval") {
+        const timeout = nucodeToolEvalTimeout(input);
+        if (timeout !== undefined) input.timeout = timeout;
+      }
       // OMP expands @/~ prefixes and file URLs; only auto-allow plain local paths.
       if (event.toolName === "lsp" && access.accessMode === "full-access" && !process.env.NUCODE_WORK && !process.env.NUCODE_SUBAGENT_DEPTH
         && ["definition", "type_definition", "implementation", "references", "hover", "symbols"].includes(String(input.action))

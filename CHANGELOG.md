@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Script cells stopped mid browser call:** an omp eval cell that calls the in-app browser or Computer Use without its own timeout now gets 3 minutes (10 minutes with Computer Use) instead of 30 s. The browser call inside alone could take most of the 30 s, so the cell was stopped with the call still running and the kernel's state was lost. A timeout the agent sets is kept.
 - **Browser tools that ran into the 30 s timeout:** every in-app browser tool now answers within 25 s. A call that runs out of time says so and what to check next, instead of the agent getting "Request timeout after 30000ms" with no idea what happened. A navigation that already landed stays a success when the page snapshot after it isn't ready in time. Browser calls sent together run side by side, so a slow one no longer holds back the calls behind it past their own timeout.
 - **In-app browser stuck after a link to a section of the same page:** opening a URL that differs from the current page only after the # (for example `#market` to `#settings` in a one-page app) no longer leaves the page marked as loading for good. The agent's browser_navigate used to hang until the 30 s tool timeout, and every snapshot, screenshot or click after it waited for a load that never came.
 - **Role effort:** each agent role can have its own reasoning effort in the team editor and in Settings → Models & Agents → Roles, so a commander on Medium can run its team on High. A role without one uses the effort of the agent that delegates to it.
