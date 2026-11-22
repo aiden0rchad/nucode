@@ -2,14 +2,18 @@
 (() => {
   if (globalThis.__nuBrowser) return;
   const refs = new WeakMap();
-  let nodes = new Map(), next = 0, userInput = false, agentPointer = null, agentPressed = false;
+  let nodes = new Map(), next = 0, userInput = false, agentPointer = null, agentPressed = false, agentPressUntil = 0;
   // Scrolling to watch the agent is not taking over; only a press or a key is.
   for (const event of ["pointerdown", "keydown", "touchstart"]) {
     addEventListener(event, e => {
       if (!e.isTrusted) return;
       // The agent cursor's own press arrives as a trusted event at the point it asked for; that is not the user taking over.
-      if (e.type === "pointerdown" && agentPointer && performance.now() < agentPointer.until && Math.hypot(e.clientX - agentPointer.x, e.clientY - agentPointer.y) < 4) {
-        agentPointer = null; agentPressed = true; return;
+      // While the agent's press is pending, a press anywhere is taken as its own: a scaled viewport can land the
+      // trusted press a few CSS pixels off the point it asked for, and a person's click in that half-second is rare.
+      if (e.type === "pointerdown" && agentPointer && performance.now() < agentPointer.until) {
+        const off = Math.hypot(e.clientX - agentPointer.x, e.clientY - agentPointer.y);
+        agentPointer = null; agentPressed = true;
+        if (off < 4 || performance.now() < agentPressUntil) return;
       }
       userInput = e.type;
     }, { capture: true, passive: true });
@@ -31,7 +35,7 @@
         let hit = document.elementFromPoint(x, y);
         while (hit?.shadowRoot) { const inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner; }
         if (hit && !nativeUi(hit) && (el.contains(hit) || (hit instanceof HTMLLabelElement && hit.control === el))) {
-          agentPointer = { x, y, until: performance.now() + 5000 }; agentPressed = false;
+          agentPointer = { x, y, until: performance.now() + 5000 }; agentPressed = false; agentPressUntil = performance.now() + 3000;
           return { x, y, w: innerWidth };
         }
       }

@@ -40,7 +40,7 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     if (count <= takeover.current) return;
     takeover.current = count;
     if (state.takeoverScope !== undefined && state.takeoverScope !== scope) return;
-    record({ kind: "warning", area: "browser", code: "browser.takeover", message: "Browser input took over from the agent", context: { cause: state.takeoverCause ?? "unknown" } });
+    record({ kind: "warning", area: "browser", code: "browser.takeover", message: "Browser input took over from the agent", context: { threadId: scope }, detail: { type: state.takeoverCause ?? "unknown" } });
     void onTakeOver();
   }, [state.backend, state.takeover, state.takeoverScope, state.takeoverCause, scope, onTakeOver]);
   const [url, setUrl] = useState("");
