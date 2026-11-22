@@ -2567,6 +2567,8 @@ fn saved_blob_images_restore_without_rewriting_history() {
         json!({"type":"message","id":"u","parentId":null,"message":{"role":"user","timestamp":1,"content":[image.clone()]}}),
         json!({"type":"message","id":"a","parentId":"u","message":{"role":"assistant","timestamp":2,"content":[{"type":"toolCall","id":"call","name":"mcp_nucode_computer_computer_run_task","arguments":{}}]}}),
         json!({"type":"message","id":"t","parentId":"a","message":{"role":"toolResult","timestamp":3,"toolCallId":"call","toolName":"mcp_nucode_computer_computer_run_task","content":[image.clone()],"isError":false}}),
+        json!({"type":"message","id":"a2","parentId":"t","message":{"role":"assistant","timestamp":4,"content":[{"type":"toolCall","id":"read","name":"read","arguments":{"path":"shot.png"}}]}}),
+        json!({"type":"message","id":"t2","parentId":"a2","message":{"role":"toolResult","timestamp":5,"toolCallId":"read","toolName":"read","content":[{"type":"text","text":"Read image file [image/png]"},image.clone()],"isError":false}}),
     ];
     let file = sessions.join("thread.jsonl");
     let saved = rows.iter().map(|v| format!("{v}\n")).collect::<String>();
@@ -2576,7 +2578,9 @@ fn saved_blob_images_restore_without_rewriting_history() {
     // A picture the person attached is shown at once; a screenshot in a tool result stays a reference
     // until the window loads it.
     assert!(rendered.contains(png));
-    assert_eq!(rendered.matches(&format!("blob:sha256:{hash}")).count(), 1);
+    assert_eq!(rendered.matches(&format!("blob:sha256:{hash}")).count(), 2);
+    // A built-in tool's image item carries its type for the window's loader.
+    assert!(rendered.contains(&format!("\"imageUrl\":\"blob:sha256:{hash}#image/png\"")));
     assert_eq!(images::load(&format!("blob:sha256:{hash}"), "image/png", &blobs).as_deref(), Some(png));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), saved);
     // Live tool results use the same resolver; inline images are unchanged.

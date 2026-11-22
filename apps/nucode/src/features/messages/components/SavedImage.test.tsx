@@ -32,14 +32,14 @@ describe("saved screenshots", () => {
   });
   it("renders inline bytes as they are", () => {
     show([shot("AAAA")]);
-    expect(screen.getByAltText("Generated image 1").getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    expect(screen.getByAltText("Image 1").getAttribute("src")).toBe("data:image/png;base64,AAAA");
     expect(getThreadImage).not.toHaveBeenCalled();
   });
   it("loads a referenced screenshot from its thread once it is on screen", async () => {
     getThreadImage.mockResolvedValue({ result: { data: "QUJD", mimeType: "image/png" } });
     show([shot(`blob:sha256:${hash}`)]);
     act(() => watching.forEach((enter) => enter()));
-    await waitFor(() => expect(screen.getByAltText("Generated image 1").getAttribute("src")).toBe("data:image/png;base64,QUJD"));
+    await waitFor(() => expect(screen.getByAltText("Image 1").getAttribute("src")).toBe("data:image/png;base64,QUJD"));
     expect(getThreadImage).toHaveBeenCalledOnce();
     expect(getThreadImage).toHaveBeenCalledWith("ws", "thread", `blob:sha256:${hash}`, "image/png");
   });
