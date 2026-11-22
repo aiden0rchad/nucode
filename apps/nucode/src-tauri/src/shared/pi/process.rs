@@ -451,11 +451,11 @@ impl Process {
 }
 
 #[cfg(unix)]
-fn pid_alive(pid: u32) -> bool {
+pub(super) fn pid_alive(pid: u32) -> bool {
     i32::try_from(pid).is_ok_and(|pid| pid > 0 && unsafe { libc::kill(pid, 0) } == 0)
 }
 #[cfg(not(unix))]
-fn pid_alive(_pid: u32) -> bool {
+pub(super) fn pid_alive(_pid: u32) -> bool {
     false
 }
 
