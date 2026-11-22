@@ -1406,6 +1406,26 @@ async fn fake_crash_fails_turn_and_idle_closes_stdin() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn idle_omp_stays_up_while_a_supervised_process_runs() {
+    let dir = temp();
+    let mut server = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+    let (p, _) = fake_engine(Duration::from_millis(200), &dir.join("idle"), true).await;
+    p.receive(json!({"type":"tool_execution_end","toolCallId":"dev","toolName":"bash",
+        "result":{"content":[{"type":"text","text":"dev: ready"}],"details":{"service":{"name":"dev","state":"ready","pid":server.id()}}}})).await;
+    // A replayed result from an earlier session must not hold the process up.
+    p.receive(json!({"type":"tool_execution_end","replay":true,"toolCallId":"old","result":{"details":{"service":{"pid":std::process::id()}}}})).await;
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert!(p.alive.load(Ordering::SeqCst), "idle shutdown would stop the agent's dev server");
+    server.kill().unwrap();
+    server.wait().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while p.alive.load(Ordering::SeqCst) { tokio::time::sleep(Duration::from_millis(10)).await; }
+    }).await.expect("the process idles out once the supervised process has exited");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[tokio::test]
 async fn interrupt_cancels_pending_ui_before_waiting_for_pi_to_settle() {
     let dir = temp();

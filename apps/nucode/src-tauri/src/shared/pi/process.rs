@@ -34,6 +34,8 @@ pub(super) struct Process {
     dialogs: Mutex<HashMap<String, Value>>,
     next_id: AtomicU64,
     touched: Mutex<Instant>,
+    /// Pids of the processes the agent started under OMP's supervision (a bash call with a name, such as a dev server).
+    services: Mutex<Vec<u32>>,
     diagnostic_start: Mutex<Option<std::time::Instant>>,
     emit: Emit,
     graph: Option<CodegraphSetup>,
@@ -84,6 +86,7 @@ impl Process {
             dialogs: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             touched: Mutex::new(Instant::now()),
+            services: Mutex::new(Vec::new()),
             diagnostic_start: Mutex::new(diagnostic_start),
             emit,
             graph,
@@ -161,6 +164,7 @@ impl Process {
                     && !p.translator.lock().await.active
                     && p.pending.lock().await.is_empty()
                     && p.touched.lock().await.elapsed() >= idle
+                    && !p.supervises_live_process().await
                 {
                     let _ = p.shutdown().await;
                     break;
@@ -181,6 +185,11 @@ impl Process {
             m = json!({"type":"agent_settled", "aborted":m["status"] == "aborted", "errorMessage":m["error"]["message"]});
         }
         *self.touched.lock().await = Instant::now();
+        if self.omp && m["type"] == "tool_execution_end" && m["replay"] != true {
+            if let Some(pid) = m["result"]["details"]["service"]["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok()) {
+                self.services.lock().await.push(pid);
+            }
+        }
         if m["type"] == "response" {
             if let Some(id) = m["id"].as_str() {
                 if let Some(tx) = self.pending.lock().await.remove(id) {
@@ -420,6 +429,14 @@ impl Process {
         let mut child = self.child.lock().await;
         match child.try_wait() { Ok(None) => child.id(), _ => None }
     }
+    /// OMP stops the processes it supervises for a session when that session's process exits, so an idle shutdown
+    /// would take the agent's dev server down (reported to the agent hours later as "failed with exit code 143") and
+    /// its eval kernel with it. The process stays up while any of them still runs.
+    async fn supervises_live_process(&self) -> bool {
+        let mut pids = self.services.lock().await;
+        pids.retain(|&pid| pid_alive(pid));
+        !pids.is_empty()
+    }
     pub async fn shutdown(&self) -> Result<(), String> {
         // Drain stdout while waiting: pi may still be finishing a write on EOF.
         self.stdin.lock().await.take();
@@ -431,6 +448,15 @@ impl Process {
         self.alive.store(false, Ordering::SeqCst);
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn pid_alive(pid: u32) -> bool {
+    i32::try_from(pid).is_ok_and(|pid| pid > 0 && unsafe { libc::kill(pid, 0) } == 0)
+}
+#[cfg(not(unix))]
+fn pid_alive(_pid: u32) -> bool {
+    false
 }
 
 pub(super) fn redact(mut text: String, secrets: &[String]) -> String {
