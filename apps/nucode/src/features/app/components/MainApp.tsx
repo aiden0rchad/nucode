@@ -70,7 +70,7 @@ import type {
   WorkspaceInfo,
 } from "@/types";
 import { useOpenAppIcons } from "@app/hooks/useOpenAppIcons";
-import { useNewAgentDraft } from "@app/hooks/useNewAgentDraft";
+import { useNewAgentDraft, withPendingFirstMessage } from "@app/hooks/useNewAgentDraft";
 import { useSystemNotificationThreadLinks } from "@app/hooks/useSystemNotificationThreadLinks";
 import { useThreadListSortKey } from "@app/hooks/useThreadListSortKey";
 import { useThreadListActions } from "@app/hooks/useThreadListActions";
@@ -470,7 +470,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     historyCursorByThread, historyLoadingByThread, historyErrorByThread, loadOlderHistory,
     markThreadUnread, loadThreadItems, forkThreadForWorkspace, deleteThreadPermanently, moveThread,
     activeThreadId,
-    activeItems,
+    activeItems: threadItems,
     itemsByThread,
     approvals,
     userInputRequests,
@@ -612,7 +612,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
   const gitState = useMainAppGitState({
     activeWorkspace,
     activeWorkspaceId,
-    activeItems,
+    activeItems: threadItems,
     activeThreadId,
     activeTab,
     tabletTab,
@@ -756,6 +756,7 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
   const {
     newAgentDraftWorkspaceId,
     startingDraftThreadWorkspaceId,
+    pendingFirstMessage,
     isDraftModeForActiveWorkspace: isNewAgentDraftMode,
     startNewAgentDraft,
     clearDraftState,
@@ -766,6 +767,10 @@ export default function MainApp({ settingsOnly = false, onCloseModeSettings, ini
     activeWorkspaceId,
     activeThreadId,
   });
+  const activeItems = useMemo(
+    () => withPendingFirstMessage(threadItems, pendingFirstMessage, activeWorkspaceId),
+    [threadItems, pendingFirstMessage, activeWorkspaceId],
+  );
   const { getThreadRows } = useThreadRows(threadParentById);
 
   useTrayRecentThreads({
