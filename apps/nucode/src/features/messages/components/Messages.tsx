@@ -2,7 +2,7 @@ import { DigitalRain } from "@/features/themes/DigitalRain";
 import { useFeatures } from "@settings/features";
 import { useCheckpointWarnings } from "@/features/checkpoints/useCheckpointWarnings";
 import { RewindAction } from "@/features/checkpoints/Checkpoints";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import ListTree from "lucide-react/dist/esm/icons/list-tree";
 import type {
@@ -27,6 +27,7 @@ import {
   WorkingIndicator,
 } from "./MessageRows";
 import { useMessagesViewState } from "./useMessagesViewState";
+import { SavedImageContext } from "./SavedImage";
 import { isTurnError, TurnErrorCard } from "./TurnErrorCard";
 import { ReviewCard, reviewFollowUp } from "./ReviewCard";
 import { AgentBudgetNotice } from "@/features/agents/AgentBudgetNotice";
@@ -291,7 +292,10 @@ export const Messages = memo(function Messages({
     return null;
   };
 
+  const savedImageSource = useMemo(() => workspaceId && threadId ? { workspaceId, threadId } : null, [workspaceId, threadId]);
+
   return (
+    <SavedImageContext.Provider value={savedImageSource}>
     <div
       className="messages messages-full"
       ref={containerRef}
@@ -379,5 +383,6 @@ export const Messages = memo(function Messages({
         <div ref={bottomRef} />
       </div>
     </div>
+    </SavedImageContext.Provider>
   );
 });

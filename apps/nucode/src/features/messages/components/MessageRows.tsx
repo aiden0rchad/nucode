@@ -32,6 +32,7 @@ import {
   type StatusTone,
 } from "../utils/messageRenderUtils";
 import { Markdown } from "./Markdown";
+import { MessageImagePreview } from "./SavedImage";
 import { isStandaloneMarkdownTable } from "./Markdown";
 
 type MarkdownFileLinkProps = {
@@ -123,7 +124,7 @@ const MessageImageGrid = memo(function MessageImageGrid({
           onClick={() => onOpen(index)}
           aria-label={`Open image ${index + 1}`}
         >
-          <img src={image.src} alt={image.label} loading="lazy" />
+          <MessageImagePreview src={image.src} alt={image.label} />
         </button>
       ))}
     </div>
@@ -184,7 +185,7 @@ const ImageLightbox = memo(function ImageLightbox({
         >
           <X size={16} aria-hidden />
         </button>
-        <img src={activeImage.src} alt={activeImage.label} />
+        <MessageImagePreview src={activeImage.src} alt={activeImage.label} eager />
       </div>
     </div>,
     document.body,

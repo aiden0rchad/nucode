@@ -2561,14 +2561,29 @@ fn saved_blob_images_restore_without_rewriting_history() {
     std::fs::write(&file, &saved).unwrap();
     let (_, restored) = read_session(&file, &[]).unwrap();
     let rendered = serde_json::to_string(&restored.turns).unwrap();
+    // A picture the person attached is shown at once; a screenshot in a tool result stays a reference
+    // until the window loads it.
     assert!(rendered.contains(png));
-    assert!(!rendered.contains("blob:sha256:"));
+    assert_eq!(rendered.matches(&format!("blob:sha256:{hash}")).count(), 1);
+    assert_eq!(images::load(&format!("blob:sha256:{hash}"), "image/png", &blobs).as_deref(), Some(png));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), saved);
     // Live tool results use the same resolver; inline images are unchanged.
     let mut result = json!({"content":[image.clone(),{"type":"image","mimeType":"image/png","data":png}]});
     images::restore(&mut result, &blobs);
     assert_eq!(result["content"][0]["data"], png);
     assert_eq!(result["content"][1]["data"], png);
+    std::fs::write(blobs.join(&hash), b"corrupt").unwrap();
+    assert!(images::load(&format!("blob:sha256:{hash}"), "image/png", &blobs).is_none());
+    assert!(images::load(&format!("blob:sha256:{hash}"), "text/html", &blobs).is_none());
+    // A reference whose blob is gone is replaced when the history is read, not when it is shown.
+    let mut gone = json!({"content":[image.clone()]});
+    std::fs::remove_file(blobs.join(&hash)).unwrap();
+    images::reference(&mut gone, &blobs);
+    assert_eq!(gone["content"][0]["type"], "text");
+    std::fs::write(blobs.join(&hash), &bytes).unwrap();
+    let mut kept = json!({"content":[image.clone()]});
+    images::reference(&mut kept, &blobs);
+    assert_eq!(kept["content"][0], image);
     for reference in ["blob:sha256:../../private".to_string(), format!("blob:sha256:{}", "0".repeat(64)), format!("blob:sha256:{hash}")] {
         std::fs::write(blobs.join(&hash), b"corrupt").unwrap();
         let mut missing = json!({"content":[{"type":"image","mimeType":"image/png","data":reference}]});
@@ -3264,5 +3279,141 @@ async fn a_new_thread_waiting_on_the_keychain_says_so_under_the_id_it_will_get()
     let keychain = json!(if cfg!(target_os = "macos") { "macosKeychain" } else { "systemKeychain" });
     assert_eq!(recorded(), [(id.clone(), keychain), (id.clone(), Value::Null), (id, json!("started"))]);
     engine.shutdown().await.unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+// A synthetic long omp thread: about 3,300 rows (800 assistant messages, a tool call and result per
+// step, a few compactions) with 37 screenshot results stored as blob references of 2-4 MB each.
+// Returns the session file and the number of image blobs.
+fn long_thread_fixture(dir: &Path) -> PathBuf {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use sha2::{Digest, Sha256};
+    let sessions = dir.join("omp/sessions/workspace");
+    let blobs = dir.join("omp/agent/workspace/blobs");
+    std::fs::create_dir_all(&sessions).unwrap();
+    std::fs::create_dir_all(&blobs).unwrap();
+    let png = STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0uoAAAAASUVORK5CYII=").unwrap();
+    let mut seed = 0x9e3779b97f4a7c15u64;
+    let mut noise = |len: usize| -> Vec<u8> {
+        let mut bytes = png.clone();
+        while bytes.len() < len {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            bytes.extend_from_slice(&seed.to_le_bytes());
+        }
+        bytes
+    };
+    let words = "alpha beta gamma delta epsilon zeta theta iota kappa lambda sigma omega ";
+    let text = |n: usize| words.repeat(n / words.len() + 1)[..n].to_owned();
+    let mut rows = vec![json!({"type":"session","id":"long","cwd":"/tmp","timestamp":"2026-10-31T00:00:00Z"})];
+    let mut parent = Value::Null;
+    let mut push = |rows: &mut Vec<Value>, mut row: Value| {
+        let id = format!("e{}", rows.len());
+        row["id"] = json!(id);
+        row["parentId"] = parent.clone();
+        parent = json!(id);
+        rows.push(row);
+    };
+    push(&mut rows, json!({"type":"message","message":{"role":"user","timestamp":1,"content":[{"type":"text","text":"start"}]}}));
+    let mut images = 0;
+    for step in 0..800u64 {
+        let id = format!("call{step}");
+        let shot = step % 21 == 5 && images < 37;
+        let tool = if shot { "mcp__computer__screenshot" } else { "bash" };
+        push(&mut rows, json!({"type":"message","message":{"role":"assistant","timestamp":2 + step * 2,"stopReason":"toolUse","content":[
+            {"type":"thinking","thinking":text(2000)},{"type":"text","text":text(3000)},
+            {"type":"toolCall","id":id,"name":tool,"arguments":{"command":text(300)}}]}}));
+        let content = if shot {
+            images += 1;
+            let bytes = noise((2 + images % 3) * 1024 * 1024);
+            let hash = format!("{:x}", Sha256::digest(&bytes));
+            std::fs::write(blobs.join(&hash), &bytes).unwrap();
+            json!([{"type":"text","text":"screenshot"},{"type":"image","mimeType":"image/png","data":format!("blob:sha256:{hash}")}])
+        } else {
+            json!([{"type":"text","text":text(if step % 50 == 0 { 400_000 } else { 9_000 })}])
+        };
+        push(&mut rows, json!({"type":"message","message":{"role":"toolResult","timestamp":3 + step * 2,"toolCallId":id,"toolName":tool,"content":content,"isError":false}}));
+        push(&mut rows, json!({"type":"custom","customType":"tool_execution_start","data":{"toolCallId":id}}));
+        push(&mut rows, json!({"type":"custom","customType":"tool_execution_end","data":{"toolCallId":id}}));
+        if step % 80 == 79 {
+            push(&mut rows, json!({"type":"compaction","summary":text(120_000),"firstKeptEntryId":"e1","tokensBefore":100000}));
+        }
+        if step % 55 == 54 {
+            push(&mut rows, json!({"type":"message","message":{"role":"user","timestamp":3 + step * 2,"content":[{"type":"text","text":text(300)}]}}));
+        }
+    }
+    assert_eq!(images, 37);
+    let file = sessions.join("long.jsonl");
+    std::fs::write(&file, rows.iter().map(|v| format!("{v}\n")).collect::<String>()).unwrap();
+    file
+}
+
+// What the window does to open a thread: thread/resume, then the newest 20 turns, then each turn's
+// items in pages of 100 (see hydrate_recent_history in codex_core), four turns at a time.
+async fn open_thread_like_the_window(engine: &PiEngine, id: &str) -> (usize, usize) {
+    let mut requests = 1;
+    let mut bytes = serde_json::to_string(&engine.request("workspace", "thread/resume", json!({"threadId":id,"excludeTurns":true})).await.unwrap()).unwrap().len();
+    let turns = engine.request("workspace", "thread/turns/list", json!({"threadId":id,"limit":20,"sortDirection":"desc","itemsView":"notLoaded"})).await.unwrap();
+    requests += 1;
+    bytes += turns.to_string().len();
+    let ids: Vec<Value> = turns["result"]["data"].as_array().unwrap().iter().map(|t| t["id"].clone()).collect();
+    for chunk in ids.chunks(4) {
+        let pages = futures_util::future::join_all(chunk.iter().map(|turn| async move {
+            let (mut requests, mut bytes, mut cursor) = (0, 0, Value::Null);
+            loop {
+                let page = engine.request("workspace", "thread/items/list", json!({"threadId":id,"turnId":turn,"cursor":cursor,"limit":100,"sortDirection":"asc"})).await.unwrap();
+                requests += 1;
+                bytes += page.to_string().len();
+                cursor = page["result"]["nextCursor"].clone();
+                if cursor.is_null() { return (requests, bytes); }
+            }
+        })).await;
+        for (r, b) in pages { requests += r; bytes += b; }
+    }
+    (requests, bytes)
+}
+
+#[tokio::test]
+async fn long_thread_opens_in_bounded_time_and_payload() {
+    let dir = temp();
+    let mut engine = PiEngine::new(dir.clone(), "workspace".into(), dir.to_string_lossy().into(), None, Arc::new(|_, _| {}));
+    engine.profile.definition = crate::shared::engine_registry::resolve(&crate::types::AppSettings::default(), "omp").unwrap().0;
+    engine.configure("workspace", vec![], AgentPolicy::default()).await;
+    assert_eq!(engine.directory("workspace").unwrap(), dir.join("omp/sessions/workspace"));
+    let file = long_thread_fixture(&dir);
+    let file_bytes = std::fs::metadata(&file).unwrap().len();
+
+    // Stages of one read_session.
+    let clock = std::time::Instant::now();
+    let entries = read_session_entries(&file).unwrap();
+    let parsed = clock.elapsed();
+    let clock = std::time::Instant::now();
+    let (_, history) = read_session(&file, &[]).unwrap();
+    let read = clock.elapsed();
+    let blobs = dir.join("omp/agent/workspace/blobs");
+    let hidden = dir.join("omp/agent/workspace/blobs-away");
+    std::fs::rename(&blobs, &hidden).unwrap();
+    let clock = std::time::Instant::now();
+    read_session(&file, &[]).unwrap();
+    let without_images = clock.elapsed();
+    std::fs::rename(&hidden, &blobs).unwrap();
+    let clock = std::time::Instant::now();
+    let one = serde_json::to_string(&thread_response(json!({"turns":history.turns}), true, "ask")).unwrap();
+    let serialized = clock.elapsed();
+    if let Ok(out) = std::env::var("NUCODE_DUMP_LONG_THREAD") { std::fs::write(out, &one).unwrap(); }
+
+    // The whole open, as the window asks for it.
+    let clock = std::time::Instant::now();
+    let (requests, bytes) = open_thread_like_the_window(&engine, "long").await;
+    let opened = clock.elapsed();
+    // Every screenshot is still there to load, and none was sent as bytes.
+    let item_pages = engine.request("workspace", "thread/turns/list", json!({"threadId":"long","limit":20,"sortDirection":"asc"})).await.unwrap().to_string();
+    assert_eq!(item_pages.matches("blob:sha256:").count(), 37);
+    let reference = item_pages.split("blob:sha256:").nth(1).unwrap()[..64].to_owned();
+    let shown = engine.request("workspace", "thread/image", json!({"threadId":"long","reference":format!("blob:sha256:{reference}"),"mimeType":"image/png"})).await.unwrap();
+    assert!(shown["result"]["data"].as_str().unwrap().len() > 2_000_000);
+    assert!(engine.request("workspace", "thread/image", json!({"threadId":"long","reference":format!("blob:sha256:{}", "0".repeat(64)),"mimeType":"image/png"})).await.is_err());
+    assert!(bytes < 30_000_000, "the window should receive text and references, not screenshots: {bytes}");
+    assert!(requests <= 30);
+    eprintln!("long thread: {} rows, {file_bytes} bytes on disk; parse {parsed:?}; read_session {read:?} (without blobs {without_images:?}); full-thread serialize {serialized:?}, {} bytes; window open: {requests} requests, {bytes} bytes, {opened:?}", entries.len(), one.len());
     std::fs::remove_dir_all(dir).unwrap();
 }

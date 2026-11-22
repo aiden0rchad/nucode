@@ -932,6 +932,20 @@ pub(crate) async fn get_subagent_transcript(
         json!({"threadId":thread_id,"nodeId":node_id})).await
 }
 
+/// One saved screenshot of a thread, as base64, for a tool result the window has scrolled to.
+#[tauri::command]
+pub(crate) async fn get_thread_image(
+    workspace_id: String, thread_id: String, reference: String, mime_type: String,
+    state: State<'_, AppState>, app: AppHandle,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return remote_backend::call_remote(&*state, app, "get_thread_image",
+            json!({"workspaceId":workspace_id,"threadId":thread_id,"reference":reference,"mimeType":mime_type})).await;
+    }
+    codex_core::thread_feature_core(&state.sessions, workspace_id, "thread/image",
+        json!({"threadId":thread_id,"reference":reference,"mimeType":mime_type})).await
+}
+
 #[tauri::command]
 pub(crate) async fn thread_agent_policy(
     workspace_id: String, thread_id: String, action: String, policy: Option<Value>,

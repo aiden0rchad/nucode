@@ -291,6 +291,7 @@ export function createPreviewHandler(publish: Publish = () => {}, search = "") {
       })();
       case "checkpoint_request": return checkpoint(params);
       case "get_subagent_transcript": return { messages: [assistantMessage("review-result", "All tests pass. No issues found.")], truncated: false };
+      case "get_thread_image": throw new Error("Image preview unavailable.");
       case "model_list": return page(state.settings.providers?.flatMap(p => p.models.map(m => ({ id: `${p.id}/${m.id}`, model: `${p.id}/${m.id}`, displayName: m.displayName, description: p.name, isDefault: m.id === "gpt-5", reasoning: m.reasoning, providerId: p.id, providerName: p.name, modelId: m.id, engines: ["pi", "codex", "claude"], supportedReasoningEfforts: m.reasoning?.levels.map(level => ({ reasoningEffort: level, description: level })) ?? [], defaultReasoningEffort: m.reasoning?.default ?? null }))) ?? []);
       case "get_config_model": return { model: "openai/gpt-5" };
       case "engine_test": return { engine: record(args.definition).id, state: "ready", version: "1.2.3", message: "Protocol handshake passed · v1.2.3 (preview)" };

@@ -1,5 +1,6 @@
 import type { ConversationItem, TurnReview } from "../types";
 import { parseCollabToolCallItem } from "./threadItems.collab";
+import { savedImageSource } from "./savedImages";
 import { asNumber, asString, normalizeVirtualFileChange } from "./threadItems.shared";
 import type { ThreadItem } from "@protocol/v2/ThreadItem";
 
@@ -161,7 +162,7 @@ export function buildConversationItem(
     const args = item.arguments ? JSON.stringify(item.arguments, null, 2) : "";
     const result = item.result as { content?: Array<Record<string, unknown>>; structuredContent?: unknown } | null;
     const content = Array.isArray(result?.content) ? result.content : [];
-    const images = content.flatMap(c => c.type === "image" && typeof c.data === "string" && typeof c.mimeType === "string" && /^image\/(png|jpeg|webp|gif)$/.test(c.mimeType) ? [`data:${c.mimeType};base64,${c.data}`] : []);
+    const images = content.flatMap(c => c.type === "image" && typeof c.data === "string" && typeof c.mimeType === "string" && /^image\/(png|jpeg|webp|gif)$/.test(c.mimeType) ? [savedImageSource(c.data, c.mimeType)] : []);
     return {
       id,
       kind: "tool",
