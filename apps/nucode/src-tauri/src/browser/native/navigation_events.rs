@@ -61,7 +61,7 @@ define_class!(
         #[unsafe(method(webView:didStartProvisionalNavigation:))]
         fn provisional_started(&self, _view: &WKWebView, navigation: Option<&WKNavigation>) {
             self.ivars().provisional.set(key(navigation));
-            super::update(&self.ivars().state, &self.ivars().id, json!({"loading":true,"progress":0.1}));
+            super::update(&self.ivars().state, &self.ivars().id, json!({"loading":true,"committed":false,"progress":0.1}));
         }
         #[unsafe(method(webView:didCommitNavigation:))]
         fn committed(&self, view: &WKWebView, navigation: Option<&WKNavigation>) {
