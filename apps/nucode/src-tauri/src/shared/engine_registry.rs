@@ -263,7 +263,7 @@ mod own_login_tests {
     fn script(dir: &Path, name: &str, body: &str) {
         std::fs::create_dir_all(dir).unwrap();
         let file = dir.join(name);
-        std::fs::write(&file, format!("#!/usr/bin/env python3\n{body}")).unwrap();
+        std::fs::write(&file, format!("#!/bin/sh\n{body}")).unwrap();
         #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap(); }
     }
     fn builtin(id: &str) -> EngineDefinition { registry(&AppSettings::default()).into_iter().find(|e| e.id == id).unwrap() }
@@ -289,7 +289,16 @@ mod own_login_tests {
         let missing = test_own_login(&builtin("opencode"), opencode, &dirs, parent.clone()).await.unwrap_err();
         assert_eq!(missing, "Not installed. Install with `npm i -g opencode-ai` or from opencode.ai");
         assert_eq!(test_own_login(&builtin("cursor"), preset("cursor").unwrap(), &dirs, parent.clone()).await.unwrap_err(), "Not installed. Install the Cursor CLI from cursor.com/cli");
-        let reply = |version: &str| format!("import json, os, sys\nassert sys.argv[1:] == ['acp']\nassert os.environ['HOME'] == '/home/real' and 'OPENAI_API_KEY' not in os.environ and 'XDG_CONFIG_HOME' not in os.environ\nrequest = json.loads(sys.stdin.readline())\nassert request['method'] == 'initialize'\nprint(json.dumps({{'jsonrpc':'2.0','id':request['id'],'result':{{'protocolVersion':1,'agentInfo':{{'version':'{version}'}}}}}}), flush=True)\nfor line in sys.stdin:\n    raise SystemExit('only initialize may be sent: ' + line)\n");
+        // A shell script, not Python: macOS's python3 stub takes seconds to start under the fake HOME, which ran past
+        // the 15 s handshake limit on CI.
+        let reply = |version: &str| format!(r#"[ "$#" = 1 ] && [ "$1" = acp ] || {{ echo "arguments: $*" >&2; exit 2; }}
+[ "$HOME" = /home/real ] && [ -z "${{OPENAI_API_KEY+set}}" ] && [ -z "${{XDG_CONFIG_HOME+set}}" ] || {{ echo "environment leaked" >&2; exit 3; }}
+IFS= read -r request
+case "$request" in *'"method":"initialize"'*) ;; *) echo "expected initialize: $request" >&2; exit 4;; esac
+id=$(printf '%s' "$request" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+printf '{{"jsonrpc":"2.0","id":"%s","result":{{"protocolVersion":1,"agentInfo":{{"version":"{version}"}}}}}}\n' "$id"
+if IFS= read -r line; then echo "only initialize may be sent: $line" >&2; exit 5; fi
+"#);
         script(&root, "opencode", &reply("0.9.1"));
         let ok = test_own_login(&builtin("opencode"), opencode, &dirs, parent.clone()).await.unwrap();
         assert_eq!((ok["state"].as_str(), ok["version"].as_str()), (Some("ready"), Some("0.9.1")));
