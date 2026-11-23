@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.3 — November 23, 2026
 
+- **Links that open a window for a tool:** a link whose page opens an empty window first and then points it at the tool (as learning-platform launch pages do) did nothing in the in-app browser, or the page said to allow pop-ups. WebKit asks for such a window with an empty address, which the app refused before nucode saw it. It now opens as a new tab, and the tool loads there. A pop-up that asks for a size or position still opens as its own window.
 - **browser_resize that changed nothing:** when the browser pane wasn't showing the agent's page (pane closed, or open on another thread), browser_resize reported the page "scaled down" to the requested width while the page kept laying out 800 px wide, so desktop checks saw the narrow layout. The agent's page now takes the requested width wherever it is, pages opened afterwards start at it, and browser_resize reports an error if the page still doesn't lay out at that width instead of claiming success.
 - **Background task checks while a dev server runs:** with an omp thread's dev server up, the task list asked omp for its services every 15 s, which starts a helper that takes about 0.4 s each time. It now asks only when a service starts, stops or changes, when its process has died, or every 5 minutes.
 - **Browser pane lagging behind the window:** while an agent's page script or screenshot was waiting on a slow page (up to 10 s), the in-app browser's page stayed where it was when you resized the window, moved the divider or switched panels. The page now follows the pane straight away; agent commands on the page still run one at a time.
@@ -85,6 +86,10 @@
 - **Agent tools:** `npm` and `npx` work in agent commands. They failed with a missing-module error, so agents fell back to whatever Node was installed on the Mac.
 - **Composer:** reopening a conversation whose last turn ended with "Review needs follow-up", "Agent stopped unexpectedly" or "Interrupted when nucode closed" no longer puts the whole earlier request back in the composer. Those turns ask for a follow-up, not a resend.
 - **Session panel:** with Git turned off in Settings → Features, the Environment section leaves the branch row out instead of saying "No Git branch" for a folder that has one.
+
+### Release status
+
+Published as a macOS Apple Silicon release, with a DMG installer, build manifest and SHA-256 checksums. Windows remains on 0.8.0. This remains an early-development release; the macOS package is development-signed and not notarized.
 
 ## 0.8.2 — November 13, 2026
 
