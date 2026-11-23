@@ -226,6 +226,8 @@ impl NativeBackend {
             .initialization_script(format!("({})({});", include_str!("page_hooks.js"), json!(hook_key)))
             .on_navigation(move |url| {
                 let current = nav_state.borrow()["tabs"].as_array().and_then(|tabs|tabs.iter().find(|t|t["id"] == nav_id)).and_then(|t|t["url"].as_str()).unwrap_or("about:blank").to_string();
+                #[cfg(target_os = "macos")]
+                navigation_events::debug_log(format!("  on_navigation url={} allowed_origin={}", url.as_str().split('?').next().unwrap_or(""), allowed_origin(url, &settings)));
                 match navigation(url.as_str(), &current) {
                     Navigation::Allow if allowed_origin(url, &settings) => { update(&nav_state,&nav_id,json!({"url":url.as_str()})); true },
                     Navigation::External => { nav_state.send_modify(|s|s["externalRequest"] = json!(url.as_str())); false },
@@ -244,7 +246,8 @@ impl NativeBackend {
             })
             .on_document_title_changed(move |_view,title|update(&title_state,&title_id,json!({"title":title})))
             .on_new_window(move |url,features| {
-                nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_new_window", json!({"host":url.host_str(),"scheme":url.scheme(),"size":features.size().is_some(),"position":features.position().is_some()}));
+                #[cfg(target_os = "macos")]
+                navigation_events::debug_log(format!("new_window url={} size={} position={}", url.as_str().split('?').next().unwrap_or(""), features.size().is_some(), features.position().is_some()));
                 match navigation(url.as_str(),url.as_str()) {
                     Navigation::Allow if allowed_origin(&url, &new_settings) => {
                         if policy::opens_popup(url.as_str(), features.size().is_some(), features.position().is_some()) {
