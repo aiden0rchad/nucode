@@ -140,6 +140,11 @@ pub fn install(
                 });
         let delegate: Retained<NavigationEvents> = msg_send![super(allocated), init];
         wk.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+        // WebKit drops a script's window.open unless it runs inside the click itself, so a link that opens its
+        // window after a request (LMS tool launches) did nothing. Every window still goes through on_new_window.
+        let configuration: Retained<AnyObject> = msg_send![wk, configuration];
+        let preferences: Retained<AnyObject> = msg_send![&*configuration, preferences];
+        let _: () = msg_send![&*preferences, setJavaScriptCanOpenWindowsAutomatically: true];
         DELEGATES.with(|delegates| {
             delegates.borrow_mut().insert(id, delegate);
         });
