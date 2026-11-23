@@ -45,10 +45,6 @@ define_class!(
                     let allowed = action.request().URL().and_then(|url| url.absoluteString())
                         .is_some_and(|url| super::policy::subframe_navigation(&url.to_string()));
                     debug_log(format!("  sub allowed={allowed}"));
-                    if let Some(frame) = action.targetFrame() {
-                        let kind: isize = msg_send![action, navigationType];
-                        if kind == 0 { dump_frame(view, &frame); }
-                    }
                     handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
                 } else {
                     let _: () = msg_send![&*self.ivars().original, webView: view, decidePolicyForNavigationAction: action, decisionHandler: handler];
@@ -167,30 +163,6 @@ pub fn install(
         });
     })
     .map_err(|e| e.to_string())
-}
-fn dump_frame(view: &WKWebView, frame: &objc2_web_kit::WKFrameInfo) {
-    const SCRIPT: &str = r#"(() => {
-        if (!window.__nuWrapped) {
-            window.__nuWrapped = 1; window.__nuLog = [];
-            const open = window.open;
-            window.open = function (...a) { let r; try { r = open.apply(this, a); } catch (e) { window.__nuLog.push("open threw " + e); throw e; } window.__nuLog.push("open " + String(a[0]).slice(0, 200) + " " + a[1] + " -> " + (r ? "window" : "null")); return r; };
-            if (document.requestStorageAccess) { const rsa = document.requestStorageAccess.bind(document); document.requestStorageAccess = (...a) => { window.__nuLog.push("requestStorageAccess"); return rsa(...a).then(v => { window.__nuLog.push("rsa ok"); return v; }, e => { window.__nuLog.push("rsa fail " + e); throw e; }); }; }
-            window.addEventListener("message", e => window.__nuLog.push("message from " + e.origin + " " + JSON.stringify(e.data).slice(0, 300)));
-            const post = window.parent.postMessage; 
-        }
-        const scripts = [...document.scripts].map(x => x.src ? "SRC " + x.src : "INLINE " + x.textContent.slice(0, 6000));
-        const links = [...document.querySelectorAll("a")].map(a => a.outerHTML.slice(0, 400));
-        return JSON.stringify({ origin: location.origin, url: location.href.split("?")[0], log: window.__nuLog, links, scripts, body: document.body ? document.body.outerHTML.slice(0, 6000) : "" });
-    })()"#;
-    unsafe {
-        let mtm = MainThreadMarker::new().expect("WebKit main thread");
-        let callback = block2::RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
-            if let Some(error) = error.as_ref() { debug_log(format!("  dump error {}", error.localizedDescription())); }
-            else if let Some(text) = value.as_ref().and_then(|v| v.downcast_ref::<objc2_foundation::NSString>()) { debug_log(format!("  dump {}", text)); }
-        });
-        view.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
-            &objc2_foundation::NSString::from_str(SCRIPT), Some(frame), &objc2_web_kit::WKContentWorld::pageWorld(mtm), Some(&callback));
-    }
 }
 pub(super) fn debug_log(line: String) {
     use std::io::Write;
