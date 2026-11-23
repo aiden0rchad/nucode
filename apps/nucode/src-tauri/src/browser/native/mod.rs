@@ -244,7 +244,6 @@ impl NativeBackend {
             })
             .on_document_title_changed(move |_view,title|update(&title_state,&title_id,json!({"title":title})))
             .on_new_window(move |url,features| {
-                nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_new_window", json!({"host":url.host_str(),"scheme":url.scheme(),"size":features.size().is_some(),"position":features.position().is_some()}));
                 match navigation(url.as_str(),url.as_str()) {
                     Navigation::Allow if allowed_origin(&url, &new_settings) => {
                         if policy::opens_popup(url.as_str(), features.size().is_some(), features.position().is_some()) {
