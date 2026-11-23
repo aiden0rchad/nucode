@@ -34,17 +34,15 @@ define_class!(
         fn navigation_policy(&self, view: &WKWebView, action: &WKNavigationAction, handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>) {
             unsafe {
                 {
-                    let url = action.request().URL().and_then(|url| url.absoluteString()).map(|u| u.to_string()).unwrap_or_default();
-                    let url = url.split('?').next().unwrap_or("").chars().take(160).collect::<String>();
+                    let host = action.request().URL().and_then(|url| url.host()).map(|h| h.to_string()).unwrap_or_default();
                     let frame = match action.targetFrame() { None => "new", Some(f) if f.isMainFrame() => "main", Some(_) => "sub" };
-                    let source = action.sourceFrame().map(|f| format!("{}{}", if f.isMainFrame() {"main:"} else {"sub:"}, f.securityOrigin().host())).unwrap_or_else(|| "none".into());
+                    let source_main = action.sourceFrame().is_some_and(|f| f.isMainFrame());
                     let kind: isize = msg_send![action, navigationType];
-                    debug_log(format!("policy frame={frame} source={source} type={kind} url={url}"));
+                    nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_policy", serde_json::json!({"host":host,"frame":frame,"sourceMain":source_main,"type":kind}));
                 }
                 if action.targetFrame().is_some_and(|frame| !frame.isMainFrame()) {
                     let allowed = action.request().URL().and_then(|url| url.absoluteString())
                         .is_some_and(|url| super::policy::subframe_navigation(&url.to_string()));
-                    debug_log(format!("  sub allowed={allowed}"));
                     handler.call((if allowed { WKNavigationActionPolicy::Allow } else { WKNavigationActionPolicy::Cancel },));
                 } else {
                     let _: () = msg_send![&*self.ivars().original, webView: view, decidePolicyForNavigationAction: action, decisionHandler: handler];
@@ -157,21 +155,12 @@ pub fn install(
         let check: Retained<AnyObject> = msg_send![wk, configuration];
         let check: Retained<AnyObject> = msg_send![&*check, preferences];
         let applied: bool = msg_send![&*check, javaScriptCanOpenWindowsAutomatically];
-        debug_log(format!("install popups_pref applied={applied}"));
+        nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_popups_pref", serde_json::json!({"applied":applied}));
         DELEGATES.with(|delegates| {
             delegates.borrow_mut().insert(id, delegate);
         });
     })
     .map_err(|e| e.to_string())
-}
-pub(super) fn debug_log(line: String) {
-    use std::io::Write;
-    let Some(home) = std::env::var_os("HOME") else { return; };
-    let path = std::path::Path::new(&home).join("Library/Application Support/dev.nucode.desktop/popup-debug.log");
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-        let _ = writeln!(file, "{now} {line}");
-    }
 }
 pub fn release(view: &tauri::Webview) {
     let id = view.label().trim_start_matches("browser-").to_string();
