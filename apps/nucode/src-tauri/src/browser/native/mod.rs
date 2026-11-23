@@ -1,6 +1,8 @@
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(target_os = "macos")]
+mod blank_windows;
+#[cfg(target_os = "macos")]
 mod navigation_events;
 #[cfg(target_os = "macos")]
 mod popup;
@@ -360,6 +362,7 @@ impl NativeBackend {
             *stage = "navigation";
             injected_fault(stage)?;
             navigation_events::install(&view, id.to_string(), self.state.clone())?;
+            blank_windows::install(&view, id.to_string())?;
         }
         // The builder already loads about:blank. A second blank load would finish after a navigate issued right
         // after creation and be reported as that page being ready.
@@ -1684,6 +1687,8 @@ async fn current_url(view: &Webview) -> Result<tauri::Url, String> {
 fn close_view(view: Webview) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     navigation_events::release(&view);
+    #[cfg(target_os = "macos")]
+    blank_windows::release(&view);
     #[cfg(target_os = "macos")]
     macos::release_accessibility(&view);
     #[cfg(target_os = "macos")]
