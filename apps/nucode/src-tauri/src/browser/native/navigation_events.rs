@@ -33,6 +33,13 @@ define_class!(
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
         fn navigation_policy(&self, view: &WKWebView, action: &WKNavigationAction, handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>) {
             unsafe {
+                {
+                    let host = action.request().URL().and_then(|url| url.host()).map(|h| h.to_string()).unwrap_or_default();
+                    let frame = match action.targetFrame() { None => "new", Some(f) if f.isMainFrame() => "main", Some(_) => "sub" };
+                    let source_main = action.sourceFrame().is_some_and(|f| f.isMainFrame());
+                    let kind: isize = msg_send![action, navigationType];
+                    nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_policy", serde_json::json!({"host":host,"frame":frame,"sourceMain":source_main,"type":kind}));
+                }
                 if action.targetFrame().is_some_and(|frame| !frame.isMainFrame()) {
                     let allowed = action.request().URL().and_then(|url| url.absoluteString())
                         .is_some_and(|url| super::policy::subframe_navigation(&url.to_string()));
@@ -145,6 +152,10 @@ pub fn install(
         let configuration: Retained<AnyObject> = msg_send![wk, configuration];
         let preferences: Retained<AnyObject> = msg_send![&*configuration, preferences];
         let _: () = msg_send![&*preferences, setJavaScriptCanOpenWindowsAutomatically: true];
+        let check: Retained<AnyObject> = msg_send![wk, configuration];
+        let check: Retained<AnyObject> = msg_send![&*check, preferences];
+        let applied: bool = msg_send![&*check, javaScriptCanOpenWindowsAutomatically];
+        nucode_diag_mcp::writer::metadata("warning", "browser", "browser.native.debug_popups_pref", serde_json::json!({"applied":applied}));
         DELEGATES.with(|delegates| {
             delegates.borrow_mut().insert(id, delegate);
         });
