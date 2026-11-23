@@ -63,4 +63,13 @@ describe("extractThreadCodexMetadata", () => {
       effort: null,
     });
   });
+
+  it("names the provider when the thread keeps it apart from the model", () => {
+    expect(
+      extractThreadCodexMetadata({ modelProvider: "setup-1", model: "Claude Opus 5.5" }).modelId,
+    ).toBe("setup-1/Claude Opus 5.5");
+    expect(
+      extractThreadCodexMetadata({ modelProvider: "omlx", model: "omlx/Qwen" }).modelId,
+    ).toBe("omlx/Qwen");
+  });
 });

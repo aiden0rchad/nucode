@@ -24,11 +24,15 @@ const findModelByIdOrModel = (
   if (!idOrModel) {
     return null;
   }
-  return (
+  const exact =
     models.find((model) => model.id === idOrModel) ??
-    models.find((model) => model.model === idOrModel) ??
-    null
-  );
+    models.find((model) => model.model === idOrModel);
+  if (exact || idOrModel.includes("/")) {
+    return exact ?? null;
+  }
+  // Older builds saved some threads' models without their provider.
+  const named = models.filter((model) => model.id.endsWith(`/${idOrModel}`));
+  return named.length === 1 ? named[0] : null;
 };
 
 const pickDefaultModel = (models: ModelOption[], configModel: string | null) =>

@@ -45,6 +45,16 @@ const MODEL_KEYS = [
   "model_name",
 ] as const;
 
+// pi, omp and Claude threads keep the provider apart from the model, while the
+// model list names models "provider/model"; a bare name would match nothing.
+function withProvider(record: Record<string, unknown>, model: string | null): string | null {
+  const provider = asString(record.modelProvider) ?? asString(record.model_provider);
+  if (!model || !provider || model.startsWith(`${provider}/`)) {
+    return model;
+  }
+  return `${provider}/${model}`;
+}
+
 const EFFORT_KEYS = [
   "effort",
   "reasoningEffort",
@@ -77,7 +87,7 @@ function extractFromRecord(record: Record<string, unknown>): {
 
   for (const container of containers) {
     if (!modelId) {
-      modelId = pickString(container, MODEL_KEYS);
+      modelId = withProvider(container, pickString(container, MODEL_KEYS));
     }
     if (!effort) {
       effort = normalizeEffort(pickString(container, EFFORT_KEYS));

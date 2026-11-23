@@ -84,6 +84,24 @@ describe("useModels", () => {
     expect(result.current.reasoningSupported).toBe(true);
   });
 
+  it("keeps a thread on its model when the model was saved without its provider", async () => {
+    const entry = (id: string, isDefault: boolean) => ({
+      id: `setup-1/${id}`, model: `setup-1/${id}`, displayName: id,
+      supportedReasoningEfforts: [], defaultReasoningEffort: null, isDefault,
+    });
+    vi.mocked(getModelList).mockResolvedValueOnce({
+      result: { data: [entry("GPT 6.1 Sol", true), entry("Claude Opus 5.5", false)] },
+    });
+    vi.mocked(getConfigModel).mockResolvedValueOnce("setup-1/GPT 6.1 Sol");
+
+    const { result } = renderHook(() =>
+      useModels({ activeWorkspace: workspace, preferredModelId: "Claude Opus 5.5" }),
+    );
+
+    await waitFor(() => expect(result.current.models.length).toBe(2));
+    expect(result.current.selectedModelId).toBe("setup-1/Claude Opus 5.5");
+  });
+
   it("keeps the selected reasoning effort when switching models", async () => {
     vi.mocked(getModelList).mockResolvedValueOnce({
       result: {
