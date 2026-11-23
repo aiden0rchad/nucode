@@ -249,20 +249,26 @@ impl NativeBackend {
                 match navigation(url.as_str(),url.as_str()) {
                     Navigation::Allow if allowed_origin(&url, &new_settings) => {
                         if policy::opens_popup(url.as_str(), features.size().is_some(), features.position().is_some()) {
+                            // A blank window without a size is a tab request (LMS tool launches open one, then point it at
+                            // the tool). It stays hidden and its first web address opens as a tab instead.
+                            let as_tab = url.as_str() == "about:blank" && features.size().is_none() && features.position().is_none();
+                            let label = format!("browser-popup-{}", uuid::Uuid::new_v4().simple());
+                            let moved = Arc::new(AtomicBool::new(false));
                             let result = (|| -> tauri::Result<tauri::WebviewWindow> {
                                 let nav_state = new_state.clone();
+                                let (nav_app, nav_label, nav_moved) = (new_app.clone(), label.clone(), moved.clone());
                                 let nav_settings = new_settings.clone();
                                 let current = Mutex::new(url.to_string());
                                 let nested_state = new_state.clone();
                                 let nested_owner = new_owner.clone();
                                 let nested_settings = new_settings.clone();
                                 let mut builder = tauri::WebviewWindowBuilder::new(
-                                    &new_app, format!("browser-popup-{}", uuid::Uuid::new_v4().simple()),
+                                    &new_app, &label,
                                     WebviewUrl::External("about:blank".parse().expect("valid blank URL")),
                                 ).inner_size(500., 640.);
                                 if features.position().is_none() { builder = builder.center(); }
                                 builder = builder.resizable(true).title(url.host_str().unwrap_or("Sign in"))
-                                    .user_agent(UA).devtools(cfg!(debug_assertions)).focused(true);
+                                    .user_agent(UA).devtools(cfg!(debug_assertions)).focused(!as_tab).visible(!as_tab);
                                 // multiwebview-ok: optional, with the plain-window fallback below.
                                 if let Some(main) = new_app.get_webview_window("main") {
                                     builder = builder.parent(&main)?;
@@ -276,6 +282,14 @@ impl NativeBackend {
                                     .on_navigation(move |url| {
                                         let Ok(mut current) = current.lock() else { return false; };
                                         match navigation(url.as_str(), &current) {
+                                            Navigation::Allow if as_tab && matches!(url.scheme(), "http" | "https") && !nav_moved.swap(true, Ordering::AcqRel) => {
+                                                if allowed_origin(url, &nav_settings) { nav_state.send_modify(|s|s["newWindow"] = json!(url.as_str())); }
+                                                let (app, label) = (nav_app.clone(), nav_label.clone());
+                                                tauri::async_runtime::spawn(async move {
+                                                    if let Some(window) = app.get_webview_window(&label) { let _ = window.close().or_else(|_| window.destroy()); }
+                                                });
+                                                false
+                                            },
                                             Navigation::Allow if allowed_origin(url, &nav_settings) => { *current = url.to_string(); true },
                                             Navigation::External => { nav_state.send_modify(|s|s["externalRequest"] = json!(url.as_str())); false },
                                             _ => false,
@@ -297,6 +311,16 @@ impl NativeBackend {
                                 Ok(window)
                             })();
                             match result {
+                                Ok(window) if as_tab => {
+                                    // A page that writes into the blank window instead of navigating it still gets it shown.
+                                    let (app, label) = (new_app.clone(), label.clone());
+                                    tauri::async_runtime::spawn(async move {
+                                        tokio::time::sleep(Duration::from_secs(10)).await;
+                                        if moved.load(Ordering::Acquire) { return; }
+                                        if let Some(window) = app.get_webview_window(&label) { let _ = window.show(); let _ = window.set_focus(); }
+                                    });
+                                    return NewWindowResponse::Create { window };
+                                },
                                 Ok(window) => {
                                     new_state.send_modify(|s| s["lastPopup"] = json!({"url":url.as_str(),"id":window.label()}));
                                     return NewWindowResponse::Create { window };
