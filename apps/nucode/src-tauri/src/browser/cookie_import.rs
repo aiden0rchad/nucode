@@ -332,7 +332,8 @@ pub fn parse_binarycookies(data: &[u8], at: f64, keep: impl Fn(&str, bool) -> bo
         let end = start.checked_add(size).filter(|end| *end <= data.len()).ok_or(BAD)?;
         let body = &data[start..end];
         start = end;
-        if rd32(body, 0, false)? != 0x0000_0100 { return Err(BAD.into()); }
+        // Each page starts with the tag bytes 00 00 01 00; counts and offsets after it are little-endian.
+        if body.get(..4) != Some(&[0, 0, 1, 0]) { return Err(BAD.into()); }
         let count = rd32(body, 4, false)? as usize;
         if count > body.len() / 4 { return Err(BAD.into()); }
         for index in 0..count {
@@ -374,19 +375,21 @@ fn safari_files(home: &Path) -> Result<Vec<PathBuf>, String> {
 }
 fn denied(error: &std::io::Error) -> bool { error.kind() == std::io::ErrorKind::PermissionDenied || error.raw_os_error() == Some(1) }
 
-/// This host's cookies from every Safari profile; where profiles disagree, the one that expires last wins.
+/// This host's cookies from every Safari profile; where profiles disagree, the one that expires last wins. A file
+/// that does not parse is skipped while another one does.
 fn safari_import(home: &Path, host: &str, https: bool) -> Result<Vec<Cookie>, String> {
     let mut found: BTreeMap<(String, String, String), Cookie> = BTreeMap::new();
-    let mut any = false;
+    let (mut parsed, mut failure) = (false, None);
     for path in safari_files(home)? {
         let data = match std::fs::read(&path) { Ok(data) => data, Err(error) if denied(&error) => return Err(SAFARI_ACCESS.into()), Err(_) => continue };
-        any = true;
-        for cookie in parse_binarycookies(&data, now(), |domain, secure| matches(host, domain, secure, https))? {
+        let cookies = match parse_binarycookies(&data, now(), |domain, secure| matches(host, domain, secure, https)) { Ok(cookies) => cookies, Err(error) => { failure = Some(error); continue } };
+        parsed = true;
+        for cookie in cookies {
             let key = (cookie.domain.clone(), cookie.name.clone(), cookie.path.clone());
             if found.get(&key).is_none_or(|old| old.expires < cookie.expires) { found.insert(key, cookie); }
         }
     }
-    if !any { return Err("Could not find Safari's cookies".into()); }
+    if !parsed { return Err(failure.unwrap_or_else(|| "Could not find Safari's cookies".into())); }
     Ok(found.into_values().collect())
 }
 
@@ -602,7 +605,7 @@ mod tests {
             bodies.push(c);
         }
         let mut page = vec![];
-        page.extend_from_slice(&0x100u32.to_le_bytes());
+        page.extend_from_slice(&[0, 0, 1, 0]);
         page.extend_from_slice(&(bodies.len() as u32).to_le_bytes());
         let mut offset = 8 + bodies.len() as u32 * 4 + 4;
         for body in &bodies { page.extend_from_slice(&offset.to_le_bytes()); offset += body.len() as u32; }
@@ -665,6 +668,8 @@ mod tests {
         let store = home.join("Library/Containers/com.apple.Safari/Data/Library/WebKit/WebsiteDataStore/ABC/Cookies");
         std::fs::create_dir_all(&store).unwrap();
         std::fs::write(store.join("Cookies.binarycookies"), file(&[page(&[(".example.test", "sid", "/", "w", 1, 4.1e9 - SAFARI_EPOCH), ("example.test", "pref", "/", "x", 0, 4e9 - SAFARI_EPOCH)])])).unwrap();
+        std::fs::create_dir_all(store.join("../../BAD/Cookies")).unwrap();
+        std::fs::write(store.join("../../BAD/Cookies/Cookies.binarycookies"), b"cook\0\0\0\x01junk").unwrap();
         let mut both = safari_import(&home, "example.test", true).unwrap();
         both.sort_by(|a, b| a.name.cmp(&b.name));
         assert_eq!(both.iter().map(|c| (c.name.as_str(), c.value.as_str())).collect::<Vec<_>>(), [("pref", "x"), ("sid", "w")]);
