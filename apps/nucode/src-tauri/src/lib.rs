@@ -285,6 +285,8 @@ pub fn run() {
             managed_tasks_commands::managed_tasks_request,
             browser_commands::browser_request,
             browser_commands::browser_passwords_list,
+            browser_commands::browser_passkeys_list,
+            browser_commands::browser_passkey_delete,
             browser_commands::browser_password_save,
             browser_commands::browser_password_delete,
             browser_commands::browser_password_unblock,

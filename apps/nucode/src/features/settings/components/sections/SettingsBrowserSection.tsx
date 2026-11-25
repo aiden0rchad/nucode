@@ -2,7 +2,7 @@ import { SettingsCallout, SettingsEmpty, SettingsPage, SettingsGroup, SettingsLi
 import { SettingsRuntimeSetup } from "./SettingsRuntimeSetup";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings, WebSearchProvider } from "@/types";
-import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, browserPasswordUnblock, type BrowserPasswordIndex, browserRequest } from "@services/tauri";
+import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, browserPasswordUnblock, type BrowserPasswordIndex, browserPasskeysList, browserPasskeyDelete, type BrowserPasskey, browserRequest } from "@services/tauri";
 import { defaultBrowserSettings } from "@/features/browser/browser";
 
 export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onManageEngines }: { onManageEngines?: () => void; appSettings: AppSettings; onUpdateAppSettings: (s: AppSettings) => Promise<void> }) {
@@ -14,7 +14,13 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
     if (!index || !Array.isArray(index.entries) || !Array.isArray(index.never)) throw new Error("Saved passwords unavailable");
     setPasswords(index);
   };
-  useEffect(() => { void refreshPasswords().catch(e => setError(String(e))); }, []);
+  const [passkeys, setPasskeys] = useState<BrowserPasskey[]>([]);
+  const refreshPasskeys = async () => {
+    const list = await browserPasskeysList();
+    if (!Array.isArray(list)) throw new Error("Saved passkeys unavailable");
+    setPasskeys(list);
+  };
+  useEffect(() => { void refreshPasswords().catch(e => setError(String(e))); void refreshPasskeys().catch(e => setError(String(e))); }, []);
   const [draft, setDraft] = useState({ ...defaultBrowserSettings, ...appSettings.browser });
   const [allow, setAllow] = useState(draft.allowedOrigins.join("\n"));
   const [block, setBlock] = useState(draft.blockedOrigins.join("\n"));
@@ -99,6 +105,10 @@ export function SettingsBrowserSection({ appSettings, onUpdateAppSettings, onMan
         <SettingsFieldRow title="Password"><SettingsTextField name="password" type="password" autoComplete="off" required /></SettingsFieldRow>
         <div className="settings-form-actions"><SettingsButton type="submit">Add password</SettingsButton></div>
       </form>
+    </SettingsGroup>
+    <SettingsGroup title="Passkeys" subtitle="Passkeys made in nucode's browser stay in your Keychain and need Touch ID or your password each time; passkeys in iCloud Keychain can't be used here." disabled={busy}>
+      {passkeys.map(passkey => <SettingsListRow key={passkey.id} title={passkey.rpId} meta={[passkey.displayName && passkey.displayName !== passkey.userName ? `${passkey.userName} (${passkey.displayName})` : passkey.userName, `Created ${new Date(passkey.createdAt * 1000).toLocaleDateString()}`, passkey.lastUsedAt ? `Last used ${new Date(passkey.lastUsedAt * 1000).toLocaleDateString()}` : "Never used"].filter(Boolean).join(" · ")}><SettingsButton className="danger" onClick={() => void run(async () => { await browserPasskeyDelete(passkey.id); await refreshPasskeys(); })}>Delete passkey</SettingsButton></SettingsListRow>)}
+      {!passkeys.length && <SettingsEmpty>No saved passkeys.</SettingsEmpty>}
     </SettingsGroup>
     <SettingsGroup title="Never saved" subtitle="Sites where you chose not to save a password." disabled={busy}>
       {passwords.never.map(origin => <SettingsListRow key={origin} title={origin}><SettingsButton onClick={() => void run(async () => { await browserPasswordUnblock(origin); await refreshPasswords(); })}>Remove</SettingsButton></SettingsListRow>)}

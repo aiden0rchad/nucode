@@ -62,6 +62,7 @@ pub struct NativeBackend {
     downloads: Arc<Mutex<HashSet<String>>>,
     pending: Arc<Mutex<Option<super::passwords::Pending>>>,
     password_index: Arc<Mutex<()>>,
+    passkey_index: Arc<Mutex<()>>,
     settings_path: std::path::PathBuf,
 }
 impl NativeBackend {
@@ -90,6 +91,7 @@ impl NativeBackend {
             downloads: Arc::default(),
             pending: Arc::new(Mutex::new(None)),
             password_index: Arc::new(Mutex::new(())),
+            passkey_index: Arc::new(Mutex::new(())),
             settings_path,
         }
     }
@@ -397,6 +399,19 @@ impl NativeBackend {
             macos::install_passwords(&view, Box::new(move |mut capture| {
                 capture["tab"] = json!(capture_tab);
                 let _ = offer_capture(&path, &pending, &index, &state, capture);
+            })).await?;
+            let passkeys = Arc::new(super::passkeys::Env::native(self.passkey_path()?, self.passkey_index.clone(), {
+                let path = self.settings_path.clone();
+                // Unreadable settings count as private: no passkey is made or used.
+                Box::new(move || crate::storage::read_settings(&path).map_or(true, |s| s.browser.private_browsing))
+            }));
+            let slot = Arc::new(super::passkeys::Slot::default());
+            macos::install_passkeys(&view, Box::new(move |message| {
+                let (passkeys, slot) = (passkeys.clone(), slot.clone());
+                tauri::async_runtime::spawn(async move {
+                    let reply = super::passkeys::handle(&passkeys, &slot, message.origin, &message.body).await;
+                    message.reply.send(reply);
+                });
             })).await?;
             macos::install_accessibility(&view).await?;
             macos::keep_page_visible(&view).await?;
@@ -1067,6 +1082,9 @@ impl NativeBackend {
     fn password_path(&self) -> Result<std::path::PathBuf, String> {
         Ok(self.settings_path.parent().ok_or("Missing app data directory")?.join("browser/passwords.json"))
     }
+    fn passkey_path(&self) -> Result<std::path::PathBuf, String> {
+        Ok(self.settings_path.parent().ok_or("Missing app data directory")?.join("browser/passkeys.json"))
+    }
     fn expire_offer(&self, clear: bool) -> Result<(), String> {
         let mut pending = self.pending.lock().map_err(|_| "Password offer unavailable")?;
         if pending.as_ref().is_some_and(|p| clear || p.expired()) {
@@ -1113,6 +1131,17 @@ impl NativeBackend {
     pub fn list_passwords(&self) -> Result<super::passwords::Index, String> {
         let _guard = self.password_index.lock().map_err(|_| "Saved passwords unavailable")?;
         super::passwords::Index::load(&self.password_path()?)
+    }
+    pub fn list_passkeys(&self) -> Result<Vec<super::passkeys::Listing>, String> {
+        let _guard = self.passkey_index.lock().map_err(|_| "Saved passkeys unavailable")?;
+        Ok(super::passkeys::Index::load(&self.passkey_path()?)?.listing())
+    }
+    pub fn delete_passkey(&self, id: &str) -> Result<(), String> {
+        let _guard = self.passkey_index.lock().map_err(|_| "Saved passkeys unavailable")?;
+        let path = self.passkey_path()?;
+        let mut index = super::passkeys::Index::load(&path)?;
+        index.delete(&super::passkeys::Keychain, id)?;
+        index.save(&path)
     }
     pub fn has_logins(&self, site: &str) -> Result<bool, String> {
         Ok(self.list_passwords()?.matching(&super::passwords::origin(site)?).next().is_some())

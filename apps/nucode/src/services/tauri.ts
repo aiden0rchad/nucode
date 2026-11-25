@@ -831,6 +831,9 @@ export const browserPasswordUnblock = (origin: string) => rawInvoke<void>("brows
 export const browserPasswordFill = (tabId: string, id: string) => rawInvoke<{ filled: boolean; username: boolean }>("browser_password_fill", { tabId, id });
 export const browserPasswordOffer = (decision: "save" | "never" | "dismiss") => rawInvoke<void>("browser_password_offer", { decision });
 export const browserPasswordResume = (tabId: string) => rawInvoke<void>("browser_password_resume", { tabId });
+export type BrowserPasskey = { id: string; rpId: string; userName: string; displayName: string; createdAt: number; lastUsedAt: number | null };
+export const browserPasskeysList = () => rawInvoke<BrowserPasskey[]>("browser_passkeys_list");
+export const browserPasskeyDelete = (id: string) => rawInvoke<void>("browser_passkey_delete", { id });
 
 export function browserNativeBounds(tabId: string, rect: { x: number; y: number; w: number; h: number }, visible: boolean): Promise<void> {
   return invoke("browser_native_bounds", { tabId, rect, visible });

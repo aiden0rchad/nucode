@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Passkeys in the in-app browser (macOS):** sites that sign in with a passkey now work in nucode's browser. It acts as its own passkey device: creating or using a passkey asks for Touch ID or your Mac password every time, the key stays in your Keychain, and passkeys can be listed and deleted in Settings → Browser. Passkeys saved in iCloud Keychain can't be used there, and passkeys are off in private browsing.
+
 ## 0.8.3 — November 23, 2026
 
 - **Links that open a window for a tool:** a link whose page opens an empty window first and then points it at the tool (as learning-platform launch pages do) did nothing in the in-app browser, or the page said to allow pop-ups. WebKit asks for such a window with an empty address, which the app refused before nucode saw it. It now opens as a new tab, and the tool loads there. A pop-up that asks for a size or position still opens as its own window.

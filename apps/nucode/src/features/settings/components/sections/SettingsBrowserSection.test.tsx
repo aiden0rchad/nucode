@@ -2,9 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SettingsBrowserSection } from "./SettingsBrowserSection";
-import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, browserPasswordUnblock, browserRequest } from "@services/tauri";
+import { browserPasswordsList, browserPasswordSave, browserPasswordDelete, browserPasswordUnblock, browserPasskeysList, browserPasskeyDelete, browserRequest } from "@services/tauri";
 import type { AppSettings } from "@/types";
-vi.mock("@services/tauri", () => ({browserPasswordsList: vi.fn().mockResolvedValue({ entries: [], never: [] }), browserPasswordSave: vi.fn().mockResolvedValue(undefined), browserPasswordDelete: vi.fn().mockResolvedValue(undefined), browserPasswordUnblock: vi.fn().mockResolvedValue(undefined), engineRuntime: vi.fn().mockResolvedValue([{ engine: "browser", state: "ready", message: "Ready" }]), browserRequest:vi.fn().mockResolvedValue(undefined)}));
+vi.mock("@services/tauri", () => ({browserPasswordsList: vi.fn().mockResolvedValue({ entries: [], never: [] }), browserPasswordSave: vi.fn().mockResolvedValue(undefined), browserPasswordDelete: vi.fn().mockResolvedValue(undefined), browserPasswordUnblock: vi.fn().mockResolvedValue(undefined), browserPasskeysList: vi.fn().mockResolvedValue([]), browserPasskeyDelete: vi.fn().mockResolvedValue(undefined), engineRuntime: vi.fn().mockResolvedValue([{ engine: "browser", state: "ready", message: "Ready" }]), browserRequest:vi.fn().mockResolvedValue(undefined)}));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it("defaults web search off and saves a SearXNG instance through browser settings", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
@@ -111,4 +111,21 @@ it("clears the password even when saving fails", async () => {
   fireEvent.click(screen.getByText("Add password"));
   expect(await screen.findByText("Cannot save password to Keychain")).toBeTruthy();
   expect(password.value).toBe("");
+});
+
+it("shows the empty passkeys state with the iCloud Keychain note", async () => {
+  render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={vi.fn()} />);
+  expect(await screen.findByText("No saved passkeys.")).toBeTruthy();
+  expect(screen.getByText(/passkeys in iCloud Keychain can't be used here/)).toBeTruthy();
+});
+it("lists passkeys with site, account and dates, and deletes one", async () => {
+  vi.mocked(browserPasskeysList).mockResolvedValueOnce([{ id: "pk-1", rpId: "example.test", userName: "alice", displayName: "Alice", createdAt: 1_700_000_000, lastUsedAt: null }]);
+  render(<SettingsBrowserSection appSettings={{} as AppSettings} onUpdateAppSettings={vi.fn()} />);
+  expect(await screen.findByText("example.test")).toBeTruthy();
+  expect(screen.getByText(/alice \(Alice\) · Created .* · Never used/)).toBeTruthy();
+  expect(screen.queryByText("No saved passkeys.")).toBeNull();
+  vi.mocked(browserPasskeysList).mockResolvedValueOnce([]);
+  fireEvent.click(screen.getByText("Delete passkey"));
+  await waitFor(() => expect(browserPasskeyDelete).toHaveBeenCalledWith("pk-1"));
+  expect(await screen.findByText("No saved passkeys.")).toBeTruthy();
 });

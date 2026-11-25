@@ -46,6 +46,8 @@ ignore = "0.4.25"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 libc = "0.2"
 sha2 = "0.10"
+ring = "0.17"
+psl = "2"
 chrono = { version = "0.4", features = ["clock"] }
 regex = "1"
 url = "2"
@@ -72,7 +74,7 @@ objc2-app-kit = { version = "0.3", features = ["NSAppearance", "NSResponder", "N
 objc2-foundation = { version = "0.3", features = ["NSString", "NSFileManager", "NSURL", "NSError", "NSHTTPCookie", "NSDate", "NSDictionary", "NSArray", "NSUUID"] }
 objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat"] }
 block2 = "0.6"
-objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "WKWebView", "WKContentWorld", "WKUserScript", "WKUserContentController", "WKScriptMessage", "WKScriptMessageHandler", "WKFrameInfo", "WKSnapshotConfiguration", "WKWebsiteDataStore", "WKHTTPCookieStore", "WKWebsiteDataRecord", "WKWebViewConfiguration", "WKNavigationDelegate", "WKNavigationAction", "WKNavigation", "WKUIDelegate", "block2"] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "WKWebView", "WKContentWorld", "WKUserScript", "WKUserContentController", "WKScriptMessage", "WKScriptMessageHandler", "WKFrameInfo", "WKSnapshotConfiguration", "WKWebsiteDataStore", "WKHTTPCookieStore", "WKWebsiteDataRecord", "WKWebViewConfiguration", "WKNavigationDelegate", "WKNavigationAction", "WKNavigation", "WKUIDelegate", "WKScriptMessageHandlerWithReply", "WKSecurityOrigin", "block2"] }
 screencapturekit = "11.0.0"
 core-graphics = { version = "0.25.0", features = ["highsierra"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes"] }

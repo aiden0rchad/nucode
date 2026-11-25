@@ -159,3 +159,13 @@ pub(crate) async fn browser_password_resume(tab_id: String, state: State<'_, App
     #[cfg(target_os = "macos")] { passwords(&state)?.resume(&tab_id).await }
     #[cfg(not(target_os = "macos"))] { let _ = (tab_id, state); Err(crate::shared::browser::passwords::UNAVAILABLE.into()) }
 }
+#[tauri::command]
+pub(crate) async fn browser_passkeys_list(state: State<'_, AppState>) -> Result<Vec<crate::shared::browser::passkeys::Listing>, String> {
+    #[cfg(target_os = "macos")] { passwords(&state)?.list_passkeys() }
+    #[cfg(not(target_os = "macos"))] { let _ = state; Err("Passkeys are available on macOS".into()) }
+}
+#[tauri::command]
+pub(crate) async fn browser_passkey_delete(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    #[cfg(target_os = "macos")] { passwords(&state)?.delete_passkey(&id) }
+    #[cfg(not(target_os = "macos"))] { let _ = (id, state); Err("Passkeys are available on macOS".into()) }
+}

@@ -4,7 +4,7 @@ use objc2::{msg_send, runtime::AnyObject, sel, MainThreadOnly};
 use objc2_core_foundation::CGSize;
 use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSView};
 use objc2_foundation::{NSDictionary, NSError, NSString, NSObjectProtocol};
-use objc2_web_kit::{WKContentWorld, WKWebView, WKScriptMessageHandler};
+use objc2_web_kit::{WKContentWorld, WKWebView, WKScriptMessageHandler, WKScriptMessageHandlerWithReply};
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -372,7 +372,7 @@ pub fn drop_app_bridge(wk: &WKWebView) {
         let controller = wk.configuration().userContentController();
         let own: Vec<_> = controller.userScripts().to_vec().into_iter().filter(|script| {
             let source = script.source().to_string();
-            source.starts_with(hooks) || source == include_str!("passwords.js")
+            source.starts_with(hooks) || source == include_str!("passwords.js") || source == include_str!("passkeys.js")
         }).collect();
         controller.removeAllUserScripts();
         for script in own { controller.addUserScript(&script); }
@@ -481,6 +481,83 @@ objc2::define_class!(
                 if let Some(password) = value["password"].as_str() { nucode_diag_mcp::writer::remember_secret(password); }
                 (self.ivars())(value);
             }
+        }
+    }
+);
+
+type ReplyBlock = RcBlock<dyn Fn(*mut AnyObject, *mut NSString)>;
+/// WebKit's reply block, called only on the main thread (see `Reply::fire`).
+struct SendBlock(ReplyBlock);
+unsafe impl Send for SendBlock {}
+impl SendBlock {
+    fn call(&self, json: &str) {
+        let text = NSString::from_str(json);
+        self.0.call((objc2::rc::Retained::as_ptr(&text) as *mut AnyObject, std::ptr::null_mut()));
+    }
+}
+/// The page's pending promise. It is answered exactly once: by `send`, or with an error if dropped unanswered.
+pub struct Reply { block: Option<SendBlock>, app: tauri::AppHandle }
+impl Reply {
+    pub fn send(mut self, json: String) { self.fire(json); }
+    fn fire(&mut self, json: String) {
+        let Some(block) = self.block.take() else { return; };
+        let _ = self.app.run_on_main_thread(move || block.call(&json));
+    }
+}
+impl Drop for Reply {
+    fn drop(&mut self) { if self.block.is_some() { self.fire(super::super::passkeys::reply_err(&super::super::passkeys::unavailable())); } }
+}
+pub struct PasskeyMessage {
+    pub body: String,
+    /// Built from the frame's WebKit security origin; never from the page's own message.
+    pub origin: Result<super::super::passkeys::Origin, super::super::passkeys::Fail>,
+    pub reply: Reply,
+}
+struct PasskeyIvars { app: tauri::AppHandle, on_message: Box<dyn Fn(PasskeyMessage) + Send + Sync> }
+
+/// Installs the page-world passkey shim and its reply-capable handler on one webview.
+pub async fn install_passkeys(view: &Webview, on_message: Box<dyn Fn(PasskeyMessage) + Send + Sync>) -> Result<(), String> {
+    use objc2_web_kit::{WKUserScript, WKUserScriptInjectionTime};
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let app = tauri::Manager::app_handle(view).clone();
+    view.with_webview(move |platform| unsafe {
+        let wk = &*(platform.inner() as *const WKWebView);
+        let mtm = objc2::MainThreadMarker::new().expect("WebKit main thread");
+        let world = WKContentWorld::pageWorld(mtm);
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly_inContentWorld(
+            WKUserScript::alloc(mtm), &NSString::from_str(include_str!("passkeys.js")), WKUserScriptInjectionTime::AtDocumentStart, true, &world,
+        );
+        let controller = wk.configuration().userContentController();
+        let allocated = PasskeyHandler::alloc(mtm).set_ivars(PasskeyIvars { app, on_message });
+        let handler: objc2::rc::Retained<PasskeyHandler> = objc2::msg_send![super(allocated), init];
+        controller.addScriptMessageHandlerWithReply_contentWorld_name(objc2::runtime::ProtocolObject::from_ref(&*handler), &world, &NSString::from_str("nucodePasskey"));
+        controller.addUserScript(&script);
+        let _ = tx.send(());
+    }).map_err(|_| "Cannot install passkeys")?;
+    rx.await.map_err(|_| "Cannot install passkeys".into())
+}
+
+objc2::define_class!(
+    #[unsafe(super = objc2_foundation::NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = PasskeyIvars]
+    struct PasskeyHandler;
+    unsafe impl NSObjectProtocol for PasskeyHandler {}
+    unsafe impl WKScriptMessageHandlerWithReply for PasskeyHandler {
+        #[unsafe(method(userContentController:didReceiveScriptMessage:replyHandler:))]
+        unsafe fn receive(&self, _controller: &objc2_web_kit::WKUserContentController, message: &objc2_web_kit::WKScriptMessage, reply_handler: &block2::DynBlock<dyn Fn(*mut AnyObject, *mut NSString)>) {
+            use objc2::DefinedClass;
+            use super::super::passkeys::{Origin, unavailable};
+            let ivars = self.ivars();
+            let reply = Reply { block: Some(SendBlock(reply_handler.copy())), app: ivars.app.clone() };
+            let frame = message.frameInfo();
+            let origin = if frame.isMainFrame() {
+                let origin = frame.securityOrigin();
+                Origin::new(&origin.protocol().to_string(), &origin.host().to_string(), origin.port() as i64)
+            } else { Err(unavailable()) };
+            let body = message.body();
+            let Some(text) = body.downcast_ref::<NSString>().map(|t| t.to_string()).filter(|t| t.len() <= 100000) else { return; };
+            (ivars.on_message)(PasskeyMessage { body: text, origin, reply });
         }
     }
 );
