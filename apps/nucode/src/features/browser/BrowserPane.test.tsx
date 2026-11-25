@@ -392,7 +392,7 @@ it("never acts on a take-over raised before the pane mounted, or on another thre
 
 describe("Import sign-in", () => {
   const page: BrowserState = { backend: "native", tabs: [{ id: "one", title: "Example", url: "https://app.example.test/home", loading: false, ready: true }], active: "one" };
-  const sources = [{ id: "chrome:Default", browser: "Chrome", profile: "Personal", label: "Chrome — Personal" }, { id: "safari", browser: "Safari", profile: "", label: "Safari" }];
+  const sources = [{ id: "chrome:Default", browser: "Chrome", profile: "Personal", label: "Chrome — Personal", found: 3, needsAccess: false }, { id: "safari", browser: "Safari", profile: "", label: "Safari", found: null, needsAccess: false }];
   const open = async () => {
     render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
     await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
@@ -442,6 +442,25 @@ describe("Import sign-in", () => {
     expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("group", { name: "Import sign-in" }), { key: "Escape" });
     expect(screen.queryByRole("group", { name: "Import sign-in" })).toBeNull();
+  });
+  it("marks browsers without a sign-in for the site and picks one that may have it", async () => {
+    vi.mocked(browserImportSources).mockResolvedValue([{ ...sources[0], found: 0 }, { ...sources[1], needsAccess: true }]);
+    vi.mocked(openFullDiskAccessSettings).mockResolvedValue(undefined);
+    await open();
+    const chrome = await screen.findByLabelText<HTMLInputElement>("Chrome — Personal");
+    expect(browserImportSources).toHaveBeenCalledWith("one");
+    expect(chrome.disabled).toBe(true);
+    expect(screen.getByText("No sign-in for app.example.test")).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>("Safari").checked).toBe(true);
+    expect(screen.getByText("Needs Full Disk Access")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(openFullDiskAccessSettings).toHaveBeenCalled();
+  });
+  it("says when no browser is signed in to the site", async () => {
+    vi.mocked(browserImportSources).mockResolvedValue(sources.map(source => ({ ...source, found: 0 })));
+    await open();
+    expect(await screen.findByText(/None of your browsers is signed in to app.example.test/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import" })).toHaveProperty("disabled", true);
   });
   it("says so when there is no browser to import from", async () => {
     vi.mocked(browserImportSources).mockResolvedValue([]);

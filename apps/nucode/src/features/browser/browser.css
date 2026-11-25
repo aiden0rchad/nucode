@@ -108,6 +108,9 @@
 .browser-import { flex-wrap: wrap; align-items: center; }
 .browser-import-sources { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; border: 0; margin: 0; padding: 0; min-width: 0; }
 .browser-import-sources label { display: flex; align-items: center; gap: 6px; }
+.browser-import-source { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.browser-import-hint { color: var(--text-muted); }
+.browser-import-hint:empty { display: none; }
 .browser-confirm > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 /* The width the agent set with browser_resize; clicking fits the pane again. */
 .browser-viewport-chip { flex-shrink: 0; height: 24px; padding: 0 8px; border: 1px solid var(--ds-border-subtle); border-radius: 999px; background: color-mix(in srgb, var(--border-accent) 14%, transparent); color: var(--text-strong); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }

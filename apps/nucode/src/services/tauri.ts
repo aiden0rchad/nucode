@@ -834,8 +834,9 @@ export const browserPasswordResume = (tabId: string) => rawInvoke<void>("browser
 export type BrowserPasskey = { id: string; rpId: string; userName: string; displayName: string; createdAt: number; lastUsedAt: number | null };
 export const browserPasskeysList = () => rawInvoke<BrowserPasskey[]>("browser_passkeys_list");
 export const browserPasskeyDelete = (id: string) => rawInvoke<void>("browser_passkey_delete", { id });
-export type BrowserImportSource = { id: string; browser: string; profile: string; label: string };
-export const browserImportSources = () => rawInvoke<BrowserImportSource[]>("browser_import_sources");
+/** found: cookies this browser holds for the tab's site (null when unchecked); needsAccess: Safari without Full Disk Access. */
+export type BrowserImportSource = { id: string; browser: string; profile: string; label: string; found: number | null; needsAccess: boolean };
+export const browserImportSources = (tabId?: string) => rawInvoke<BrowserImportSource[]>("browser_import_sources", { tabId });
 export const browserImportCookies = (source: string, tabId?: string) => rawInvoke<{ imported: number; host: string }>("browser_import_cookies", { source, tabId });
 export async function openFullDiskAccessSettings(): Promise<void> {
   const { openUrl } = await import("@tauri-apps/plugin-opener");

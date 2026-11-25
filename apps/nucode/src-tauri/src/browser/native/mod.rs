@@ -1143,6 +1143,11 @@ impl NativeBackend {
         index.delete(&super::passkeys::Keychain, id)?;
         index.save(&path)
     }
+    /// Browsers to import from, each with how many cookies it holds for the active tab's site.
+    pub async fn import_sources(&self, tab_id: Option<&str>) -> Result<Vec<super::cookie_import::Source>, String> {
+        let (_, host, https) = super::cookie_import::target(&self.state.borrow(), tab_id)?;
+        tauri::async_runtime::spawn_blocking(move || super::cookie_import::sources_for(&host, https)).await.map_err(|_| "Import stopped unexpectedly".into())
+    }
     /// Copies one browser's cookies for the active tab's site into the in-app browser's store, then reloads the tab.
     /// The URL comes from backend tab state, never from the caller.
     pub async fn import_cookies(&self, source: &str, tab_id: Option<&str>) -> Result<Value, String> {

@@ -104,9 +104,11 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     try { host = new URL(active.url).hostname; } catch { return; }
     const tabId = state.active;
     setImportPanel({ tabId, host, sources: null, selected: "", busy: false, done: "", error: "" });
-    void browserImportSources().then(sources => setImportPanel(old => old?.tabId === tabId ? { ...old, sources, selected: sources[0]?.id ?? "" } : old))
+    void browserImportSources(tabId).then(sources => setImportPanel(old => old?.tabId === tabId ? { ...old, sources, selected: pickSource(sources) } : old))
       .catch(e => setImportPanel(old => old?.tabId === tabId ? { ...old, sources: [], error: String(e) } : old));
   };
+  /** The first source that holds a sign-in for the site, else one that could not be checked (Safari without access). */
+  const pickSource = (sources: BrowserImportSource[]) => (sources.find(source => source.found) ?? sources.find(source => source.found !== 0))?.id ?? "";
   const runImport = async () => {
     const panel = importPanel;
     if (!panel || !panel.selected || panel.busy) return;
@@ -239,9 +241,16 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     {native && active?.credentialsPaused && <div className="browser-confirm" role="status"><span>Agent paused on this page while you sign in</span><button disabled={passwordBusy} onClick={() => void passwordAction(() => browserPasswordResume(state.active))}>Resume agent</button></div>}
     {native && importPanel && <div className="browser-confirm browser-import" role="group" aria-label="Import sign-in" onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); closeImport(); } }}>
       <span>Copies your cookies for {importPanel.host} from the browser you pick, so nucode is signed in the same way. Other sites are not touched.</span>
-      {importPanel.sources === null ? <span role="status">Looking for browsers…</span> : importPanel.sources.length === 0 ? <span>No other browsers to import from were found.</span> : <fieldset className="browser-import-sources" aria-label="Import from" disabled={importPanel.busy || Boolean(importPanel.done)}>
-        {importPanel.sources.map((source, index) => <label key={source.id}><input type="radio" name="browser-import-source" autoFocus={index === 0} checked={importPanel.selected === source.id} onChange={() => setImportPanel({ ...importPanel, selected: source.id, error: "" })} /> {source.label}</label>)}
-      </fieldset>}
+      {importPanel.sources === null ? <span role="status">Looking for browsers…</span> : importPanel.sources.length === 0 ? <span>No other browsers to import from were found.</span> : <>
+        {importPanel.sources.every(source => source.found === 0) && <span role="status">None of your browsers is signed in to {importPanel.host}. Sign in to it in one of them, then try again.</span>}
+        <fieldset className="browser-import-sources" aria-label="Import from" disabled={importPanel.busy || Boolean(importPanel.done)}>
+          {importPanel.sources.map(source => <div key={source.id} className="browser-import-source">
+            <label><input type="radio" name="browser-import-source" disabled={source.found === 0} autoFocus={importPanel.selected === source.id} checked={importPanel.selected === source.id} aria-describedby={`browser-import-${source.id}`} onChange={() => setImportPanel({ ...importPanel, selected: source.id, error: "" })} /> {source.label}</label>
+            <span id={`browser-import-${source.id}`} className="browser-import-hint">{source.found ? "Signed in" : source.found === 0 ? `No sign-in for ${importPanel.host}` : source.needsAccess ? "Needs Full Disk Access" : ""}</span>
+            {source.needsAccess && <button type="button" onClick={() => { void openFullDiskAccessSettings().catch(e => setError(String(e))); }}>Open Settings</button>}
+          </div>)}
+        </fieldset>
+      </>}
       {importPanel.busy && <span role="status">Importing… macOS may ask for permission to use the browser's saved key.</span>}
       {importPanel.done && <span role="status">{importPanel.done}</span>}
       {importPanel.error && <span role="alert">{importPanel.error}{/Full Disk Access/.test(importPanel.error) && <button type="button" onClick={() => { void openFullDiskAccessSettings().catch(e => setError(String(e))); }}>Open Settings</button>}</span>}

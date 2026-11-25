@@ -30,8 +30,11 @@ const CHROMIUM: [(&str, &str, &str, &str, &str); 5] = [
     ("chromium", "Chromium", "Chromium", "Chromium Safe Storage", "Chromium"),
 ];
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
-pub struct Source { pub id: String, pub browser: String, pub profile: String, pub label: String }
+/// A browser profile to import from. `found` counts its unexpired cookies for the current site (None when it could
+/// not be checked); `needs_access` marks Safari without Full Disk Access.
+#[derive(Serialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Source { pub id: String, pub browser: String, pub profile: String, pub label: String, pub found: Option<usize>, pub needs_access: bool }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cookie {
@@ -245,25 +248,47 @@ pub fn sources_in(support: &Path, safari: bool) -> Vec<Source> {
     let mut list = vec![];
     for (id, browser, dir, _, _) in CHROMIUM {
         for (profile, name) in profiles(&support.join(dir)) {
-            list.push(Source { id: format!("{id}:{profile}"), browser: browser.into(), label: format!("{browser} — {name}"), profile: name });
+            list.push(Source { id: format!("{id}:{profile}"), browser: browser.into(), label: format!("{browser} — {name}"), profile: name, ..Default::default() });
         }
     }
-    if safari { list.push(Source { id: "safari".into(), browser: "Safari".into(), profile: String::new(), label: "Safari".into() }); }
+    if safari { list.push(Source { id: "safari".into(), browser: "Safari".into(), label: "Safari".into(), ..Default::default() }); }
     list
 }
-/// Installed browsers and their profiles. Reads no cookies.
-pub fn sources() -> Vec<Source> {
-    support().map(|support| sources_in(&support, safari_installed())).unwrap_or_default()
+/// Installed browsers and their profiles, each marked with how many cookies it holds for `host` (counted from cookie
+/// metadata and Safari's file; no Keychain access, no values kept). Sources with a sign-in come first.
+pub fn sources_for(host: &str, https: bool) -> Vec<Source> {
+    let Some(support) = support() else { return vec![] };
+    let mut list = sources_in(&support, safari_installed());
+    for source in &mut list {
+        if source.id == "safari" {
+            match support.parent().and_then(Path::parent).map(|home| safari_import(home, host, https)) {
+                Some(Ok(cookies)) => source.found = Some(cookies.len()),
+                Some(Err(error)) => source.needs_access = error == SAFARI_ACCESS,
+                None => {}
+            }
+        } else if let Some((browser, profile)) = source.id.split_once(':') {
+            source.found = chrome_rows(&support, browser, profile, host, https).ok().map(|rows| rows.len());
+        }
+    }
+    list.sort_by_key(|source| !source.found.is_some_and(|n| n > 0));
+    list
 }
 
-fn chrome_import(support: &Path, browser: &str, profile: &str, host: &str, https: bool, password: impl FnOnce(&str, &str) -> Result<String, String>) -> Result<Vec<Cookie>, String> {
-    let (_, _, dir, service, account) = *CHROMIUM.iter().find(|entry| entry.0 == browser).ok_or("Unknown browser")?;
+/// A profile's unexpired rows for `host`, still encrypted.
+fn chrome_rows(support: &Path, browser: &str, profile: &str, host: &str, https: bool) -> Result<Vec<Row>, String> {
+    let (_, _, dir, _, _) = *CHROMIUM.iter().find(|entry| entry.0 == browser).ok_or("Unknown browser")?;
     let data = support.join(dir);
     if !profiles(&data).iter().any(|(name, _)| name == profile) { return Err("That browser profile is no longer available".into()); }
     let db = chrome_db(&data.join(profile)).ok_or("That browser profile has no cookies")?;
-    let rows = query(&db, host)?;
+    let at = now();
+    Ok(query(&db, host)?.into_iter().filter(|row| matches(host, &row.host_key, row.is_secure != 0, https)
+        && !chrome_expiry(row.expires_utc, row.has_expires != 0, row.is_persistent != 0).is_some_and(|expires| expires <= at)).collect())
+}
+
+fn chrome_import(support: &Path, browser: &str, profile: &str, host: &str, https: bool, password: impl FnOnce(&str, &str) -> Result<String, String>) -> Result<Vec<Cookie>, String> {
+    let (_, _, _, service, account) = *CHROMIUM.iter().find(|entry| entry.0 == browser).ok_or("Unknown browser")?;
+    let rows = chrome_rows(support, browser, profile, host, https)?;
     // Nothing for this host: do not ask the Keychain for the browser's key.
-    let rows: Vec<_> = rows.into_iter().filter(|row| matches(host, &row.host_key, row.is_secure != 0, https)).collect();
     if rows.is_empty() { return Ok(vec![]); }
     let password = password(service, account)?;
     nucode_diag_mcp::writer::remember_secret(&password);
@@ -334,16 +359,35 @@ pub fn parse_binarycookies(data: &[u8], at: f64, keep: impl Fn(&str, bool) -> bo
     Ok(found)
 }
 
-fn safari_import(home: &Path, host: &str, https: bool) -> Result<Vec<Cookie>, String> {
-    let paths = [home.join("Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies"), home.join("Library/Cookies/Cookies.binarycookies")];
-    for path in &paths {
-        match std::fs::read(path) {
-            Ok(data) => return parse_binarycookies(&data, now(), |domain, secure| matches(host, domain, secure, https)),
-            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied || error.raw_os_error() == Some(1) => return Err(SAFARI_ACCESS.into()),
+/// Safari's cookie files: the default profile's, then each other profile's website data store.
+fn safari_files(home: &Path) -> Result<Vec<PathBuf>, String> {
+    let data = home.join("Library/Containers/com.apple.Safari/Data/Library");
+    let mut paths = vec![data.join("Cookies/Cookies.binarycookies"), home.join("Library/Cookies/Cookies.binarycookies")];
+    for stores in [data.join("WebKit/WebsiteDataStore"), data.join("WebKit/com.apple.Safari/WebsiteDataStore")] {
+        match std::fs::read_dir(&stores) {
+            Ok(entries) => paths.extend(entries.flatten().map(|entry| entry.path().join("Cookies/Cookies.binarycookies"))),
+            Err(error) if denied(&error) => return Err(SAFARI_ACCESS.into()),
             Err(_) => {}
         }
     }
-    Err("Could not find Safari's cookies".into())
+    Ok(paths)
+}
+fn denied(error: &std::io::Error) -> bool { error.kind() == std::io::ErrorKind::PermissionDenied || error.raw_os_error() == Some(1) }
+
+/// This host's cookies from every Safari profile; where profiles disagree, the one that expires last wins.
+fn safari_import(home: &Path, host: &str, https: bool) -> Result<Vec<Cookie>, String> {
+    let mut found: BTreeMap<(String, String, String), Cookie> = BTreeMap::new();
+    let mut any = false;
+    for path in safari_files(home)? {
+        let data = match std::fs::read(&path) { Ok(data) => data, Err(error) if denied(&error) => return Err(SAFARI_ACCESS.into()), Err(_) => continue };
+        any = true;
+        for cookie in parse_binarycookies(&data, now(), |domain, secure| matches(host, domain, secure, https))? {
+            let key = (cookie.domain.clone(), cookie.name.clone(), cookie.path.clone());
+            if found.get(&key).is_none_or(|old| old.expires < cookie.expires) { found.insert(key, cookie); }
+        }
+    }
+    if !any { return Err("Could not find Safari's cookies".into()); }
+    Ok(found.into_values().collect())
 }
 
 /// Reads the cookies a browser source holds for `host`, and the label to show for it.
@@ -438,7 +482,7 @@ mod tests {
         std::fs::write(dir.join("Local State"), json!({"profile":{"info_cache":{"Default":{"name":"Personal"},"Profile 1":{"name":" "}}}}).to_string()).unwrap();
         assert_eq!(profiles(&dir), [("Default".to_string(), "Personal".to_string()), ("Profile 1".to_string(), "Profile 1".to_string())]);
         let all = sources_in(&dir.parent().unwrap().join("nope"), true);
-        assert_eq!(all, [Source { id: "safari".into(), browser: "Safari".into(), profile: String::new(), label: "Safari".into() }]);
+        assert_eq!(all, [Source { id: "safari".into(), browser: "Safari".into(), label: "Safari".into(), ..Default::default() }]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
     #[test]
@@ -448,7 +492,7 @@ mod tests {
         std::fs::write(base.join("Google/Chrome/Default/Cookies"), b"").unwrap();
         std::fs::write(base.join("Google/Chrome/Local State"), json!({"profile":{"info_cache":{"Default":{"name":"Personal"}}}}).to_string()).unwrap();
         let list = sources_in(&base, false);
-        assert_eq!(list, [Source { id: "chrome:Default".into(), browser: "Chrome".into(), profile: "Personal".into(), label: "Chrome — Personal".into() }]);
+        assert_eq!(list, [Source { id: "chrome:Default".into(), browser: "Chrome".into(), profile: "Personal".into(), label: "Chrome — Personal".into(), ..Default::default() }]);
         std::fs::remove_dir_all(&base).unwrap();
     }
 
@@ -525,6 +569,9 @@ mod tests {
             }).unwrap(), ());
             assert_eq!(cookies.len(), 1);
             assert_eq!((cookies[0].name.as_str(), cookies[0].value.as_str(), cookies[0].same_site, cookies[0].secure, cookies[0].http_only), ("session", "synthetic-value", Some("lax"), true, true));
+            // Counting for the source list reads metadata only.
+            assert_eq!(chrome_rows(&base, "chrome", "Default", "www.example.test", true).unwrap().len(), 1);
+            assert_eq!(chrome_rows(&base, "chrome", "Default", "www.example.test", false).unwrap().len(), 0, "secure cookie, http host");
             // Nothing for this host: no Keychain access at all.
             assert!(chrome_import(&base, "chrome", "Default", "nothing.test", true, |_, _| panic!("asked the Keychain")).unwrap().is_empty());
             assert!(chrome_import(&base, "chrome", "../Default", "example.test", true, |_, _| Ok(String::new())).is_err());
@@ -614,6 +661,13 @@ mod tests {
         std::fs::write(path.join("Cookies.binarycookies"), data).unwrap();
         assert_eq!(safari_import(&home, "example.test", true).unwrap().len(), 1);
         assert!(safari_import(&home, "example.test", false).unwrap().is_empty(), "secure cookie, http host");
+        // Another Safari profile: its cookies are added, and a duplicate keeps the later expiry.
+        let store = home.join("Library/Containers/com.apple.Safari/Data/Library/WebKit/WebsiteDataStore/ABC/Cookies");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(store.join("Cookies.binarycookies"), file(&[page(&[(".example.test", "sid", "/", "w", 1, 4.1e9 - SAFARI_EPOCH), ("example.test", "pref", "/", "x", 0, 4e9 - SAFARI_EPOCH)])])).unwrap();
+        let mut both = safari_import(&home, "example.test", true).unwrap();
+        both.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(both.iter().map(|c| (c.name.as_str(), c.value.as_str())).collect::<Vec<_>>(), [("pref", "x"), ("sid", "w")]);
         std::fs::remove_dir_all(&home).unwrap();
     }
 }
