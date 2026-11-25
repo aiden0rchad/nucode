@@ -2,6 +2,8 @@ pub mod backend;
 pub mod policy;
 pub mod passwords;
 pub mod passkeys;
+#[cfg(target_os = "macos")]
+pub mod cookie_import;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod native;
 use backend::BrowserBackend;

@@ -287,6 +287,8 @@ pub fn run() {
             browser_commands::browser_passwords_list,
             browser_commands::browser_passkeys_list,
             browser_commands::browser_passkey_delete,
+            browser_commands::browser_import_sources,
+            browser_commands::browser_import_cookies,
             browser_commands::browser_password_save,
             browser_commands::browser_password_delete,
             browser_commands::browser_password_unblock,

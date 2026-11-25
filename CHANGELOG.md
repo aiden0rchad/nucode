@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Passkeys in the in-app browser (macOS):** sites that sign in with a passkey now work in nucode's browser. It acts as its own passkey device: creating or using a passkey asks for Touch ID or your Mac password every time, the key stays in your Keychain, and passkeys can be listed and deleted in Settings → Browser. Passkeys saved in iCloud Keychain can't be used there, and passkeys are off in private browsing.
+- **Import a site's sign-in from Chrome or Safari (macOS):** the in-app browser's page menu has Import sign-in from… to copy your cookies for the site in the current tab from Chrome, Edge, Brave, Arc, Chromium or Safari, so a site you only sign in to with a passkey can open signed in and you can then add a nucode passkey. Only that site's cookies are copied, once. macOS asks before nucode can use a browser's saved key, and Safari needs Full Disk Access for nucode. It is off in private browsing.
 
 ## 0.8.3 — November 23, 2026
 

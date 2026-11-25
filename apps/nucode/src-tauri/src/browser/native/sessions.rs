@@ -70,6 +70,8 @@ fn cookie(values: &BTreeMap<String, String>) -> Option<Retained<NSHTTPCookie>> {
     let values: Option<Vec<Retained<AnyObject>>> = values.iter().map(|(key, value)| unsafe {
         let string = NSString::from_str(value);
         if key.as_str() == "OriginURL" { NSURL::URLWithString(&string).map(|url| Retained::cast_unchecked(url)) }
+        // Imported persistent cookies carry their expiry as unix seconds.
+        else if key.as_str() == "Expires" { value.parse::<f64>().ok().filter(|at| at.is_finite()).map(|at| Retained::cast_unchecked(NSDate::dateWithTimeIntervalSince1970(at))) }
         else { Some(Retained::cast_unchecked(string)) }
     }).collect();
     let values = values?;
@@ -240,6 +242,29 @@ impl Sessions {
         }).map_err(|_| ())?;
         rx.await.map_err(|_| ())
     }
+    /// Writes imported cookies into the tabs' data store and returns how many it accepted.
+    pub async fn import(self: &Arc<Self>, cookies: Vec<BTreeMap<String, String>>) -> Result<usize, String> {
+        let _operation = self.operation.lock().await;
+        let (tx, rx) = oneshot::channel();
+        self.app.run_on_main_thread(move || unsafe {
+            if tx.is_closed() { return; }
+            let store = store().httpCookieStore();
+            let built: Vec<_> = cookies.iter().filter_map(cookie).collect();
+            let total = built.len();
+            let remaining = std::rc::Rc::new(std::cell::Cell::new(total));
+            let done = std::rc::Rc::new(RefCell::new(Some(tx)));
+            if total == 0 { if let Some(tx) = done.borrow_mut().take() { let _ = tx.send(0); } return; }
+            for cookie in built {
+                let (remaining, done) = (remaining.clone(), done.clone());
+                let completion = RcBlock::new(move || {
+                    remaining.set(remaining.get() - 1);
+                    if remaining.get() == 0 { if let Some(tx) = done.borrow_mut().take() { let _ = tx.send(total); } }
+                });
+                store.setCookie_completionHandler(&cookie, Some(&completion));
+            }
+        }).map_err(|_| "Cannot reach the browser")?;
+        tokio::time::timeout(Duration::from_secs(10), rx).await.map_err(|_| "Timed out while copying the sign-in")?.map_err(|_| "Cannot reach the browser".to_string())
+    }
     pub async fn save(self: &Arc<Self>) -> Result<(), ()> {
         // An immediate quit after opting out must also delete the saved item.
         if crate::storage::read_settings(&self.path).is_ok_and(|settings| !settings.browser.keep_sessions) {
@@ -341,6 +366,17 @@ mod tests {
         // Foundation may consume OriginURL when canonicalizing a cookie with an explicit domain.
         // All properties exposed by Foundation must survive the next native reconstruction.
         assert_eq!(properties(&super::cookie(&restored).unwrap()), restored);
+    }
+    #[test]
+    fn imported_cookies_carry_expiry_or_discard() {
+        let mut values = fake(); values.remove("Discard"); values.remove("Port"); values.remove("OriginURL"); let soon = (now() + 86_400) as i64; values.insert("Expires".into(), soon.to_string());
+        let persistent = cookie(&values).unwrap();
+        assert!(!persistent.isSessionOnly());
+        assert_eq!(persistent.expiresDate().unwrap().timeIntervalSince1970() as i64, soon);
+        values.remove("Expires"); values.insert("Discard".into(), "TRUE".into());
+        assert!(cookie(&values).unwrap().isSessionOnly());
+        values.remove("Discard"); values.insert("Expires".into(), "soon".into());
+        assert!(cookie(&values).is_none());
     }
     #[test]
     fn empty_port_list_is_not_a_port_restriction() {

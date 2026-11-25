@@ -169,3 +169,13 @@ pub(crate) async fn browser_passkey_delete(id: String, state: State<'_, AppState
     #[cfg(target_os = "macos")] { passwords(&state)?.delete_passkey(&id) }
     #[cfg(not(target_os = "macos"))] { let _ = (id, state); Err("Passkeys are available on macOS".into()) }
 }
+#[tauri::command]
+pub(crate) async fn browser_import_sources() -> Result<Vec<crate::shared::browser::cookie_import::Source>, String> {
+    #[cfg(target_os = "macos")] { tauri::async_runtime::spawn_blocking(crate::shared::browser::cookie_import::sources).await.map_err(|_| "Import stopped unexpectedly".into()) }
+    #[cfg(not(target_os = "macos"))] { Err("Importing a sign-in is available on macOS".into()) }
+}
+#[tauri::command]
+pub(crate) async fn browser_import_cookies(source: String, tab_id: Option<String>, state: State<'_, AppState>) -> Result<Value, String> {
+    #[cfg(target_os = "macos")] { passwords(&state)?.import_cookies(&source, tab_id.as_deref()).await }
+    #[cfg(not(target_os = "macos"))] { let _ = (source, tab_id, state); Err("Importing a sign-in is available on macOS".into()) }
+}

@@ -2,9 +2,10 @@ import { NativeSlot } from "./NativeSlot";
 import { record } from "@/features/diagnostics/client";
 import { RowMenu } from "@/features/chat/RowMenu";
 import { ArrowLeft, ArrowRight, CircleAlert, Download, KeyRound, LockKeyhole, Pencil, Plus, RotateCw, X } from "lucide-react";
+import type { BrowserImportSource } from "@services/tauri";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, openBrowserDownloads, openBrowserUrl, exportBrowserScreenshot } from "@services/tauri";
+import { browserImportCookies, browserImportSources, openFullDiskAccessSettings, browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, openBrowserDownloads, openBrowserUrl, exportBrowserScreenshot } from "@services/tauri";
 import { isMacPlatform } from "@utils/platformPaths";
 import { defaultBrowserSettings, drawBrowserFrame, modifiers, normalizeBrowserUrl, scopeBrowserState } from "./browser";
 import type { BrowserState } from "./browser";
@@ -25,6 +26,9 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
   const [confirmClear, setConfirmClear] = useState<{ tabId: string; expectedUrl: string } | null>(null);
   const [loginMenu, setLoginMenu] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
+  type ImportPanel = { tabId: string; host: string; sources: BrowserImportSource[] | null; selected: string; busy: boolean; done: string; error: string };
+  const [importPanel, setImportPanel] = useState<ImportPanel | null>(null);
+  const pane = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(1);
   const [viewport, setViewport] = useState<"responsive" | "phone">("responsive");
   const [capture, setCapture] = useState<BrowserCapture | null>(null);
@@ -93,6 +97,27 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     const result = await browserPasswordFill(state.active, id);
     if (!result.filled) throw new Error("No visible password field was found on this page");
   });
+  const closeImport = () => { setImportPanel(null); pane.current?.querySelector<HTMLButtonElement>('button[aria-label="Actions for page"]')?.focus(); };
+  const openImport = () => {
+    if (!active) return;
+    let host = "";
+    try { host = new URL(active.url).hostname; } catch { return; }
+    const tabId = state.active;
+    setImportPanel({ tabId, host, sources: null, selected: "", busy: false, done: "", error: "" });
+    void browserImportSources().then(sources => setImportPanel(old => old?.tabId === tabId ? { ...old, sources, selected: sources[0]?.id ?? "" } : old))
+      .catch(e => setImportPanel(old => old?.tabId === tabId ? { ...old, sources: [], error: String(e) } : old));
+  };
+  const runImport = async () => {
+    const panel = importPanel;
+    if (!panel || !panel.selected || panel.busy) return;
+    const label = panel.sources?.find(source => source.id === panel.selected)?.label ?? "that browser";
+    setImportPanel({ ...panel, busy: true, done: "", error: "" });
+    try {
+      const result = await browserImportCookies(panel.selected, panel.tabId);
+      const browser = label.split(" — ")[0];
+      setImportPanel(old => old?.tabId === panel.tabId ? { ...old, busy: false, done: `Signed in from ${browser} — ${result.imported} ${result.imported === 1 ? "cookie" : "cookies"} for ${result.host}` } : old);
+    } catch (e) { setImportPanel(old => old?.tabId === panel.tabId ? { ...old, busy: false, error: String(e) } : old); }
+  };
   const blank = active?.url === "about:blank";
   const loading = Boolean(active?.loading && !blank);
   useEffect(() => {
@@ -101,6 +126,7 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     if (newBlank && !state.agent && !agentActive) address.current?.focus();
   }, [blank, state.active, state.tabs]);
   useEffect(() => { setConfirmClear(null); setLoginMenu(false); }, [state.active, active?.url]);
+  useEffect(() => { setImportPanel(null); }, [state.active]);
   const clearSiteTarget = confirmClear?.tabId === state.active && confirmClear.expectedUrl === active?.url ? confirmClear : null;
   useEffect(() => { captureId.current++; setCapture(null); setCapturing(false); }, [state.active, active?.url, active?.loading, viewport, agentActive, state.agent]);
   useEffect(() => () => { captureId.current++; }, []);
@@ -171,7 +197,7 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
   // WKWebView has nothing to reload when its first navigation never committed.
   const reload = () => send(native && !blank && active?.url && (pageError || !active.ready)
     ? { action: "navigate", url: active.url } : { action: "reload" });
-  return <section className={`browser-pane ds-panel${agentActive || state.agent ? " browser-agent-active" : ""}`} aria-label="Browser">
+  return <section ref={pane} className={`browser-pane ds-panel${agentActive || state.agent ? " browser-agent-active" : ""}`} aria-label="Browser">
     {!embedded && <header className="ds-panel-header"><strong>Browser</strong><button className="ghost" onClick={onClose} aria-label="Close browser pane"><X aria-hidden /></button></header>}
     {(agentActive || state.agent) && <div className="browser-agent" role="status"><span>Agent is using the browser</span><button className="secondary" onClick={() => { void Promise.resolve(onTakeOver()).catch(e => setError(String(e))); }}>Take over</button></div>}
     {!embedded && <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
@@ -199,6 +225,7 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
         ...(state.capabilities?.screenshot ? [{ label: "Save screenshot", onClick: () => { void exportBrowserScreenshot(state.active, active?.url).catch(e => setError(String(e))); } }] : []),
         { label: viewport === "phone" ? "Viewport: Responsive" : "Viewport: Phone (390px)", onClick: () => setViewport(old => old === "phone" ? "responsive" : "phone") },
         ...(native ? [
+          ...(isMacPlatform() && active && !blank && /^https?:/.test(active.url) ? [{ label: "Import sign-in from…", onClick: openImport }] : []),
           { label: "Clear site data", disabled: !active, onClick: () => { if (active) setConfirmClear({ tabId: state.active, expectedUrl: active.url }); } },
           { label: "Zoom +", onClick: () => { const value = Math.min(5, zoom + .1); setZoom(value); send({ action: "zoom", value }); } },
           { label: "Zoom −", onClick: () => { const value = Math.max(.25, zoom - .1); setZoom(value); send({ action: "zoom", value }); } },
@@ -210,11 +237,22 @@ export function BrowserPane({ scope = "", embedded = false, tools = [], paneActi
     {native && loginMenu && <div className="browser-confirm browser-logins" role="group" aria-label="Saved logins">{active?.savedLogins?.map(login => <button key={login.id} disabled={passwordBusy} onClick={() => void fillLogin(login.id)}>{login.username || "Unnamed login"}</button>)}<button onClick={() => setLoginMenu(false)}>Cancel</button></div>}
     {native && state.passwordOffer && <div className="browser-confirm" role="alert"><span>{state.passwordOffer.update ? "Update" : "Save"} password for {state.passwordOffer.origin} as {state.passwordOffer.username}?</span><button disabled={passwordBusy} onClick={() => void passwordAction(() => browserPasswordOffer("save"))}>Save</button><button disabled={passwordBusy} onClick={() => void passwordAction(() => browserPasswordOffer("never"))}>Never for this site</button><button disabled={passwordBusy} onClick={() => void passwordAction(() => browserPasswordOffer("dismiss"))}>Not now</button></div>}
     {native && active?.credentialsPaused && <div className="browser-confirm" role="status"><span>Agent paused on this page while you sign in</span><button disabled={passwordBusy} onClick={() => void passwordAction(() => browserPasswordResume(state.active))}>Resume agent</button></div>}
+    {native && importPanel && <div className="browser-confirm browser-import" role="group" aria-label="Import sign-in" onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); closeImport(); } }}>
+      <span>Copies your cookies for {importPanel.host} from the browser you pick, so nucode is signed in the same way. Other sites are not touched.</span>
+      {importPanel.sources === null ? <span role="status">Looking for browsers…</span> : importPanel.sources.length === 0 ? <span>No other browsers to import from were found.</span> : <fieldset className="browser-import-sources" aria-label="Import from" disabled={importPanel.busy || Boolean(importPanel.done)}>
+        {importPanel.sources.map((source, index) => <label key={source.id}><input type="radio" name="browser-import-source" autoFocus={index === 0} checked={importPanel.selected === source.id} onChange={() => setImportPanel({ ...importPanel, selected: source.id, error: "" })} /> {source.label}</label>)}
+      </fieldset>}
+      {importPanel.busy && <span role="status">Importing… macOS may ask for permission to use the browser's saved key.</span>}
+      {importPanel.done && <span role="status">{importPanel.done}</span>}
+      {importPanel.error && <span role="alert">{importPanel.error}{/Full Disk Access/.test(importPanel.error) && <button type="button" onClick={() => { void openFullDiskAccessSettings().catch(e => setError(String(e))); }}>Open Settings</button>}</span>}
+      {!importPanel.done && <button type="button" disabled={importPanel.busy || !importPanel.selected} onClick={() => void runImport()}>Import</button>}
+      <button type="button" onClick={closeImport}>{importPanel.done ? "Done" : "Cancel"}</button>
+    </div>}
     {clearSiteTarget && <div className="browser-confirm" role="alert">Clear sign-ins and storage for this site?<button onClick={() => { if (clearSiteTarget.tabId === state.active && clearSiteTarget.expectedUrl === active?.url) send({ action: "clearSite", confirmed: true, ...clearSiteTarget }); setConfirmClear(null); }}>Clear data</button><button onClick={() => setConfirmClear(null)}>Cancel</button></div>}
     {state.externalRequest && <div className="browser-confirm" role="alert">Open {state.externalRequest} externally?<button onClick={() => { void openBrowserUrl(state.externalRequest!).catch(e => setError(String(e))); send({ action: "dismiss", key: "externalRequest" }); }}>Open</button><button onClick={() => send({ action: "dismiss", key: "externalRequest" })}>Cancel</button></div>}
     {state.downloadRequest && <div className="browser-confirm" role="alert">Save this download to Downloads?<button onClick={() => send({ action: "download", url: state.downloadRequest, confirmed: true })}>Save download</button><button onClick={() => send({ action: "dismiss", key: "downloadRequest" })}>Cancel</button></div>}
     <div ref={surface} className="browser-surface" data-viewport={viewport}>
-      {native ? !blank && <NativeSlot tabId={state.active} ready={active?.ready === true} snapshot={active?.snapshot} viewport={state.viewport} blocked={Boolean(loginMenu || capture || pageError || clearSiteTarget || state.externalRequest || state.downloadRequest)} onError={setError} /> : <>
+      {native ? !blank && <NativeSlot tabId={state.active} ready={active?.ready === true} snapshot={active?.snapshot} viewport={state.viewport} blocked={Boolean(loginMenu || importPanel || capture || pageError || clearSiteTarget || state.externalRequest || state.downloadRequest)} onError={setError} /> : <>
       <canvas ref={canvas} tabIndex={0} aria-label="Browser page; Shift Escape returns to address bar" style={{ cursor: state.cursor || "default" }} onFocus={() => keyboard.current?.focus()} onMouseDown={e => mouse(e,"mousePressed")} onMouseUp={e => mouse(e,"mouseReleased")} onMouseMove={e => mouse(e,"mouseMoved")} onContextMenu={e => e.preventDefault()} onKeyDown={e => key(e,"keyDown")} onKeyUp={e => key(e,"keyUp")} />
       <textarea ref={keyboard} className="browser-keyboard" aria-label="Browser keyboard input" autoCapitalize="off" autoCorrect="off" spellCheck={false} onKeyDown={e => key(e,"keyDown")} onKeyUp={e => key(e,"keyUp")} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={e => { composing.current = false; send({ action: "text", text: e.data }); e.currentTarget.value = ""; }} onPaste={e => { e.preventDefault(); send({ action: "text", text: e.clipboardData.getData("text/plain") }); }} />
       </>}

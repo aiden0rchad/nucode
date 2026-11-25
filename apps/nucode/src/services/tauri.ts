@@ -834,6 +834,13 @@ export const browserPasswordResume = (tabId: string) => rawInvoke<void>("browser
 export type BrowserPasskey = { id: string; rpId: string; userName: string; displayName: string; createdAt: number; lastUsedAt: number | null };
 export const browserPasskeysList = () => rawInvoke<BrowserPasskey[]>("browser_passkeys_list");
 export const browserPasskeyDelete = (id: string) => rawInvoke<void>("browser_passkey_delete", { id });
+export type BrowserImportSource = { id: string; browser: string; profile: string; label: string };
+export const browserImportSources = () => rawInvoke<BrowserImportSource[]>("browser_import_sources");
+export const browserImportCookies = (source: string, tabId?: string) => rawInvoke<{ imported: number; host: string }>("browser_import_cookies", { source, tabId });
+export async function openFullDiskAccessSettings(): Promise<void> {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
+}
 
 export function browserNativeBounds(tabId: string, rect: { x: number; y: number; w: number; h: number }, visible: boolean): Promise<void> {
   return invoke("browser_native_bounds", { tabId, rect, visible });

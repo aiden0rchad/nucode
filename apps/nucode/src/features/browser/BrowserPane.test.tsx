@@ -3,10 +3,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserPane } from "./BrowserPane";
 import { drawBrowserFrame, normalizeBrowserUrl } from "./browser";
-import { browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, browserNativeBounds } from "@services/tauri";
+import { browserPasswordFill, browserPasswordOffer, browserPasswordResume, browserRequest, subscribeBrowser, browserNativeBounds, browserImportSources, browserImportCookies, openFullDiskAccessSettings } from "@services/tauri";
 import type { BrowserState } from "./browser";
 
-vi.mock("@services/tauri", () => ({ browserPasswordFill: vi.fn().mockResolvedValue({ filled: true, username: true }), browserPasswordOffer: vi.fn().mockResolvedValue(undefined), browserPasswordResume: vi.fn().mockResolvedValue(undefined), browserRequest: vi.fn(), subscribeBrowser: vi.fn(), browserNativeBounds: vi.fn(), openBrowserDownloads: vi.fn(), openBrowserUrl: vi.fn(), exportBrowserScreenshot: vi.fn() }));
+vi.mock("@services/tauri", () => ({ browserPasswordFill: vi.fn().mockResolvedValue({ filled: true, username: true }), browserPasswordOffer: vi.fn().mockResolvedValue(undefined), browserPasswordResume: vi.fn().mockResolvedValue(undefined), browserRequest: vi.fn(), subscribeBrowser: vi.fn(), browserNativeBounds: vi.fn(), openBrowserDownloads: vi.fn(), openBrowserUrl: vi.fn(), exportBrowserScreenshot: vi.fn(), browserImportSources: vi.fn(), browserImportCookies: vi.fn(), openFullDiskAccessSettings: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@utils/platformPaths", async importOriginal => ({ ...(await importOriginal<typeof import("@utils/platformPaths")>()), isMacPlatform: () => true }));
 const drawImage = vi.fn();
 let receive: (s: BrowserState) => void;
 const stop = vi.fn();
@@ -387,4 +388,65 @@ it("never acts on a take-over raised before the pane mounted, or on another thre
   expect(takeover).not.toHaveBeenCalled();
   act(() => receive({ ...page, takeover: 7, takeoverScope: "a", takeoverCause: "keydown" }));
   expect(takeover).toHaveBeenCalledOnce();
+});
+
+describe("Import sign-in", () => {
+  const page: BrowserState = { backend: "native", tabs: [{ id: "one", title: "Example", url: "https://app.example.test/home", loading: false, ready: true }], active: "one" };
+  const sources = [{ id: "chrome:Default", browser: "Chrome", profile: "Personal", label: "Chrome — Personal" }, { id: "safari", browser: "Safari", profile: "", label: "Safari" }];
+  const open = async () => {
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    act(() => receive(page));
+    fireEvent.click(screen.getByLabelText("Actions for page"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Import sign-in from…" }));
+  };
+  it("is offered only for a native page on macOS", async () => {
+    render(<BrowserPane onClose={vi.fn()} onTakeOver={vi.fn()} />);
+    await waitFor(() => expect(subscribeBrowser).toHaveBeenCalled());
+    for (const next of [{ ...page, backend: "cdp" }, { ...page, tabs: [{ ...page.tabs[0], url: "about:blank" }] }] as BrowserState[]) {
+      act(() => receive(next));
+      fireEvent.click(screen.getByLabelText("Actions for page"));
+      expect(screen.queryByRole("menuitem", { name: "Import sign-in from…" })).toBeNull();
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    }
+  });
+  it("lists sources, imports for the active tab and reports the result", async () => {
+    vi.mocked(browserImportSources).mockResolvedValue(sources);
+    vi.mocked(browserImportCookies).mockResolvedValue({ imported: 12, host: "app.example.test" });
+    await open();
+    expect(screen.getByText(/Copies your cookies for app.example.test from the browser you pick/)).toBeTruthy();
+    expect(screen.getByText(/Other sites are not touched/)).toBeTruthy();
+    await screen.findByLabelText("Chrome — Personal");
+    expect(screen.getByLabelText<HTMLInputElement>("Chrome — Personal").checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(browserImportCookies).toHaveBeenCalledWith("chrome:Default", "one"));
+    expect(await screen.findByText("Signed in from Chrome — 12 cookies for app.example.test")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("group", { name: "Import sign-in" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText("Actions for page"));
+  });
+  it("shows an import error, and Open Settings for the Safari Full Disk Access case; Escape closes", async () => {
+    vi.mocked(browserImportSources).mockResolvedValue(sources);
+    vi.mocked(openFullDiskAccessSettings).mockResolvedValue(undefined);
+    vi.mocked(browserImportCookies).mockRejectedValue("nucode needs Full Disk Access to read Safari's cookies. Turn it on in System Settings → Privacy & Security → Full Disk Access, then try again.");
+    await open();
+    fireEvent.click(await screen.findByLabelText("Safari"));
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByText(/needs Full Disk Access/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(openFullDiskAccessSettings).toHaveBeenCalled();
+    vi.mocked(browserImportCookies).mockRejectedValue("No sign-in for app.example.test found in Chrome — Personal.");
+    fireEvent.click(screen.getByLabelText("Chrome — Personal"));
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByText("No sign-in for app.example.test found in Chrome — Personal.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Settings" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("group", { name: "Import sign-in" }), { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Import sign-in" })).toBeNull();
+  });
+  it("says so when there is no browser to import from", async () => {
+    vi.mocked(browserImportSources).mockResolvedValue([]);
+    await open();
+    expect(await screen.findByText("No other browsers to import from were found.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import" })).toHaveProperty("disabled", true);
+  });
 });

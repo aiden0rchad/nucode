@@ -1143,6 +1143,22 @@ impl NativeBackend {
         index.delete(&super::passkeys::Keychain, id)?;
         index.save(&path)
     }
+    /// Copies one browser's cookies for the active tab's site into the in-app browser's store, then reloads the tab.
+    /// The URL comes from backend tab state, never from the caller.
+    pub async fn import_cookies(&self, source: &str, tab_id: Option<&str>) -> Result<Value, String> {
+        super::cookie_import::check_private(self.settings()?.private_browsing)?;
+        let (id, host, https) = super::cookie_import::target(&self.state.borrow(), tab_id)?;
+        let (source, lookup) = (source.to_string(), host.clone());
+        let (cookies, label) = tauri::async_runtime::spawn_blocking(move || super::cookie_import::read(&source, &lookup, https)).await.map_err(|_| "Import stopped unexpectedly")??;
+        if cookies.is_empty() { return Err(format!("No sign-in for {host} found in {label}.")); }
+        // The settings may have changed while the Keychain prompt was open.
+        super::cookie_import::check_private(self.settings()?.private_browsing)?;
+        let imported = self.sessions.import(cookies.iter().map(|cookie| cookie.properties()).collect()).await?;
+        if imported == 0 { return Err(format!("No sign-in for {host} found in {label}.")); }
+        self.sessions.notify();
+        self.dispatch(json!({"action":"reload","id":id}), false).await?;
+        Ok(json!({"imported":imported,"host":host}))
+    }
     pub fn has_logins(&self, site: &str) -> Result<bool, String> {
         Ok(self.list_passwords()?.matching(&super::passwords::origin(site)?).next().is_some())
     }
